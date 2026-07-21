@@ -9,9 +9,10 @@ using UnityEngine;
 public enum AppType
 {
     Browser,
+    Study,
     Bank,
     Message,
-    Phone,
+    Map,
     Setting
 }
 
@@ -199,13 +200,18 @@ public class AppWindow : MonoBehaviour
         OpenApp(AppType.Message);
     }
 
-    public void OpenPhone()
+    public void OpenStudy()
     {
-        OpenApp(AppType.Phone);
+        OpenApp(AppType.Study);
     }
 
     public void OpenSetting()
     {
         OpenApp(AppType.Setting);
+    }
+    
+    public void OpenMap()
+    {
+        OpenApp(AppType.Map);
     }
 }
