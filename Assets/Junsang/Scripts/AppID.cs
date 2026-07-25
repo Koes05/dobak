@@ -1,7 +1,10 @@
-public enum AppID 
+namespace Dobak.App
 {
-    None,
-    Casino,
-    Bank,
-    Map
+    public enum AppID
+    {
+        None,
+        Casino,
+        Bank,
+        Map
+    }
 }

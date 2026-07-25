@@ -1,24 +1,28 @@
+using Dobak.App;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class Tablet : MonoBehaviour
+namespace Dobak.Tablet
 {
-    [SerializeField] private Button homeButton;
-    [SerializeField] private Transform openedAppParent;
-
-    private void Awake()
+    public class Tablet : MonoBehaviour
     {
-        homeButton.onClick.AddListener(OnHomeButtonClicked);
-    }
+        [SerializeField] private Button homeButton;
+        [SerializeField] private Transform openedAppParent;
 
-    private void OnDestroy()
-    {
-        homeButton.onClick.RemoveListener(OnHomeButtonClicked);
-    }
+        private void Awake()
+        {
+            homeButton.onClick.AddListener(OnHomeButtonClicked);
+        }
 
-    private void OnHomeButtonClicked()
-    {
-        PopupUI openedApp = openedAppParent?.GetChild(0)?.GetComponent<PopupUI>();
-        openedApp.CloseApp();
+        private void OnDestroy()
+        {
+            homeButton.onClick.RemoveListener(OnHomeButtonClicked);
+        }
+
+        private void OnHomeButtonClicked()
+        {
+            PopupUI openedApp = openedAppParent?.GetChild(0)?.GetComponent<PopupUI>();
+            openedApp.CloseApp();
+        }
     }
 }
