@@ -7,7 +7,8 @@ using UnityEngine.EventSystems;
 public class NotificationItem : MonoBehaviour,
     IBeginDragHandler,
     IDragHandler,
-    IEndDragHandler
+    IEndDragHandler,
+    IPointerClickHandler
 {
     [Header("UI")]
     [SerializeField] private Image icon;
@@ -16,6 +17,9 @@ public class NotificationItem : MonoBehaviour,
 
     [Header("삭제 거리")]
     [SerializeField] private float removeDistance = 250f;
+
+    private NotificationData data;
+    private NotificationManager manager;
 
      // 자기 자신의 RectTransform
     private RectTransform rect;
@@ -34,8 +38,11 @@ public class NotificationItem : MonoBehaviour,
 
     //------------------------------------------------
 
-    public void SetData(NotificationData data)
+    public void SetData(NotificationData notificationData, NotificationManager notificationManager)
     {
+        data = notificationData;
+        manager = notificationManager;
+        
         icon.sprite = data.icon;
         title.text = data.title;
         message.text = data.message;
@@ -80,5 +87,15 @@ public class NotificationItem : MonoBehaviour,
             // 원래 위치로 복귀
             rect.anchoredPosition = startPos;
         }
+    }
+
+    //------------------------------------------------
+    // 클릭하면 앱 들어가기
+    //------------------------------------------------
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        manager.OpenNotification(data);
+
+        Destroy(gameObject);
     }
 }

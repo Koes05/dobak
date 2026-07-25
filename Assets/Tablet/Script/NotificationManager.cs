@@ -13,6 +13,8 @@ public class NotificationManager : MonoBehaviour
     [Header("알림 프리팹")]
     [SerializeField] private NotificationItem itemPrefab;
  
+    [SerializeField] private AppWindow appWindow;
+    
     [SerializeField]
     private Sprite testIcon;
 
@@ -20,8 +22,7 @@ public class NotificationManager : MonoBehaviour
     private int maxNotificationCount = 20;
 
     // 저장된 알림
-    private List<NotificationData> notifications =
-        new List<NotificationData>();
+    private List<NotificationData> notifications = new List<NotificationData>();
 
     private void Update()
     {
@@ -32,6 +33,11 @@ public class NotificationManager : MonoBehaviour
         }
     }
 
+    public void OpenNotification(NotificationData data)
+    {
+        appWindow.OpenApp(data.appType);
+    }
+
     /// <summary>
     /// 테스트용 알림
     /// </summary>
@@ -39,9 +45,13 @@ public class NotificationManager : MonoBehaviour
     {
         NotificationData data = new NotificationData();
 
-        data.icon = testIcon;      // Inspector에서 연결
-        data.title = "국민은행";
-        data.message = "500,000원이 출금되었습니다.";
+        //data.icon = bankIcon;
+
+        data.title = "메시지";
+
+        data.message = "엄마 : 밥 먹었니?";
+
+        data.appType = AppType.Message;
 
         SendNotification(data);
     }
@@ -67,7 +77,7 @@ public class NotificationManager : MonoBehaviour
 
         item.transform.SetAsFirstSibling();
 
-        item.SetData(data);
+        item.SetData(data, this);
     }
 
     /// <summary>
