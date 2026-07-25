@@ -2,22 +2,25 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class PopupUI : MonoBehaviour
+namespace Dobak.App
 {
-    private AppID _appID;
-
-    public void Setup(AppData data)
+    public class PopupUI : MonoBehaviour
     {
-        _appID = data.appID;
-    }
+        private AppID _appID;
 
-    public void OnClickClose()
-    {
-        CloseApp();
-    }
+        public void Setup(AppData data)
+        {
+            _appID = data.appID;
+        }
 
-    public void CloseApp()
-    {
-        AppManager.Instance.CloseApp(_appID);
+        public void OnClickClose()
+        {
+            CloseApp();
+        }
+
+        public void CloseApp()
+        {
+            AppManager.Instance.CloseApp(_appID);
+        }
     }
 }

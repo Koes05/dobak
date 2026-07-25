@@ -1,39 +1,42 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class AppManager : MonoBehaviour
+namespace Dobak.App
 {
-    public static AppManager Instance {get; private set;}
-
-    private Dictionary<AppID, GameObject> _activeApps = new ();
-
-    [SerializeField] private Transform popupAppsParent;
-
-    private void Awake()
+    public class AppManager : MonoBehaviour
     {
-        Instance = this;
-    }
+        public static AppManager Instance { get; private set; }
 
-    public void OpenApp(AppData data)
-    {
-        if (_activeApps.ContainsKey(data.appID))
+        private Dictionary<AppID, GameObject> _activeApps = new();
+
+        [SerializeField] private Transform popupAppsParent;
+
+        private void Awake()
         {
-            _activeApps[data.appID].transform.SetAsLastSibling();
-            return;
+            Instance = this;
         }
 
-        GameObject newPopup = Instantiate(data.appPrefab, popupAppsParent);
-        _activeApps.Add(data.appID, newPopup);
-        newPopup.GetComponent<PopupUI>().Setup(data);
-        newPopup.transform.SetAsLastSibling();
-    }
-
-    public void CloseApp(AppID id)
-    {
-        if (_activeApps.ContainsKey(id))
+        public void OpenApp(AppData data)
         {
-            Destroy(_activeApps[id]);
-            _activeApps.Remove(id);
+            if (_activeApps.ContainsKey(data.appID))
+            {
+                _activeApps[data.appID].transform.SetAsLastSibling();
+                return;
+            }
+
+            GameObject newPopup = Instantiate(data.appPrefab, popupAppsParent);
+            _activeApps.Add(data.appID, newPopup);
+            newPopup.GetComponent<PopupUI>().Setup(data);
+            newPopup.transform.SetAsLastSibling();
+        }
+
+        public void CloseApp(AppID id)
+        {
+            if (_activeApps.ContainsKey(id))
+            {
+                Destroy(_activeApps[id]);
+                _activeApps.Remove(id);
+            }
         }
     }
 }

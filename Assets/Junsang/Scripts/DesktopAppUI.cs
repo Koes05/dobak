@@ -1,23 +1,26 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-public class DesktopAppUI : MonoBehaviour
+namespace Dobak.App
 {
-    [SerializeField] private AppData data;
-    [SerializeField] private Button button;
-
-    private void Awake()
+    public class DesktopAppUI : MonoBehaviour
     {
-        if(button is null) button = GetComponent<Button>();
-    }
+        [SerializeField] private AppData data;
+        [SerializeField] private Button button;
 
-    private void Start()
-    {
-        button.onClick.AddListener(delegate { OnClickOpen(); });
-    }
+        private void Awake()
+        {
+            if (button is null) button = GetComponent<Button>();
+        }
 
-    private void OnClickOpen()
-    {
-        AppManager.Instance.OpenApp(data);
+        private void Start()
+        {
+            button.onClick.AddListener(delegate { OnClickOpen(); });
+        }
+
+        private void OnClickOpen()
+        {
+            AppManager.Instance.OpenApp(data);
+        }
     }
 }

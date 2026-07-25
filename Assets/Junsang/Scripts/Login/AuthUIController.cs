@@ -2,84 +2,87 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-public class AuthUIController : MonoBehaviour
+namespace Dobak.App.Casino.Auth
 {
-    [Header("Login Panel")]
-    [SerializeField] private GameObject loginPanel;
-    [SerializeField] private TMP_InputField loginIdInput;
-    [SerializeField] private TMP_InputField loginPwInput;
-    [SerializeField] private TMP_Text loginErrorText;
-    [SerializeField] private Button loginButton;
-    [SerializeField] private Button gotoSignupButton;
-
-    [Header("Signup Panel")]
-    [SerializeField] private GameObject signupPanel;
-    [SerializeField] private TMP_InputField signupIdInput;
-    [SerializeField] private TMP_InputField signupPwInput;
-    [SerializeField] private TMP_Text signupErrorText;
-    [SerializeField] private Button signupButton;
-    [SerializeField] private Button backtoLoginButton;
-
-    private void Awake()
+    public class AuthUIController : MonoBehaviour
     {
-        loginButton.onClick.AddListener(OnClickLogin);
-        gotoSignupButton.onClick.AddListener(ShowSignupPanel);
-        signupButton.onClick.AddListener(OnClickSignup);
-        backtoLoginButton.onClick.AddListener(ShowLoginPanel);
-    }
+        [Header("Login Panel")]
+        [SerializeField] private GameObject loginPanel;
+        [SerializeField] private TMP_InputField loginIdInput;
+        [SerializeField] private TMP_InputField loginPwInput;
+        [SerializeField] private TMP_Text loginErrorText;
+        [SerializeField] private Button loginButton;
+        [SerializeField] private Button gotoSignupButton;
 
-    public void OnClickLogin()
-    {
-        bool success = LocalAccountManager.Instance.Login(
-            loginIdInput.text, loginPwInput.text, out string error);
+        [Header("Signup Panel")]
+        [SerializeField] private GameObject signupPanel;
+        [SerializeField] private TMP_InputField signupIdInput;
+        [SerializeField] private TMP_InputField signupPwInput;
+        [SerializeField] private TMP_Text signupErrorText;
+        [SerializeField] private Button signupButton;
+        [SerializeField] private Button backtoLoginButton;
 
-        if (success)
+        private void Awake()
         {
-            loginErrorText.gameObject.SetActive(false);
-            Debug.Log($"로그인 성공: {LocalAccountManager.Instance.CurrentUser.id}");
-            CloseAuth();
-            // 이후
+            loginButton.onClick.AddListener(OnClickLogin);
+            gotoSignupButton.onClick.AddListener(ShowSignupPanel);
+            signupButton.onClick.AddListener(OnClickSignup);
+            backtoLoginButton.onClick.AddListener(ShowLoginPanel);
         }
-        else
+
+        public void OnClickLogin()
         {
-            loginErrorText.text = error;
-            loginErrorText.gameObject.SetActive(true);
+            bool success = LocalAccountManager.Instance.Login(
+                loginIdInput.text, loginPwInput.text, out string error);
+
+            if (success)
+            {
+                loginErrorText.gameObject.SetActive(false);
+                Debug.Log($"로그인 성공: {LocalAccountManager.Instance.CurrentUser.id}");
+                CloseAuth();
+                // 이후
+            }
+            else
+            {
+                loginErrorText.text = error;
+                loginErrorText.gameObject.SetActive(true);
+            }
         }
-    }
 
-    public void OnClickSignup()
-    {
-        bool success = LocalAccountManager.Instance.SignUp(
-            signupIdInput.text, signupPwInput.text, out string error);
-
-        if (success)
+        public void OnClickSignup()
         {
-            signupErrorText.gameObject.SetActive(false);
-            Debug.Log("회원가입 성공, 로그인 화면으로 전환");
-            ShowLoginPanel();
+            bool success = LocalAccountManager.Instance.SignUp(
+                signupIdInput.text, signupPwInput.text, out string error);
+
+            if (success)
+            {
+                signupErrorText.gameObject.SetActive(false);
+                Debug.Log("회원가입 성공, 로그인 화면으로 전환");
+                ShowLoginPanel();
+            }
+            else
+            {
+                signupErrorText.text = error;
+                signupErrorText.gameObject.SetActive(true);
+            }
         }
-        else
+
+        public void ShowLoginPanel()
         {
-            signupErrorText.text = error;
-            signupErrorText.gameObject.SetActive(true);
+            loginPanel.SetActive(true);
+            signupPanel.SetActive(false);
         }
-    }
 
-    public void ShowLoginPanel()
-    {
-        loginPanel.SetActive(true);
-        signupPanel.SetActive(false);
-    }
+        public void ShowSignupPanel()
+        {
+            loginPanel.SetActive(false);
+            signupPanel.SetActive(true);
+        }
 
-    public void ShowSignupPanel()
-    {
-        loginPanel.SetActive(false);
-        signupPanel.SetActive(true);
-    }
-
-    public void CloseAuth()
-    {
-        loginPanel.SetActive(false);
-        signupPanel.SetActive(false);
+        public void CloseAuth()
+        {
+            loginPanel.SetActive(false);
+            signupPanel.SetActive(false);
+        }
     }
 }
