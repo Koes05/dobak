@@ -28,11 +28,6 @@ public class AuthUIController : MonoBehaviour
         backtoLoginButton.onClick.AddListener(ShowLoginPanel);
     }
 
-    private void Start()
-    {
-        ShowLoginPanel();
-    }
-
     public void OnClickLogin()
     {
         bool success = LocalAccountManager.Instance.Login(

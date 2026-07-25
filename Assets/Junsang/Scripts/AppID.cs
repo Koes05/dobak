@@ -1,5 +1,6 @@
 public enum AppID 
 {
     None,
-    Casino
+    Casino,
+    Bank
 }

@@ -14,7 +14,6 @@ public class SlotMachineManager : MonoBehaviour
     [SerializeField] private TMP_Text resultText;
 
     [Header("게임 설정")]
-    [SerializeField] private int startingCredit = 1000;
     [SerializeField] private int betAmount = 10;
 
     [Header("연출 타이밍")]
@@ -23,34 +22,46 @@ public class SlotMachineManager : MonoBehaviour
     [Tooltip("릴마다 정지 타이밍을 살짝 늦춰서 왼쪽부터 순서대로 멈추는 느낌을 줌")]
     [SerializeField] private float perReelDelay = 0.4f;
 
-    private int credit;
     private bool isSpinning = false;
     private int currentRound = 0;
     private readonly SessionTracker sessionTracker = new SessionTracker();
 
+    private void OnEnable()
+    {
+        if(CoinManager.Instance == null) return;
+
+        CoinManager.Instance.OnCasinoCashChanged += UpdateUI;
+    }
+
+    private void OnDisable()
+    {
+        if(CoinManager.Instance == null) return;
+
+        CoinManager.Instance.OnCasinoCashChanged -= UpdateUI;
+    }
+
     private void Start()
     {
-        credit = startingCredit;
         foreach (var reel in reels)
             reel.Init(symbolDatabase);
 
         spinButton.onClick.AddListener(OnSpinButtonPressed);
 
-        UpdateUI();
+        UpdateUI(CoinManager.Instance.CasinoCash);
     }
 
     private void OnSpinButtonPressed()
     {
         if (isSpinning) return;
 
-        if (credit < betAmount)
+        bool canSpin = CoinManager.Instance.TryBetCasino(betAmount);
+
+        if (!canSpin)
         {
             resultText.text = "크레딧이 부족합니다";
             return;
         }
 
-        credit -= betAmount;
-        UpdateUI();
         StartCoroutine(SpinAllReels());
     }
 
@@ -136,8 +147,8 @@ public class SlotMachineManager : MonoBehaviour
         if (allSame)
         {
             int payout = Mathf.RoundToInt(betAmount * results[0].payoutMultiplier);
-            credit += payout;
             resultText.text = $"당첨! {results[0].symbolName} x3 -> +{payout}";
+            CoinManager.Instance.AddCasinoCredit(payout);
         }
         else
         {
@@ -146,12 +157,12 @@ public class SlotMachineManager : MonoBehaviour
 
         spinButton.interactable = true;
 
-        UpdateUI();
+        UpdateUI(CoinManager.Instance.CasinoCash);
     }
 
-    private void UpdateUI()
+    private void UpdateUI(int cash)
     {
-        creditText.text = $"CREDIT: {credit}";
+        creditText.text = $"Cash: ${cash}";
         betText.text = $"BET: {betAmount} ({BetOddsModifier.GetBetTierLabel(betAmount)})";
     }
 }

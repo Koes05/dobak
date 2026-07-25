@@ -24,7 +24,7 @@ public class PopupUI : MonoBehaviour
         CloseApp();
     }
 
-    private void CloseApp()
+    public void CloseApp()
     {
         AppManager.Instance.CloseApp(_appID);
     }
