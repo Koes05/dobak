@@ -11,5 +11,9 @@ public class NotificationData
 
     [Header("내용")]
     public string message;
+
+    [Header("앱 타입")]
+    public AppType appType; 
+
 }
 
