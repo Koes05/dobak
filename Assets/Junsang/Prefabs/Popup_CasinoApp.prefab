@@ -2224,8 +2224,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 89a8c324654d2a94a990eba1a88de0ee, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PopupUI
-  titleText: {fileID: 0}
-  closeButton: {fileID: 0}
 --- !u!114 &721655452814918758
 MonoBehaviour:
   m_ObjectHideFlags: 0

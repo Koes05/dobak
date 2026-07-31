@@ -39,21 +39,24 @@ namespace Dobak.App.Casino
 
         private void OnEnable()
         {
-            if (CoinManager.Instance == null) return;
-
             menu_homeButton.onClick.AddListener(OnHomeButtonClicked);
             menu_slotMachineButton.onClick.AddListener(OnSlotMachineButtonClicked);
             menu_rechargeButton.onClick.AddListener(OnRechargeButtonClicked);
             menu_myPageButton.onClick.AddListener(OnProfileButtonClicked);
-            _1DollorButton.onClick.AddListener(() => { OnCashButtonClicked(1); });
-            _10DollorButton.onClick.AddListener(() => { OnCashButtonClicked(10); });
-            _100DollorButton.onClick.AddListener(() => { OnCashButtonClicked(100); });
-            _1000DollorButton.onClick.AddListener(() => { OnCashButtonClicked(1000); });
-            _10000DollorButton.onClick.AddListener(() => { OnCashButtonClicked(10000); });
-            _100000DollorButton.onClick.AddListener(() => { OnCashButtonClicked(100000); });
 
-            CoinManager.Instance.OnCasinoCashChanged += UpdateDisplay;
-            UpdateDisplay(CoinManager.Instance.CasinoCash);
+            _1DollorButton.onClick.AddListener(() => OnCashButtonClicked(1));
+            _10DollorButton.onClick.AddListener(() => OnCashButtonClicked(10));
+            _100DollorButton.onClick.AddListener(() => OnCashButtonClicked(100));
+            _1000DollorButton.onClick.AddListener(() => OnCashButtonClicked(1000));
+            _10000DollorButton.onClick.AddListener(() => OnCashButtonClicked(10000));
+            _100000DollorButton.onClick.AddListener(() => OnCashButtonClicked(100000));
+
+            // CoinManager가 있을 때만 연결
+            if (CoinManager.Instance != null)
+            {
+                CoinManager.Instance.OnCasinoCashChanged += UpdateDisplay;
+                UpdateDisplay(CoinManager.Instance.CasinoCash);
+            }
 
             Init();
         }
@@ -92,6 +95,7 @@ namespace Dobak.App.Casino
 
         private void OnHomeButtonClicked()
         {
+            Debug.Log("home");
             homePanel.SetActive(true);
             slotMachinePanel.SetActive(false);
             rechargePanel.SetActive(false);
