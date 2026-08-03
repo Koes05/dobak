@@ -5,8 +5,11 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 1
+  - enabled: 0
     path: Assets/Junsang/Scenes/Tablet.unity
     guid: ecc36256e5d75934492148190e0ad57f
+  - enabled: 1
+    path: Assets/Tablet/TabletUI.unity
+    guid: b757d59b5e3a1f4498e19e7d04fc5163
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}

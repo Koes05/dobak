@@ -5,7 +5,6 @@ using UnityEngine.UI;
 
 public class NotificationPopup : MonoBehaviour
 {
-    [SerializeField] private Image icon;
     [SerializeField] private TMP_Text title;
     [SerializeField] private TMP_Text message;
 
@@ -30,7 +29,6 @@ public class NotificationPopup : MonoBehaviour
     {
         StopAllCoroutines();
 
-        icon.sprite = data.icon;
         title.text = data.title;
         message.text = data.message;
 

@@ -8,6 +8,8 @@ namespace Dobak.App.Map
     {
         [SerializeField] private RectTransform marker; // 표시할 마커(핀) UI
 
+        [SerializeField] private AppWindow appWindow;
+
         [Header("현재 위치 텍스트")]
         [SerializeField] private TMP_Text currentLocationText;
 
@@ -44,6 +46,8 @@ namespace Dobak.App.Map
             currentLocationText.text = $"현재 위치 : {loc.locationName}";
 
             Debug.Log($"{loc.locationName} 위치 선택됨");
+
+            appWindow.CloseCurrentApp();
         }
     }
 }

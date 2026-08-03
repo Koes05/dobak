@@ -12,6 +12,13 @@ namespace Dobak.Manager
         CasinoWin           // 카지노 내 당첨 (카지노 캐시 증가)
     }
 
+    public enum ChargeToCasinoFailureReason
+    {
+        None,
+        InvalidAmount,
+        InsufficientBankCash
+    }
+
     [Serializable]
     public struct TransactionRecord
     {
@@ -58,10 +65,26 @@ namespace Dobak.Manager
         // 뱅크 -> 카지노 충전. 뱅크 캐시가 충분해야 성공.
         public bool ChargeToCasino(int amount)
         {
-            if (amount <= 0 || BankCash < amount) return false;
+            return TryChargeToCasino(amount, out _);
+        }
+
+        public bool TryChargeToCasino(int amount, out ChargeToCasinoFailureReason failureReason)
+        {
+            if (amount <= 0)
+            {
+                failureReason = ChargeToCasinoFailureReason.InvalidAmount;
+                return false;
+            }
+
+            if (BankCash < amount)
+            {
+                failureReason = ChargeToCasinoFailureReason.InsufficientBankCash;
+                return false;
+            }
 
             BankCash -= amount;
             CasinoCash += amount;
+            failureReason = ChargeToCasinoFailureReason.None;
 
             OnBankCashChanged?.Invoke(BankCash);
             OnCasinoCashChanged?.Invoke(CasinoCash);
