@@ -1,11 +1,15 @@
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 namespace Dobak.App.Map
 {
     public class MapLocationController : MonoBehaviour
     {
         [SerializeField] private RectTransform marker; // 표시할 마커(핀) UI
+
+        [Header("현재 위치 텍스트")]
+        [SerializeField] private TMP_Text currentLocationText;
 
         [System.Serializable]
         public class LocationPoint
@@ -15,11 +19,13 @@ namespace Dobak.App.Map
             public RectTransform point; // 이 버튼(또는 별도 좌표)의 위치
         }
 
-        [SerializeField] private LocationPoint[] locations;
+        [SerializeField] private LocationPoint[] locations; //장소 목록
 
         private void Start()
         {
             marker.gameObject.SetActive(false);
+
+            currentLocationText.text = "현재 위치 : 선택되지 않음";
 
             foreach (var loc in locations)
             {
@@ -33,6 +39,9 @@ namespace Dobak.App.Map
         {
             marker.gameObject.SetActive(true);
             marker.anchoredPosition = loc.point.anchoredPosition;
+
+            // 현재 위치 표시
+            currentLocationText.text = $"현재 위치 : {loc.locationName}";
 
             Debug.Log($"{loc.locationName} 위치 선택됨");
         }

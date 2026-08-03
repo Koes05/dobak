@@ -61,8 +61,7 @@ public class AppWindow : MonoBehaviour
     // Dictionary
     // Key : AppType
     // Value : GameObject(UI)
-    private Dictionary<AppType, GameObject> appDictionary
-        = new Dictionary<AppType, GameObject>();
+    private Dictionary<AppType, GameObject> appDictionary = new Dictionary<AppType, GameObject>();
 
     // 현재 열려있는 앱
     private GameObject currentApp;
