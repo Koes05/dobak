@@ -91,8 +91,6 @@ namespace Dobak.App.Casino
             slotMachinePanel.SetActive(false);
             rechargePanel.SetActive(false);
             profilePanel.SetActive(false);
-
-            auth.ShowLoginPanel();
         }
 
         private void OnHomeButtonClicked()
