@@ -15,5 +15,8 @@ public class NotificationData
     [Header("앱 타입")]
     public AppType appType; 
 
+    [Header("발신자 타입")]
+    public SpeakerType speakerType;
+
 }
 

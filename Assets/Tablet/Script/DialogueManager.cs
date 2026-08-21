@@ -12,7 +12,9 @@ public enum SpeakerType
     Friend,      // 동창 친구
     Stranger,    // 모르는 사람 / SNS 접근자
     Scammer,     // 전문 사기꾼 / 리딩방 업자
-    Family       // 가족
+    Mom,         // 엄마    
+    Unknown      // 기타/알 수 없는 상대방
+
 }
 
 [System.Serializable]
@@ -21,6 +23,11 @@ public class Choice
     public string choiceText;      // 선택지 버튼 텍스트
     public int nextDialogueID;     // 이동할 다음 대화 ID (-1이면 종료)
     public int riskScoreChange;    // 위험도/예방 점수 변화량
+
+    [Header("선택 시 앱 실행")]
+    public bool openApp;
+
+    public AppType targetApp;
 }
 
 [System.Serializable]
@@ -72,11 +79,44 @@ public class DialogueManager : MonoBehaviour
 
     private void Start()
     {
-        if (dialoguePanel != null) dialoguePanel.SetActive(false);
+        if (dialoguePanel != null)
+            dialoguePanel.SetActive(false);
         LoadPrototypeData();
-        
-        // 초기 프로필 상태 세팅
+
+        // 프로필용 채널을 먼저 생성
+        InitializeChannels();
+
+        // 초기 프로필 UI 갱신
         UpdateAllProfileUI();
+    }
+
+    private void InitializeChannels()
+    {
+        foreach (var speaker in allDialogues.Keys)
+        {
+            if (channels.ContainsKey(speaker))
+                continue;
+
+            if (!allDialogues[speaker].ContainsKey(1))
+                continue;
+
+            DialogueNode firstNode = allDialogues[speaker][1];
+
+            channels[speaker] = new ChatChannel
+            {
+                speakerType = speaker,
+                speakerName = firstNode.speakerName,    
+
+                // 처음부터 마지막 메시지를 표시
+                lastMessage = "",
+
+                // 처음에는 읽지 않은 메시지가 있다고 설정
+                unreadCount = 0,
+
+                // 첫 번째 대화부터 시작
+                currentDialogueID = 1
+            };
+        }
     }
 
     // -------------------------------------------------------------
@@ -109,6 +149,12 @@ public class DialogueManager : MonoBehaviour
 
         if (isNewChannel || currentChannel.spawnedBubbles.Count == 0)
         {
+            // 아직 메시지를 받은 적이 없는 경우
+            if (string.IsNullOrEmpty(currentChannel.lastMessage))
+            {
+                Debug.Log("아직 받은 메시지가 없습니다.");
+                return;
+            }
             DisplayNode(currentChannel.currentDialogueID);
         }
         else
@@ -156,15 +202,17 @@ public class DialogueManager : MonoBehaviour
         }
         else
         {
+            // 마지막 메시지 갱신
             channels[speaker].lastMessage = message;
 
             // 현재 열려있는 방이 아니라면 안 읽은 메시지 수 증가
             if (!dialoguePanel.activeSelf || currentSpeaker != speaker)
             {
+                // 안 읽은 메시지 수 증가
                 channels[speaker].unreadCount++;
             }
         }
-
+        // 프로필 UI 갱신
         UpdateProfileUI(speaker);
     }
 
@@ -240,6 +288,31 @@ public class DialogueManager : MonoBehaviour
         }
 
         ClearChoices();
+
+        // ==========================================
+        // 선택지를 통해 특정 앱을 실행하는 경우
+        // ==========================================
+
+        if (selectedChoice.openApp)
+        {
+            Debug.Log($"선택지로 앱 실행 : {selectedChoice.targetApp}");
+
+            // AppWindow를 찾아서 해당 앱 실행
+            AppWindow appWindow = FindAnyObjectByType<AppWindow>();
+
+            if (appWindow != null)
+            {
+                appWindow.OpenApp(selectedChoice.targetApp);          
+            }
+            else
+            {
+                Debug.LogError("AppWindow를 찾을 수 없습니다.");
+            }
+        }
+
+        // ==========================================
+        // 다음 대화가 있는 경우
+        // ==========================================
 
         if (selectedChoice.nextDialogueID >= 0)
         {
@@ -336,8 +409,8 @@ public class DialogueManager : MonoBehaviour
 
         var friendNodes = new Dictionary<int, DialogueNode>
         {
-            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Friend, speakerName = "동창 친구", message = "야 오랜만이다! 대박 사이트 찾음 10분만에 3배 가자!", choices = new List<Choice> { new Choice { choiceText = "링크 줘봐", nextDialogueID = 2, riskScoreChange = 10 }, new Choice { choiceText = "안 해", nextDialogueID = -1, riskScoreChange = -10 } } }},
-            { 2, new DialogueNode { id = 2, speakerType = SpeakerType.Friend, speakerName = "동창 친구", message = "여기 링크 보낸다! [링크]", choices = new List<Choice> { new Choice { choiceText = "확인했어", nextDialogueID = -1, riskScoreChange = 0 } } }}
+            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Friend, speakerName = "동창 친구", message = "야 오랜만이다! 대박 사이트 찾음 10분만에 3배 넘게 벌수있음 너도 한번 해봐 안전하게 돈복사라니까?!", choices = new List<Choice> { new Choice { choiceText = "링크 줘봐", nextDialogueID = 2, riskScoreChange = 10 }, new Choice { choiceText = "안 해", nextDialogueID = -1, riskScoreChange = -10 } } }},
+            { 2, new DialogueNode { id = 2, speakerType = SpeakerType.Friend, speakerName = "동창 친구", message = "여기 링크 보낸다! [링크]", choices = new List<Choice> { new Choice { choiceText = "(링크들어가기)", nextDialogueID = -1, riskScoreChange = 20,  openApp = true, targetApp = AppType.Browser }, new Choice { choiceText = "생각해봤는데 그냥 안할래", nextDialogueID = -1, riskScoreChange = -20 } } }}
         };
 
         var strangerNodes = new Dictionary<int, DialogueNode>
@@ -350,8 +423,40 @@ public class DialogueManager : MonoBehaviour
             { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Scammer, speakerName = "김실장 (리딩방)", message = "회원님, 오늘 무료 추천주 보유중인데 입장하시겠습니까?", choices = new List<Choice> { new Choice { choiceText = "입장할게요", nextDialogueID = -1, riskScoreChange = 20 }, new Choice { choiceText = "신고할게요", nextDialogueID = -1, riskScoreChange = -20 } } }}
         };
 
+        var momNodes = new Dictionary<int, DialogueNode>
+        {
+            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Mom, speakerName = "엄마", message = "밥 먹었어?", choices = new List<Choice> { new Choice { choiceText = "응, 먹었어", nextDialogueID = 2, riskScoreChange = 0 }, new Choice { choiceText = "아직 못 먹었어", nextDialogueID = 2, riskScoreChange = 0 } } } },
+            { 2, new DialogueNode { id = 2, speakerType = SpeakerType.Mom, speakerName = "엄마", message = "그래. 밥은 꼭 챙겨 먹어.", choices = new List<Choice> { new Choice { choiceText = "알겠어!", nextDialogueID = -1, riskScoreChange = 0 } } } }
+        };
+
+           
+
         allDialogues[SpeakerType.Friend] = friendNodes;
         allDialogues[SpeakerType.Stranger] = strangerNodes;
         allDialogues[SpeakerType.Scammer] = scammerNodes;
+        allDialogues[SpeakerType.Mom] = momNodes;
+    }
+
+    public void ReceiveNotificationMessage(SpeakerType speaker, string message)
+    {
+        // 해당 화자의 채널이 없으면 생성
+        if (!channels.ContainsKey(speaker))
+        {
+            channels[speaker] = new ChatChannel
+            {
+                speakerType = speaker,
+                unreadCount = 0,
+                currentDialogueID = 1
+            };
+        }
+
+        // 마지막 메시지 변경
+        channels[speaker].lastMessage = message;
+
+        // 읽지 않은 메시지 증가
+        channels[speaker].unreadCount++;
+
+        // 프로필 UI 즉시 갱신
+        UpdateProfileUI(speaker);
     }
 }
