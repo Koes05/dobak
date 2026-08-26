@@ -2337,6 +2337,41 @@ MonoBehaviour:
     - "\uC2EC\uC2EC\uD574\uC11C \uB9CC\uB4E4\uC5C8\uB2E4"
     - "\uB3C8\uC744 \uBC8C\uAE30 \uC704\uD574\uC11C"
     answerIndex: 1
+  - question: (5+3)*2
+    choices:
+    - 1
+    - 16
+    - 11
+    - 10
+    answerIndex: 1
+  - question: 5*6+2/2
+    choices:
+    - 16
+    - 31
+    - 15
+    - 4
+    answerIndex: 1
+  - question: 2*4*6+1
+    choices:
+    - 58
+    - 50
+    - 49
+    - 48
+    answerIndex: 2
+  - question: 44/2+56/2
+    choices:
+    - 50
+    - 55
+    - 48
+    - 46
+    answerIndex: 0
+  - question: 46+2*6
+    choices:
+    - 56
+    - 55
+    - 58
+    - 60
+    answerIndex: 2
   nextQuestionDelay: 1
 --- !u!1 &530474643
 GameObject:
