@@ -30,7 +30,6 @@ namespace Dobak.App.Casino
         [SerializeField] private GameObject homePanel;
         [SerializeField] private GameObject slotMachinePanel;
         [SerializeField] private GameObject rechargePanel;
-        [SerializeField] private GameObject profilePanel;
 
         private NotificationManager notificationManager;
 
@@ -91,7 +90,6 @@ namespace Dobak.App.Casino
             homePanel.SetActive(true);
             slotMachinePanel.SetActive(false);
             rechargePanel.SetActive(false);
-            profilePanel.SetActive(false);
         }
 
         private void OnHomeButtonClicked()
@@ -100,7 +98,6 @@ namespace Dobak.App.Casino
             homePanel.SetActive(true);
             slotMachinePanel.SetActive(false);
             rechargePanel.SetActive(false);
-            profilePanel.SetActive(false);
         }
 
         private void OnSlotMachineButtonClicked()
@@ -108,7 +105,6 @@ namespace Dobak.App.Casino
             homePanel.SetActive(false);
             slotMachinePanel.SetActive(true);
             rechargePanel.SetActive(false);
-            profilePanel.SetActive(false);
         }
 
         private void OnRechargeButtonClicked()
@@ -116,7 +112,6 @@ namespace Dobak.App.Casino
             homePanel.SetActive(false);
             slotMachinePanel.SetActive(false);
             rechargePanel.SetActive(true);
-            profilePanel.SetActive(false);
         }
 
         private void OnProfileButtonClicked()
@@ -124,7 +119,6 @@ namespace Dobak.App.Casino
             homePanel.SetActive(false);
             slotMachinePanel.SetActive(false);
             rechargePanel.SetActive(false);
-            profilePanel.SetActive(true);
         }
 
         private void OnCashButtonClicked(int cash)

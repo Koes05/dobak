@@ -19,6 +19,12 @@ namespace Dobak.App.Casino.SlotMachine
         [Header("게임 설정")]
         [SerializeField] private int betAmount = 10;
 
+        [Header("확률 설정")]
+        [SerializeField] private float baseWinChance = 0.1f; // 기본 당첨 확률 (10%)
+        [SerializeField] private float winChanceDecay = 0.02f; // 당첨될 때마다 줄어드는 확률 (2%)
+        private float currentWinChance;
+
+
         [Header("연출 타이밍")]
         [Tooltip("릴 하나가 도는 기본 시간(초)")]
         [SerializeField] private float baseSpinDuration = 1.0f;
@@ -51,7 +57,10 @@ namespace Dobak.App.Casino.SlotMachine
             spinButton.onClick.AddListener(OnSpinButtonPressed);
 
             UpdateUI(CoinManager.Instance.CasinoCash);
+
+            currentWinChance = baseWinChance; // 시작 시 기본 확률로 초기화
         }
+
 
         private void OnSpinButtonPressed()
         {
@@ -74,36 +83,35 @@ namespace Dobak.App.Casino.SlotMachine
             spinButton.interactable = false;
             resultText.text = "";
 
-            // 1. 순수 확률(가중치)로 결과를 뽑는다
+            // 1. 당첨 여부를 확률로 결정
+            bool forceWin = Random.value < currentWinChance;
+
             SlotSymbol[] finalResults = new SlotSymbol[reels.Length];
-            for (int i = 0; i < reels.Length; i++)
-                finalResults[i] = symbolDatabase.GetRandomWeightedSymbol();
-
-            bool wasNaturalWin = IsAllSame(finalResults);
-            bool wasSuppressed = false;
-
-            // 2. 원래 당첨이었다면, 베팅액에 비례한 확률로 강제로 무효화(조작)한다
-            if (wasNaturalWin)
+            if (forceWin)
             {
-                float suppressionChance = BetOddsModifier.GetSuppressionChance(betAmount);
-                if (Random.value < suppressionChance)
-                {
-                    wasSuppressed = true;
-                    BreakWinningResult(finalResults);
-                }
+                // 강제로 당첨 결과 생성
+                SlotSymbol winSymbol = symbolDatabase.GetRandomWeightedSymbol();
+                for (int i = 0; i < reels.Length; i++)
+                    finalResults[i] = winSymbol;
+            }
+            else
+            {
+                // 일반 랜덤 결과
+                for (int i = 0; i < reels.Length; i++)
+                    finalResults[i] = symbolDatabase.GetRandomWeightedSymbol();
             }
 
-            // 3. 세션 로그에 기록 (원래 결과의 심볼 이름은 로그용으로 조작 전 심볼을 남긴다)
+            // 2. 세션 로그 기록
             currentRound++;
             sessionTracker.LogSpin(
                 currentRound,
                 betAmount,
-                wasNaturalWin,
-                wasSuppressed,
+                forceWin,
+                false,
                 finalResults[0] != null ? finalResults[0].symbolName : "-"
             );
 
-            // 4. 릴 스핀 연출 (조작이 반영된 최종 결과를 그대로 보여줌 - 시각적으로도 '꽝'으로 보임)
+            // 3. 릴 스핀 연출
             int reelsFinished = 0;
             for (int i = 0; i < reels.Length; i++)
             {
@@ -120,6 +128,7 @@ namespace Dobak.App.Casino.SlotMachine
             isSpinning = false;
         }
 
+
         private bool IsAllSame(SlotSymbol[] results)
         {
             for (int i = 1; i < results.Length; i++)
@@ -127,20 +136,6 @@ namespace Dobak.App.Casino.SlotMachine
                 if (results[i] != results[0]) return false;
             }
             return true;
-        }
-
-        // 당첨 결과를 강제로 깨뜨린다: 마지막 릴 심볼을 첫 심볼과 다른 것으로 교체
-        private void BreakWinningResult(SlotSymbol[] results)
-        {
-            SlotSymbol original = results[0];
-            SlotSymbol replacement;
-
-            do
-            {
-                replacement = symbolDatabase.GetRandomWeightedSymbol();
-            } while (replacement == original && symbolDatabase.symbols.Count > 1);
-
-            results[results.Length - 1] = replacement;
         }
 
         private void EvaluateResult(SlotSymbol[] results)
@@ -152,6 +147,9 @@ namespace Dobak.App.Casino.SlotMachine
                 int payout = Mathf.RoundToInt(betAmount * results[0].payoutMultiplier);
                 resultText.text = $"당첨! {results[0].symbolName} x3 -> +{payout}";
                 CoinManager.Instance.AddCasinoCredit(payout);
+
+                // 당첨 시 확률 감소
+                currentWinChance = Mathf.Max(0f, currentWinChance - winChanceDecay);
             }
             else
             {
@@ -159,14 +157,14 @@ namespace Dobak.App.Casino.SlotMachine
             }
 
             spinButton.interactable = true;
-
             UpdateUI(CoinManager.Instance.CasinoCash);
         }
 
+
         private void UpdateUI(int cash)
         {
-            creditText.text = $"Cash: ${cash}";
-            betText.text = $"BET: {betAmount} ({BetOddsModifier.GetBetTierLabel(betAmount)})";
+            creditText.text = $"잔액: {cash} 원";
+            betText.text = $"베팅: {betAmount} ({BetOddsModifier.GetBetTierLabel(betAmount)})";
         }
     }
 }
