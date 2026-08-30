@@ -65,7 +65,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 0}
+  m_Sprite: {fileID: 1910438696074212135, guid: 384235ffe0b689a4f9f299805184b2f0, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -267,6 +267,15 @@ MonoBehaviour:
   icon: {fileID: 1675190444206100653}
   title: {fileID: 1375750521058935670}
   message: {fileID: 4617146940912600099}
+  appIcons:
+  - appType: 0
+    icon: {fileID: -3824348996952660154, guid: 495b1513c12803d4fbafe40a322c7cb8, type: 3}
+  - appType: 1
+    icon: {fileID: 2100423644321846275, guid: 495b1513c12803d4fbafe40a322c7cb8, type: 3}
+  - appType: 2
+    icon: {fileID: 2698392997687338597, guid: 495b1513c12803d4fbafe40a322c7cb8, type: 3}
+  - appType: 3
+    icon: {fileID: 1061631275256280615, guid: 495b1513c12803d4fbafe40a322c7cb8, type: 3}
   removeDistance: 250
 --- !u!1 &5534247700411383323
 GameObject:

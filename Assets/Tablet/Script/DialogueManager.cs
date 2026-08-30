@@ -58,6 +58,9 @@ public class DialogueManager : MonoBehaviour
     [Header("UI Toggle Panel")]
     public GameObject dialoguePanel;
 
+    [Header("대화 상대 표시")]
+    [SerializeField] private TMP_Text speakerNameText;
+
     [Header("Scroll & Container Settings")]
     public ScrollRect scrollRect;
     public Transform chatContent;
@@ -134,10 +137,17 @@ public class DialogueManager : MonoBehaviour
             channels[speaker] = new ChatChannel
             {
                 speakerType = speaker,
+                speakerName = allDialogues[speaker][1].speakerName,
                 currentDialogueID = 1,
                 lastMessage = "",
                 unreadCount = 0
             };
+        }
+
+        // 대화 상대 이름 표시
+        if (channels.ContainsKey(speaker))
+        {
+            speakerNameText.text = channels[speaker].speakerName;
         }
 
         // 💡 [신규] 해당 채팅방을 열었으므로 안 읽은 메시지를 0으로 초기화
@@ -251,9 +261,8 @@ public class DialogueManager : MonoBehaviour
         DialogueNode currentNode = allDialogues[currentSpeaker][nodeID];
         channels[currentSpeaker].currentDialogueID = nodeID;
 
-        string formattedMsg = $"{currentNode.speakerName}\n{currentNode.message}";
-        CreateBubble(otherBubblePrefab, formattedMsg);
-        
+        CreateBubble(otherBubblePrefab, currentNode.message);
+
         SetLastMessage(currentNode.message);
         CreateChoiceButtons(currentNode.choices);
 
@@ -368,7 +377,11 @@ public class DialogueManager : MonoBehaviour
     {
         GameObject bubble = Instantiate(prefab, chatContent);
         TextMeshProUGUI tmp = bubble.GetComponentInChildren<TextMeshProUGUI>();
-        if (tmp != null) tmp.text = text;
+        if (tmp != null)
+        {
+            tmp.text = text;
+            LayoutRebuilder.ForceRebuildLayoutImmediate(bubble.GetComponent<RectTransform>());
+        } 
 
         if (channels.ContainsKey(currentSpeaker))
         {
@@ -394,6 +407,7 @@ public class DialogueManager : MonoBehaviour
 
     private IEnumerator ScrollToBottom()
     {
+        yield return null;
         yield return new WaitForEndOfFrame();
         if (scrollRect != null) scrollRect.verticalNormalizedPosition = 0f;
     }
@@ -415,12 +429,12 @@ public class DialogueManager : MonoBehaviour
 
         var strangerNodes = new Dictionary<int, DialogueNode>
         {
-            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Stranger, speakerName = "익명 소모임", message = "안녕하세요! 재테크 관심 있으신가요? 100% 수익 보장합니다.", choices = new List<Choice> { new Choice { choiceText = "관심 있어요", nextDialogueID = -1, riskScoreChange = 15 }, new Choice { choiceText = "차단합니다", nextDialogueID = -1, riskScoreChange = -15 } } }}
+            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Stranger, speakerName = "이웃", message = "안녕하세요! 재테크 관심 있으신가요? 100% 수익 보장합니다.", choices = new List<Choice> { new Choice { choiceText = "관심 있어요", nextDialogueID = -1, riskScoreChange = 15 }, new Choice { choiceText = "차단합니다", nextDialogueID = -1, riskScoreChange = -15 } } }}
         };
 
         var scammerNodes = new Dictionary<int, DialogueNode>
         {
-            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Scammer, speakerName = "김실장 (리딩방)", message = "회원님, 오늘 무료 추천주 보유중인데 입장하시겠습니까?", choices = new List<Choice> { new Choice { choiceText = "입장할게요", nextDialogueID = -1, riskScoreChange = 20 }, new Choice { choiceText = "신고할게요", nextDialogueID = -1, riskScoreChange = -20 } } }}
+            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Scammer, speakerName = "사기꾼", message = "회원님, 오늘 무료 추천주 보유중인데 입장하시겠습니까?", choices = new List<Choice> { new Choice { choiceText = "입장할게요", nextDialogueID = -1, riskScoreChange = 20 }, new Choice { choiceText = "신고할게요", nextDialogueID = -1, riskScoreChange = -20 } } }}
         };
 
         var momNodes = new Dictionary<int, DialogueNode>
