@@ -67,7 +67,7 @@
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "dobak-backup-work.slnx",
+    "dotnet.defaultSolution": "dobak.slnx",
     "dotnet.enableWorkspaceBasedDevelopment": false,
     "cSpell.words": [
         "Mathf"
