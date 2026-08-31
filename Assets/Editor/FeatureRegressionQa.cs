@@ -228,14 +228,13 @@ namespace Dobak.Editor
                         $"Job wage is wrong: before {bankBeforeJob}, after {coins?.BankCash}.");
                     DismissAllNarration();
                     Capture("feature-08-weekend-job.png");
-                    SetPrivate(flow, "gambleRounds", 9);
-                    Expect(flow != null && !flow.CanAttemptCashOut, "Cash-out unlocked before either threshold was met.");
-                    SetPrivate(flow, "gambleRounds", 10);
-                    Expect(flow != null && flow.CanAttemptCashOut, "Cash-out did not unlock after ten rounds.");
-                    SetPrivate(flow, "gambleRounds", 0);
+                    Expect(flow != null && flow.CanAttemptCashOut, "Cash-out is unavailable despite a positive point balance.");
+                    SetPrivate(flow, "cashOutAttempts", 2);
+                    Expect(flow != null && flow.WillCashOutScam, "The third cash-out attempt does not trigger the scam branch.");
+                    SetPrivate(flow, "cashOutAttempts", 0);
                     if (coins != null && coins.CasinoCash < 10000)
                         coins.AddCasinoCredit(10000 - coins.CasinoCash);
-                    Expect(flow != null && flow.CanAttemptCashOut, "Cash-out did not unlock at 10,000P.");
+                    Expect(flow != null && flow.WillCashOutScam, "A 10,000P cash-out does not trigger the scam branch.");
                     apps?.OpenMessage();
                     Next(10, 0.8d);
                     break;

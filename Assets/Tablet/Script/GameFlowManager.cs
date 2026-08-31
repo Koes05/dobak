@@ -23,7 +23,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private const int MinimumSleepHours = 5;
     private const int ShortSleepEndingLimit = 3;
     private const int CashOutEndingBalance = 10000;
-    private const int CashOutEndingRounds = 10;
+    private const int CashOutEndingAttempts = 3;
 
     private readonly HashSet<string> sentMessages = new HashSet<string>();
 
@@ -72,6 +72,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private int debt;
     private int gambleRounds;
     private int gambleLosses;
+    private int cashOutAttempts;
     private int casinoChargesToday;
     private int snsHoursToday;
     private string currentLocation = "집";
@@ -100,6 +101,7 @@ public sealed class GameFlowManager : MonoBehaviour
     public string CurrentLocation => currentLocation;
     public bool IsHomeworkDone => homeworkDone;
     public int ConsecutiveShortSleepDays => consecutiveShortSleepDays;
+    public string ActiveStoryEvent => activeStoryEvent;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void RegisterSceneBootstrap()
@@ -614,8 +616,10 @@ public sealed class GameFlowManager : MonoBehaviour
             EndGame("빚", "빌린 돈이 감당할 수 없는 수준까지 늘어났다.");
     }
 
-    public bool CanAttemptCashOut => !gameEnded && coinManager != null &&
-                                     (coinManager.CasinoCash >= CashOutEndingBalance || gambleRounds >= CashOutEndingRounds);
+    public bool CanAttemptCashOut => !gameEnded && coinManager != null && coinManager.CasinoCash > 0;
+    public bool WillCashOutScam => CanAttemptCashOut &&
+                                   (coinManager.CasinoCash >= CashOutEndingBalance ||
+                                    cashOutAttempts + 1 >= CashOutEndingAttempts);
 
     public void AttemptCashOut()
     {
@@ -624,12 +628,24 @@ public sealed class GameFlowManager : MonoBehaviour
 
         if (!CanAttemptCashOut)
         {
-            ShowFeedback($"환전 조건에 아직 도달하지 않았다. ({CashOutEndingBalance:N0}P 이상 또는 {CashOutEndingRounds}회 이용)");
+            ShowFeedback("환전할 사이트 포인트가 없다.");
             return;
         }
 
-        SendStoryStep("site_arc", "cashout_scam", 3);
-        EndGame("먹튀", "고액 또는 반복 이용 상태에서 환전을 요청하자 추가 입금을 요구했고, 잠시 뒤 접속할 수 없게 되었다.");
+        cashOutAttempts++;
+        if (coinManager.CasinoCash >= CashOutEndingBalance || cashOutAttempts >= CashOutEndingAttempts)
+        {
+            SendStoryStep("site_arc", "cashout_scam", 3);
+            EndGame("먹튀", "고액 환전 또는 반복 환전을 요청하자 추가 입금을 요구했고, 잠시 뒤 접속할 수 없게 되었다.");
+            return;
+        }
+
+        if (!coinManager.TryCashOutCasino(out int points, out int won))
+            return;
+
+        SendStoryStep("cashout_small", $"cashout_small_{cashOutAttempts}", 0);
+        ShowFeedback($"{points:N0}P가 {won:N0}원으로 정상 환전되었다.");
+        RefreshUI();
     }
 
     private void OnBankCashChanged(int value)
@@ -709,7 +725,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private void TryStartRandomStoryEvent()
     {
-        if (!string.IsNullOrEmpty(activeStoryEvent) || UnityEngine.Random.value > 0.55f)
+        if (!string.IsNullOrEmpty(activeStoryEvent))
             return;
 
         string[] candidates = IsWeekend
@@ -719,12 +735,12 @@ public sealed class GameFlowManager : MonoBehaviour
         var available = new List<string>();
         foreach (string candidate in candidates)
         {
-            if (!lastStoryDay.TryGetValue(candidate, out int lastDay) || currentDay - lastDay >= 4)
+            if (!lastStoryDay.TryGetValue(candidate, out int lastDay) || lastDay < currentDay - 1)
                 available.Add(candidate);
         }
 
         if (available.Count == 0)
-            return;
+            available.AddRange(candidates);
 
         activeStoryEvent = available[UnityEngine.Random.Range(0, available.Count)];
         lastStoryDay[activeStoryEvent] = currentDay;

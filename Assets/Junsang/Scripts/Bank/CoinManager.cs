@@ -8,6 +8,7 @@ namespace Dobak.Manager
     public enum TransactionScope
     {
         BankToCasinoCharge, // 뱅크 -> 카지노 충전 (뱅크 캐시 감소)
+        CasinoToBankCashOut, // 카지노 -> 뱅크 환전
         CasinoBet,          // 카지노 내 베팅 (카지노 캐시 감소)
         CasinoWin,          // 카지노 내 당첨 (카지노 캐시 증가)
         ExternalIncome      // 알바비, 가상 대출 등 뱅크 캐시 증가
@@ -127,6 +128,21 @@ namespace Dobak.Manager
 
             CasinoCash += amount;
             OnCasinoCashChanged?.Invoke(CasinoCash);
+        }
+
+        public bool TryCashOutCasino(out int points, out int won)
+        {
+            points = CasinoCash;
+            won = points * WonPerPoint;
+            if (points <= 0 || won <= 0)
+                return false;
+
+            CasinoCash = 0;
+            BankCash += won;
+            OnCasinoCashChanged?.Invoke(CasinoCash);
+            OnBankCashChanged?.Invoke(BankCash);
+            AddRecord("사이트 포인트 환전", won, TransactionScope.CasinoToBankCashOut);
+            return true;
         }
 
         public void AddBankCash(int amount, string description = "입금")

@@ -389,7 +389,7 @@ namespace Dobak.Editor
             {
                 GameFlowManager flow = GameFlowManager.Instance;
                 flow?.ResolveInvitation(true);
-                SetPrivateField(flow, "gambleRounds", 5);
+                SetPrivateField(flow, "cashOutAttempts", 0);
                 InvokePrivate(flow, "RefreshUI");
                 GameObject.Find("Cashout Button")?.GetComponent<Button>()?.onClick.Invoke();
                 if (flow == null || flow.IsGameEnded)
@@ -398,7 +398,7 @@ namespace Dobak.Editor
                     Debug.LogError("[PLAY QA] A low-threshold cashout incorrectly ended the game.");
                 }
 
-                Dobak.Manager.CoinManager.Instance?.AddCasinoCredit(5000);
+                Dobak.Manager.CoinManager.Instance?.AddCasinoCredit(10000);
                 GameObject.Find("Cashout Button")?.GetComponent<Button>()?.onClick.Invoke();
                 if (flow == null || !flow.IsGameEnded)
                 {

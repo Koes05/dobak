@@ -240,6 +240,14 @@ namespace Dobak.Editor
                         $"Free point grant was not 5,000P: {CoinManager.Instance?.CasinoCash}.");
                     Expect(GameObject.Find("BrowserApp") != null, "Gambling app icon was not revealed after acceptance.");
                     Capture("scenario-13-site-unlocked.png");
+                    int bankBeforeCashOut = CoinManager.Instance != null ? CoinManager.Instance.BankCash : 0;
+                    flow?.AttemptCashOut();
+                    Expect(flow != null && !flow.IsGameEnded, "A first low-value cashout incorrectly ended the game.");
+                    Expect(CoinManager.Instance != null && CoinManager.Instance.CasinoCash == 0,
+                        "A successful low-value cashout did not remove the site points.");
+                    Expect(CoinManager.Instance != null && CoinManager.Instance.BankCash == bankBeforeCashOut + 50000,
+                        "A 5,000P cashout did not deposit 50,000 won into the bank.");
+                    CoinManager.Instance?.AddCasinoCredit(5000);
                     SetPrivate(flow, "currentHour", 6);
                     flow?.SpendTime(1, "밤샘 확인");
                     Next(21, 0.35d);
@@ -248,19 +256,21 @@ namespace Dobak.Editor
                 case 21:
                     Expect(flow != null && flow.CurrentDay == 3 && flow.CurrentHour == 7,
                         "Crossing 7 AM while awake did not advance exactly one day.");
+                    Expect(flow != null && !string.IsNullOrEmpty(flow.ActiveStoryEvent),
+                        "A daily story event was not activated after the day transition.");
                     Expect(TextContains("Narration Body", "밤을 새어버렸다"), "All-nighter narration was not shown over the active app.");
                     Capture("scenario-14-all-nighter.png");
                     DismissNarration();
                     apps?.CloseCurrentApp();
-                    SetPrivate(flow, "gambleRounds", 10);
+                    SetPrivate(flow, "cashOutAttempts", 2);
                     InvokePrivate(flow, "RefreshUI");
                     flow?.AttemptCashOut();
                     Next(22, 0.45d);
                     break;
 
                 case 22:
-                    Expect(flow != null && flow.IsGameEnded, "Ten-round cashout did not reach the scenario ending.");
-                    Expect(TextContains("Ending Title", "먹튀"), "Ten-round cashout reached the wrong ending.");
+                    Expect(flow != null && flow.IsGameEnded, "Third cashout attempt did not reach the scenario ending.");
+                    Expect(TextContains("Ending Title", "먹튀"), "Repeated cashout reached the wrong ending.");
                     Capture("scenario-15-repeat-cashout-ending.png");
                     ClickNamedButton("Restart Button");
                     Next(23, 1.8d);
@@ -294,7 +304,6 @@ namespace Dobak.Editor
                     DismissNarration();
                     flow.ResolveInvitation(true);
                     CoinManager.Instance?.AddCasinoCredit(20000);
-                    SetPrivate(flow, "gambleRounds", 10);
                     flow.AttemptCashOut();
                     Next(26, 0.5d);
                     break;
