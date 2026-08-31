@@ -8,6 +8,8 @@ tutorial_day1,Unknown,나,"숙제를 마쳤다. 은행 앱에서는 통장 거�
 tutorial_day1,Unknown,나,"하루를 마칠 때는 홈 화면의 잠자기를 누른다. 다음 날은 오전 7시에 시작된다."
 day_transition,Unknown,나,"{hours}시간 잠을 자고 일어났다. 아침 7시다."
 day_transition,Unknown,나,"밤을 새어버렸다. 어느새 아침 7시다."
+school_closed,Unknown,나,"학교에 너무 늦게까지 남아 있었다. 수위 아저씨에게 쫓겨나 집으로 돌아왔다."
+job_return,Unknown,나,"오후 4시다. 알바를 마치고 집으로 돌아왔다."
 spam_retempt,Unknown,광고 문자,"오늘 밤까지 받지 않으면 무료 포인트가 사라진다는 문자가 다시 왔다."
 spam_retempt,Site,사이트 알림,"첫 이용 보너스와 추가 혜택이 곧 종료된다는 알림이 도착했다."
 spam_retempt,Friend,민재,"아직 안 해봤어? 나는 방금 환전됐는데. 그래도 선택은 네가 해."

@@ -172,6 +172,7 @@ namespace Dobak.Editor
                 case 5:
                     CasinoUIManager casino = UnityEngine.Object.FindAnyObjectByType<CasinoUIManager>(FindObjectsInactive.Include);
                     Expect(casino != null, "Casino UI manager is missing.");
+                    Expect(VisibleTextContains("환전"), "Casino cash-out menu is missing.");
                     DismissAllNarration();
                     Capture("feature-04-casino-home.png");
                     InvokePrivate(casino, "OnRechargeButtonClicked");
@@ -191,6 +192,10 @@ namespace Dobak.Editor
                 case 7:
                     SlotMachineManager slot = UnityEngine.Object.FindAnyObjectByType<SlotMachineManager>(FindObjectsInactive.Include);
                     Expect(slot != null && slot.CurrentBetAmount == 100, $"Initial bet is not 100P: {slot?.CurrentBetAmount}.");
+                    Expect(SlotMachineManager.CalculatePayout(100, 1f) == 200,
+                        "Slot payout can still return only the original stake.");
+                    Expect(SlotMachineManager.CalculatePayout(100, 5f) == 500,
+                        "Five-times slot payout is calculated incorrectly.");
                     FindButton("Increase Bet")?.onClick.Invoke();
                     Expect(slot != null && slot.CurrentBetAmount == 500, $"Bet did not change to 500P: {slot?.CurrentBetAmount}.");
                     Capture("feature-06-bet-500p.png");
@@ -217,12 +222,58 @@ namespace Dobak.Editor
                     break;
 
                 case 9:
-                    Expect(flow != null && flow.CurrentDay == 6 && flow.CurrentHour == 16 && flow.CurrentLocation == "카페",
+                    Expect(flow != null && flow.CurrentDay == 6 && flow.CurrentHour == 16 && flow.CurrentLocation == "집",
                         $"Weekend job schedule is wrong: day {flow?.CurrentDay}, hour {flow?.CurrentHour}, place {flow?.CurrentLocation}.");
                     Expect(coins != null && coins.BankCash == bankBeforeJob + 80000,
                         $"Job wage is wrong: before {bankBeforeJob}, after {coins?.BankCash}.");
                     DismissAllNarration();
                     Capture("feature-08-weekend-job.png");
+                    SetPrivate(flow, "gambleRounds", 9);
+                    Expect(flow != null && !flow.CanAttemptCashOut, "Cash-out unlocked before either threshold was met.");
+                    SetPrivate(flow, "gambleRounds", 10);
+                    Expect(flow != null && flow.CanAttemptCashOut, "Cash-out did not unlock after ten rounds.");
+                    SetPrivate(flow, "gambleRounds", 0);
+                    if (coins != null && coins.CasinoCash < 10000)
+                        coins.AddCasinoCredit(10000 - coins.CasinoCash);
+                    Expect(flow != null && flow.CanAttemptCashOut, "Cash-out did not unlock at 10,000P.");
+                    apps?.OpenMessage();
+                    Next(10, 0.8d);
+                    break;
+
+                case 10:
+                    DialogueManager dialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
+                    ScrollRect contacts = FindScrollRect("Contact Viewport");
+                    Expect(contacts != null && contacts.verticalNormalizedPosition >= 0.99f,
+                        $"Contact list is not aligned to the top: {contacts?.verticalNormalizedPosition}.");
+                    RectTransform firstContact = FindFirstActiveContact(contacts);
+                    Expect(firstContact != null && firstContact.anchorMin.y >= 0.99f && firstContact.anchoredPosition.y > -100f,
+                        $"First contact is not anchored near the top: anchor {firstContact?.anchorMin}, position {firstContact?.anchoredPosition}.");
+                    Capture("feature-09-message-contacts.png");
+                    dialogue?.OpenDialogue(SpeakerType.Friend);
+                    Next(11, 0.8d);
+                    break;
+
+                case 11:
+                    DialogueManager openDialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
+                    RectTransform chatViewport = openDialogue?.scrollRect?.viewport;
+                    RectTransform choices = openDialogue?.choiceButtonContainer as RectTransform;
+                    float choiceTop = choices != null ? choices.anchoredPosition.y + choices.rect.height : 0f;
+                    Expect(chatViewport != null && chatViewport.offsetMin.y >= choiceTop + 30f,
+                        $"Chat viewport overlaps the choice/input area: viewport {chatViewport?.offsetMin.y}, choices {choiceTop}.");
+                    Expect(chatViewport != null && chatViewport.GetComponent<RectMask2D>() != null,
+                        "Chat viewport does not have a rectangular clipping mask.");
+                    Capture("feature-10-message-chat-safe-area.png");
+                    apps?.CloseCurrentApp();
+                    SetPrivate(flow, "currentLocation", "학교");
+                    SetPrivate(flow, "currentHour", 19);
+                    flow?.SpendTime(1, "학교에 남아 있기");
+                    Next(12, 0.6d);
+                    break;
+
+                case 12:
+                    Expect(flow != null && flow.CurrentHour == 20 && flow.CurrentLocation == "집",
+                        $"School closing did not send the player home: {flow?.CurrentHour}:00 at {flow?.CurrentLocation}.");
+                    Capture("feature-11-school-closing.png");
                     EditorApplication.ExitPlaymode();
                     break;
             }
@@ -269,6 +320,25 @@ namespace Dobak.Editor
             foreach (Button button in Resources.FindObjectsOfTypeAll<Button>())
                 if (button.gameObject.scene.IsValid() && button.gameObject.name == name)
                     return button;
+            return null;
+        }
+
+        private static ScrollRect FindScrollRect(string name)
+        {
+            foreach (ScrollRect scroll in Resources.FindObjectsOfTypeAll<ScrollRect>())
+                if (scroll.gameObject.scene.IsValid() && scroll.gameObject.name == name)
+                    return scroll;
+            return null;
+        }
+
+        private static RectTransform FindFirstActiveContact(ScrollRect contacts)
+        {
+            if (contacts?.content == null)
+                return null;
+
+            foreach (RectTransform child in contacts.content)
+                if (child.gameObject.activeInHierarchy && child.GetComponent<ProfileSlot>() != null)
+                    return child;
             return null;
         }
 

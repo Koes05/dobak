@@ -16,7 +16,7 @@ MonoBehaviour:
   - symbolName: 1
     sprite: {fileID: 2211318171991514223, guid: 7f9865cf6ac20f7468e13d5a5daff8ef, type: 3}
     weight: 5
-    payoutMultiplier: 1
+    payoutMultiplier: 2
   - symbolName: 2
     sprite: {fileID: 3271692925405711974, guid: 7f9865cf6ac20f7468e13d5a5daff8ef, type: 3}
     weight: 3
@@ -24,4 +24,4 @@ MonoBehaviour:
   - symbolName: 3
     sprite: {fileID: -3981515943121409145, guid: 7f9865cf6ac20f7468e13d5a5daff8ef, type: 3}
     weight: 1
-    payoutMultiplier: 3
+    payoutMultiplier: 5

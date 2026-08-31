@@ -22,8 +22,6 @@ public sealed class GameFlowManager : MonoBehaviour
     private const int JobDailyWage = 80000;
     private const int MinimumSleepHours = 5;
     private const int ShortSleepEndingLimit = 3;
-    private const int CashOutMinimumBalance = 3000;
-    private const int CashOutMinimumRounds = 5;
     private const int CashOutEndingBalance = 10000;
     private const int CashOutEndingRounds = 10;
 
@@ -276,6 +274,8 @@ public sealed class GameFlowManager : MonoBehaviour
                 AdvanceHours(JobEndHour - JobStartHour);
                 coinManager?.AddBankCash(JobDailyWage, "카페 아르바이트 일당");
                 SendOnce($"job_{currentDay}", "은행 알림", $"카페 아르바이트 일당 {JobDailyWage:N0}원이 입금되었습니다.", SpeakerType.Bank);
+                currentLocation = "집";
+                ShowNarrationStep("job_return", 0);
             }
 
             appWindow?.CloseCurrentApp();
@@ -450,9 +450,30 @@ public sealed class GameFlowManager : MonoBehaviour
     private void AdvanceHours(int hours)
     {
         int remaining = Mathf.Max(0, hours);
+        bool wasEjectedFromSchool = false;
         while (remaining > 0 && !gameEnded)
         {
             int untilBoundary = GetHoursUntilDayBoundary(currentHour);
+            int normalizedHour = ((currentHour % 24) + 24) % 24;
+            if (currentLocation == "학교" && normalizedHour >= 20)
+            {
+                currentLocation = "집";
+                wasEjectedFromSchool = true;
+            }
+
+            if (currentLocation == "학교" && normalizedHour >= DayStartHour && normalizedHour < 20)
+            {
+                int untilSchoolCloses = 20 - normalizedHour;
+                if (remaining >= untilSchoolCloses && untilSchoolCloses < untilBoundary)
+                {
+                    currentHour = 20;
+                    remaining -= untilSchoolCloses;
+                    currentLocation = "집";
+                    wasEjectedFromSchool = true;
+                    continue;
+                }
+            }
+
             if (remaining < untilBoundary)
             {
                 currentHour = (currentHour + remaining) % 24;
@@ -467,6 +488,8 @@ public sealed class GameFlowManager : MonoBehaviour
         }
 
         RefreshUI();
+        if (wasEjectedFromSchool && !gameEnded)
+            ShowNarrationStep("school_closed", 0);
     }
 
     public static int GetHoursUntilDayBoundary(int hour)
@@ -591,20 +614,22 @@ public sealed class GameFlowManager : MonoBehaviour
             EndGame("빚", "빌린 돈이 감당할 수 없는 수준까지 늘어났다.");
     }
 
-    private void AttemptCashOut()
+    public bool CanAttemptCashOut => !gameEnded && coinManager != null &&
+                                     (coinManager.CasinoCash >= CashOutEndingBalance || gambleRounds >= CashOutEndingRounds);
+
+    public void AttemptCashOut()
     {
-        if (gameEnded || coinManager == null || coinManager.CasinoCash < CashOutMinimumBalance || gambleRounds < CashOutMinimumRounds)
+        if (gameEnded || coinManager == null)
             return;
 
-        if (coinManager.CasinoCash >= CashOutEndingBalance || gambleRounds >= CashOutEndingRounds)
+        if (!CanAttemptCashOut)
         {
-            SendStoryStep("site_arc", "cashout_scam", 3);
-            EndGame("먹튀", "고액 또는 반복 이용 상태에서 환전을 요청하자 추가 입금을 요구했고, 잠시 뒤 접속할 수 없게 되었다.");
+            ShowFeedback($"환전 조건에 아직 도달하지 않았다. ({CashOutEndingBalance:N0}P 이상 또는 {CashOutEndingRounds}회 이용)");
             return;
         }
 
-        SendStoryStep("cashout_small", $"cashout_small_{gambleRounds}", 0);
-        EndGame("불법 도박 연루", "소액 환전은 처리되었지만 계좌가 불법 도박 자금 흐름에 사용되어 조사를 받게 되었다. 금액이 작아도 위험은 사라지지 않는다.");
+        SendStoryStep("site_arc", "cashout_scam", 3);
+        EndGame("먹튀", "고액 또는 반복 이용 상태에서 환전을 요청하자 추가 입금을 요구했고, 잠시 뒤 접속할 수 없게 되었다.");
     }
 
     private void OnBankCashChanged(int value)
@@ -902,8 +927,10 @@ public sealed class GameFlowManager : MonoBehaviour
             loanButton.interactable = debt < DebtEndingThreshold;
         }
         if (cashOutButton != null)
-            cashOutButton.gameObject.SetActive(!gameEnded && gambleRounds >= CashOutMinimumRounds &&
-                                              coinManager != null && coinManager.CasinoCash >= CashOutMinimumBalance);
+        {
+            cashOutButton.gameObject.SetActive(false);
+            cashOutButton.interactable = CanAttemptCashOut;
+        }
     }
 
     private void BindExistingStatusText()

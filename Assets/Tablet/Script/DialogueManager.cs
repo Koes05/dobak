@@ -248,14 +248,14 @@ public class DialogueManager : MonoBehaviour
         contactOrder.Insert(0, speaker);
         ReflowProfileSlots();
         if (contactScroll != null)
-            contactScroll.verticalNormalizedPosition = 0f;
+            contactScroll.verticalNormalizedPosition = 1f;
     }
 
     private void ReflowProfileSlots()
     {
         bool keepAtTop = contactScroll == null || contactContent == null ||
                          contactContent.rect.height <= contactScroll.viewport.rect.height + 1f ||
-                         contactScroll.verticalNormalizedPosition <= 0.05f;
+                         contactScroll.verticalNormalizedPosition >= 0.95f;
 
         for (int i = 0; i < contactOrder.Count; i++)
         {
@@ -263,17 +263,23 @@ public class DialogueManager : MonoBehaviour
                 continue;
 
             RectTransform rect = slot.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 1f);
+            rect.anchorMax = new Vector2(0.5f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
             rect.anchoredPosition = new Vector2(contactStartPosition.x, contactStartPosition.y - contactSpacing * i);
             slot.transform.SetSiblingIndex(i);
         }
 
         if (contactContent != null)
         {
-            float requiredHeight = Mathf.Max(contactScroll.viewport.rect.height, 30f + contactSpacing * contactOrder.Count);
+            float requiredHeight = Mathf.Max(contactScroll.viewport.rect.height + 1f, 30f + contactSpacing * contactOrder.Count);
             contactContent.sizeDelta = new Vector2(0f, requiredHeight);
             LayoutRebuilder.ForceRebuildLayoutImmediate(contactContent);
             if (keepAtTop)
-                contactScroll.verticalNormalizedPosition = 0f;
+            {
+                contactContent.anchoredPosition = Vector2.zero;
+                contactScroll.verticalNormalizedPosition = 1f;
+            }
         }
     }
 
@@ -322,7 +328,7 @@ public class DialogueManager : MonoBehaviour
         contactScrollbar = CreateContactScrollbar(viewport);
         contactScroll.verticalScrollbar = contactScrollbar;
         contactScroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
-        contactScroll.verticalNormalizedPosition = 0f;
+        contactScroll.verticalNormalizedPosition = 1f;
     }
 
     private Scrollbar CreateContactScrollbar(RectTransform viewport)
@@ -372,15 +378,37 @@ public class DialogueManager : MonoBehaviour
             return;
 
         RectTransform viewport = scrollRect.viewport;
-        Vector2 offsetMin = viewport.offsetMin;
-        Vector2 offsetMax = viewport.offsetMax;
-        offsetMin.y = 315f;
-        offsetMax.y = -80f;
-        viewport.offsetMin = offsetMin;
-        viewport.offsetMax = offsetMax;
+        scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+        viewport.anchorMin = Vector2.zero;
+        viewport.anchorMax = Vector2.one;
+        viewport.pivot = new Vector2(0.5f, 0.5f);
+        viewport.anchoredPosition = Vector2.zero;
+
+        float safeBottom = 260f;
+        if (choiceButtonContainer is RectTransform choiceRect)
+            safeBottom = Mathf.Max(safeBottom, choiceRect.anchoredPosition.y + choiceRect.rect.height + 36f);
+
+        viewport.offsetMin = new Vector2(0f, safeBottom);
+        viewport.offsetMax = new Vector2(-24f, -80f);
+
+        if (scrollRect.verticalScrollbar != null)
+        {
+            RectTransform scrollbarRect = scrollRect.verticalScrollbar.GetComponent<RectTransform>();
+            scrollbarRect.anchorMin = new Vector2(1f, 0f);
+            scrollbarRect.anchorMax = new Vector2(1f, 1f);
+            scrollbarRect.pivot = new Vector2(1f, 0.5f);
+            scrollbarRect.offsetMin = new Vector2(-10f, safeBottom);
+            scrollbarRect.offsetMax = new Vector2(-4f, -80f);
+        }
+
+        Mask legacyMask = viewport.GetComponent<Mask>();
+        if (legacyMask != null)
+            legacyMask.enabled = false;
+        if (viewport.GetComponent<RectMask2D>() == null)
+            viewport.gameObject.AddComponent<RectMask2D>();
 
         if (chatContent.TryGetComponent(out VerticalLayoutGroup layout))
-            layout.padding.bottom = Mathf.Max(layout.padding.bottom, 48);
+            layout.padding.bottom = Mathf.Max(layout.padding.bottom, 24);
     }
 
     // -------------------------------------------------------------

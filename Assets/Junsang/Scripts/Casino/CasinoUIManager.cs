@@ -46,7 +46,7 @@ namespace Dobak.App.Casino
             menu_homeButton.onClick.AddListener(OnHomeButtonClicked);
             menu_slotMachineButton.onClick.AddListener(OnSlotMachineButtonClicked);
             menu_rechargeButton.onClick.AddListener(OnRechargeButtonClicked);
-            menu_myPageButton.onClick.AddListener(OnProfileButtonClicked);
+            menu_myPageButton.onClick.AddListener(OnCashOutButtonClicked);
 
             _1DollorButton.onClick.AddListener(On1DollarButtonClicked);
             _10DollorButton.onClick.AddListener(On10DollarButtonClicked);
@@ -63,6 +63,7 @@ namespace Dobak.App.Casino
             }
 
             Init();
+            ConfigureMenuLabels();
             EnsureHomeContent();
             ConfigureChargeOptions();
         }
@@ -75,7 +76,7 @@ namespace Dobak.App.Casino
             menu_homeButton.onClick.RemoveListener(OnHomeButtonClicked);
             menu_slotMachineButton.onClick.RemoveListener(OnSlotMachineButtonClicked);
             menu_rechargeButton.onClick.RemoveListener(OnRechargeButtonClicked);
-            menu_myPageButton.onClick.RemoveListener(OnProfileButtonClicked);
+            menu_myPageButton.onClick.RemoveListener(OnCashOutButtonClicked);
             _1DollorButton.onClick.RemoveListener(On1DollarButtonClicked);
             _10DollorButton.onClick.RemoveListener(On10DollarButtonClicked);
             _100DollorButton.onClick.RemoveListener(On100DollarButtonClicked);
@@ -109,9 +110,9 @@ namespace Dobak.App.Casino
             rechargePanel.SetActive(false);
             profilePanel.SetActive(false);
 
-            // 예방 시뮬레이션은 계정을 만들지 않고 허구 사이트 홈으로 바로 진입한다.
+            // 계정 화면 대신 예방 시나리오의 환전 시도를 제공한다.
             if (menu_myPageButton != null)
-                menu_myPageButton.gameObject.SetActive(false);
+                menu_myPageButton.gameObject.SetActive(true);
         }
 
         private void EnsureHomeContent()
@@ -194,12 +195,35 @@ namespace Dobak.App.Casino
             profilePanel.SetActive(false);
         }
 
-        private void OnProfileButtonClicked()
+        private void OnCashOutButtonClicked()
         {
-            homePanel.SetActive(false);
-            slotMachinePanel.SetActive(false);
-            rechargePanel.SetActive(false);
-            profilePanel.SetActive(true);
+            GameFlowManager.Instance?.AttemptCashOut();
+        }
+
+        private void ConfigureMenuLabels()
+        {
+            SetButtonLabel(menu_homeButton, "홈");
+            SetButtonLabel(menu_slotMachineButton, "게임");
+            SetButtonLabel(menu_rechargeButton, "충전");
+            SetButtonLabel(menu_myPageButton, "환전");
+        }
+
+        private static void SetButtonLabel(Button button, string value)
+        {
+            if (button == null)
+                return;
+
+            TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+            if (label == null)
+                return;
+
+            label.text = value;
+            label.fontSize = 28f;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 20f;
+            label.fontSizeMax = 28f;
+            label.alignment = TextAlignmentOptions.Center;
+            label.overflowMode = TextOverflowModes.Ellipsis;
         }
 
         private void OnCashButtonClicked(int won)
@@ -242,7 +266,21 @@ namespace Dobak.App.Casino
                 int won = ChargeWonOptions[i];
                 TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
                 if (label != null)
+                {
                     label.text = $"{won:N0}원\n{CoinManager.ConvertWonToPoints(won):N0}P";
+                    label.fontSize = 30f;
+                    label.enableAutoSizing = true;
+                    label.fontSizeMin = 22f;
+                    label.fontSizeMax = 30f;
+                    label.alignment = TextAlignmentOptions.Center;
+                    label.lineSpacing = -8f;
+                    label.overflowMode = TextOverflowModes.Ellipsis;
+                    RectTransform labelRect = label.rectTransform;
+                    labelRect.anchorMin = Vector2.zero;
+                    labelRect.anchorMax = Vector2.one;
+                    labelRect.offsetMin = new Vector2(12f, 8f);
+                    labelRect.offsetMax = new Vector2(-12f, -8f);
+                }
 
                 RectTransform buttonRect = button.GetComponent<RectTransform>();
                 if (buttonRect != null)
@@ -252,7 +290,7 @@ namespace Dobak.App.Casino
                     buttonRect.anchorMin = buttonRect.anchorMax = new Vector2(x, y);
                     buttonRect.pivot = new Vector2(0.5f, 0.5f);
                     buttonRect.anchoredPosition = Vector2.zero;
-                    buttonRect.sizeDelta = new Vector2(360f, 104f);
+                    buttonRect.sizeDelta = new Vector2(360f, 118f);
                 }
             }
 

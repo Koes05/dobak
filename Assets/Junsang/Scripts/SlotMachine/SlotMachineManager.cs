@@ -42,6 +42,11 @@ namespace Dobak.App.Casino.SlotMachine
         public int CurrentRound => currentRound;
         public int CurrentBetAmount => betAmount;
 
+        public static int CalculatePayout(int bet, float multiplier)
+        {
+            return Mathf.Max(0, Mathf.RoundToInt(bet * Mathf.Max(2f, multiplier)));
+        }
+
         private void OnEnable()
         {
             if (CoinManager.Instance == null) return;
@@ -203,11 +208,13 @@ namespace Dobak.App.Casino.SlotMachine
 
             if (allSame)
             {
-                payout = Mathf.RoundToInt(betAmount * results[0].payoutMultiplier);
-                resultText.text = $"당첨! +{payout}P";
+                float multiplier = Mathf.Max(2f, results[0].payoutMultiplier);
+                payout = CalculatePayout(betAmount, multiplier);
+                int profit = payout - betAmount;
+                resultText.text = $"{multiplier:0.#}배 당첨! {payout:N0}P 지급 (순이익 +{profit:N0}P)";
                 resultText.color = new Color(1f, 0.78f, 0.12f);
                 CoinManager.Instance.AddCasinoCredit(payout);
-                StartCoroutine(ShowWinCelebration(payout));
+                StartCoroutine(ShowWinCelebration(payout, multiplier, profit));
             }
             else
             {
@@ -352,9 +359,9 @@ namespace Dobak.App.Casino.SlotMachine
             winOverlay.SetActive(false);
         }
 
-        private IEnumerator ShowWinCelebration(int payout)
+        private IEnumerator ShowWinCelebration(int payout, float multiplier, int profit)
         {
-            winOverlayText.text = $"당첨!\n+{payout:N0}P";
+            winOverlayText.text = $"{multiplier:0.#}배 당첨!\n{payout:N0}P 지급\n순이익 +{profit:N0}P";
             winOverlay.SetActive(true);
             winOverlay.transform.SetAsLastSibling();
             winOverlayGroup.alpha = 1f;
