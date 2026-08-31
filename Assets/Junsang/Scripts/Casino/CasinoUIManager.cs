@@ -200,6 +200,15 @@ namespace Dobak.App.Casino
             GameFlowManager.Instance?.AttemptCashOut();
         }
 
+        public void ReturnToHomeAfterCashOut()
+        {
+            menu_homeButton.interactable = true;
+            menu_slotMachineButton.interactable = true;
+            menu_rechargeButton.interactable = true;
+            menu_myPageButton.interactable = true;
+            OnHomeButtonClicked();
+        }
+
         private void ConfigureMenuLabels()
         {
             SetButtonLabel(menu_homeButton, "홈");

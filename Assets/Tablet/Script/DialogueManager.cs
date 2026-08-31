@@ -40,26 +40,14 @@ public class Choice
     public ChoiceAction action;
 }
 
-[System.Serializable]
-public class DialogueNode
-{
-    public int id;                 // 노드 고유 ID
-    public SpeakerType speakerType; // 상대방 타입
-    public string speakerName;     // 상대방 이름
-    public string message;         // 상대방 메시지
-    public List<Choice> choices;   // 선택지 목록 (1개~N개 동적 처리)
-}
-
 public class ChatChannel
 {
     public SpeakerType speakerType;
     public string speakerName;
-    public int currentDialogueID;  // 현재 진행 중인 대화 노드 ID
     public string lastMessage;     // 💡 [수정] 프로필창 표시용 마지막 대화 내용
     public int unreadCount;
     public List<string> receivedMessages = new List<string>();
     public int renderedReceivedCount;
-    public bool showDialogueChoices;
     public List<Choice> eventChoices = new List<Choice>();
     public List<GameObject> spawnedBubbles = new List<GameObject>(); // 생성된 말풍선 오브젝트 저장 (화면 전환 시 복원용)
 }
@@ -87,9 +75,6 @@ public class DialogueManager : MonoBehaviour
     public GameObject otherBubblePrefab;
     public GameObject myBubblePrefab;
     public GameObject choiceButtonPrefab;
-
-    private Dictionary<SpeakerType, Dictionary<int, DialogueNode>> allDialogues 
-        = new Dictionary<SpeakerType, Dictionary<int, DialogueNode>>();
 
     private Dictionary<SpeakerType, ChatChannel> channels = new Dictionary<SpeakerType, ChatChannel>();
     private SpeakerType currentSpeaker;
@@ -126,8 +111,6 @@ public class DialogueManager : MonoBehaviour
         if (initialized)
             return;
 
-        LoadPrototypeData();
-
         InitializeChannels();
         PrepareProfileSlots();
         initialized = true;
@@ -146,8 +129,7 @@ public class DialogueManager : MonoBehaviour
             speakerType = speaker,
             speakerName = speakerName,
             lastMessage = "",
-            unreadCount = 0,
-            currentDialogueID = -1
+            unreadCount = 0
         };
     }
 
@@ -503,13 +485,6 @@ public class DialogueManager : MonoBehaviour
         {
             CreateChoiceButtons(currentChannel.eventChoices);
         }
-        else if (currentChannel.showDialogueChoices && currentChannel.currentDialogueID >= 0 &&
-            allDialogues.ContainsKey(speaker) &&
-            allDialogues[speaker].ContainsKey(currentChannel.currentDialogueID))
-        {
-            DialogueNode currentNode = allDialogues[speaker][currentChannel.currentDialogueID];
-            CreateChoiceButtons(currentNode.choices);
-        }
 
         StartCoroutine(ScrollToBottom());
 
@@ -538,7 +513,6 @@ public class DialogueManager : MonoBehaviour
             channels[speaker] = new ChatChannel
             {
                 speakerType = speaker,
-                currentDialogueID = 1,
                 lastMessage = message,
                 unreadCount = 1
             };
@@ -592,25 +566,6 @@ public class DialogueManager : MonoBehaviour
         }
     }
 
-    private void DisplayNode(int nodeID)
-    {
-        if (!allDialogues.ContainsKey(currentSpeaker) || !allDialogues[currentSpeaker].ContainsKey(nodeID))
-        {
-            EndDialogue();
-            return;
-        }
-
-        DialogueNode currentNode = allDialogues[currentSpeaker][nodeID];
-        channels[currentSpeaker].currentDialogueID = nodeID;
-
-        CreateBubble(otherBubblePrefab, currentNode.message);
-
-        SetLastMessage(currentNode.message);
-        CreateChoiceButtons(currentNode.choices);
-
-        StartCoroutine(ScrollToBottom());
-    }
-
     private void CreateChoiceButtons(List<Choice> choices)
     {
         ClearChoices();
@@ -652,8 +607,9 @@ public class DialogueManager : MonoBehaviour
                     break;
                 case ChoiceAction.RejectFirstInvitation:
                     GameFlowManager.Instance.StartInvitationRetempt();
-                    channels[currentSpeaker].currentDialogueID = -1;
-                    channels[currentSpeaker].showDialogueChoices = false;
+                    return;
+                case ChoiceAction.ContinueInvitation:
+                    GameFlowManager.Instance.ContinueInvitation();
                     return;
                 case ChoiceAction.RequestHelp:
                     GameFlowManager.Instance.RequestHelp();
@@ -698,17 +654,8 @@ public class DialogueManager : MonoBehaviour
         // 다음 대화가 있는 경우
         // ==========================================
 
-        if (selectedChoice.nextDialogueID >= 0)
-        {
-            StartCoroutine(DelayedNextDialogue(selectedChoice.nextDialogueID, 0.5f));
-        }
-        else
-        {
-            channels[currentSpeaker].currentDialogueID = -1;
-            channels[currentSpeaker].showDialogueChoices = false;
-            channels[currentSpeaker].eventChoices.Clear();
-            EndDialogue();
-        }
+        channels[currentSpeaker].eventChoices.Clear();
+        EndDialogue();
     }
 
     // -------------------------------------------------------------
@@ -776,12 +723,6 @@ public class DialogueManager : MonoBehaviour
         }
     }
 
-    private IEnumerator DelayedNextDialogue(int nextID, float delay)
-    {
-        yield return new WaitForSeconds(delay);
-        DisplayNode(nextID);
-    }
-
     private IEnumerator ScrollToBottom()
     {
         yield return null;
@@ -792,19 +733,6 @@ public class DialogueManager : MonoBehaviour
     private void EndDialogue()
     {
         ClearChoices();
-    }
-
-    private void LoadPrototypeData()
-    {
-        allDialogues.Clear();
-
-        var friendNodes = new Dictionary<int, DialogueNode>
-        {
-            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Friend, speakerName = "민재", message = "야, 가입하면 무료 포인트를 준다는 곳을 찾았어. 링크 보내줄까?", choices = new List<Choice> { new Choice { choiceText = "내용을 확인한다", nextDialogueID = 2 }, new Choice { choiceText = "문자를 지우고 차단한다", nextDialogueID = -1, action = ChoiceAction.RejectFirstInvitation } } }},
-            { 2, new DialogueNode { id = 2, speakerType = SpeakerType.Friend, speakerName = "민재", message = "무료 포인트만 받아도 된대. 접속할지는 네가 정해.", choices = new List<Choice> { new Choice { choiceText = "무료 포인트만 받고 시작한다", nextDialogueID = -1, action = ChoiceAction.AcceptGambling, openApp = true, targetApp = AppType.Browser }, new Choice { choiceText = "문자를 지우고 차단한다", nextDialogueID = -1, action = ChoiceAction.RejectFirstInvitation } } }}
-        };
-
-        allDialogues[SpeakerType.Friend] = friendNodes;
     }
 
     public void ReceiveNotificationMessage(SpeakerType speaker, string speakerName, string message)
@@ -818,8 +746,7 @@ public class DialogueManager : MonoBehaviour
             {
                 speakerType = speaker,
                 speakerName = speakerName,
-                unreadCount = 0,
-                currentDialogueID = -1
+                unreadCount = 0
             };
         }
 
@@ -828,12 +755,6 @@ public class DialogueManager : MonoBehaviour
         // 마지막 메시지 변경
         channels[speaker].lastMessage = message;
         channels[speaker].receivedMessages.Add(message);
-
-        if (speaker == SpeakerType.Friend && message.Contains("링크 보내줄까"))
-        {
-            channels[speaker].currentDialogueID = 1;
-            channels[speaker].showDialogueChoices = true;
-        }
 
         if (isActiveAndEnabled && dialoguePanel != null && dialoguePanel.activeInHierarchy && currentSpeaker == speaker)
         {
@@ -884,6 +805,7 @@ public enum ChoiceAction
     AcceptGambling,
     DeclineGambling,
     RejectFirstInvitation,
+    ContinueInvitation,
     RequestHelp,
     AcceptMomLoan,
     DeclineMomLoan,

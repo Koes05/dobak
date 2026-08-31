@@ -53,7 +53,7 @@ namespace Dobak.App.Bank
             int visibleCount = 0;
             foreach (var record in CoinManager.Instance.History)
             {
-                if (record.scope == TransactionScope.BankToCasinoCharge || record.scope == TransactionScope.ExternalIncome)
+                if (IsVisibleBankRecord(record.scope))
                 {
                     CreateEntry(record);
                     visibleCount++;
@@ -66,7 +66,7 @@ namespace Dobak.App.Bank
 
         private void HandleTransactionAdded(TransactionRecord record)
         {
-            if (record.scope == TransactionScope.BankToCasinoCharge || record.scope == TransactionScope.ExternalIncome)
+            if (IsVisibleBankRecord(record.scope))
             {
                 RemoveEmptyState();
                 CreateEntry(record);
@@ -80,6 +80,14 @@ namespace Dobak.App.Bank
                 text.font = cashText.font;
             entry.Set(record);
             entry.transform.SetAsFirstSibling();
+        }
+
+        private static bool IsVisibleBankRecord(TransactionScope scope)
+        {
+            return scope == TransactionScope.BankToCasinoCharge ||
+                   scope == TransactionScope.CasinoToBankCashOut ||
+                   scope == TransactionScope.DebtRepayment ||
+                   scope == TransactionScope.ExternalIncome;
         }
 
         private void ApplyKoreanStyle()

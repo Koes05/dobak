@@ -9,6 +9,7 @@ namespace Dobak.Manager
     {
         BankToCasinoCharge, // 뱅크 -> 카지노 충전 (뱅크 캐시 감소)
         CasinoToBankCashOut, // 카지노 -> 뱅크 환전
+        DebtRepayment,      // 빌린 돈 상환
         CasinoBet,          // 카지노 내 베팅 (카지노 캐시 감소)
         CasinoWin,          // 카지노 내 당첨 (카지노 캐시 증가)
         ExternalIncome      // 알바비, 가상 대출 등 뱅크 캐시 증가
@@ -142,6 +143,17 @@ namespace Dobak.Manager
             OnCasinoCashChanged?.Invoke(CasinoCash);
             OnBankCashChanged?.Invoke(BankCash);
             AddRecord("사이트 포인트 환전", won, TransactionScope.CasinoToBankCashOut);
+            return true;
+        }
+
+        public bool TrySpendBankCash(int amount, string description, TransactionScope scope)
+        {
+            if (amount <= 0 || BankCash < amount)
+                return false;
+
+            BankCash -= amount;
+            OnBankCashChanged?.Invoke(BankCash);
+            AddRecord(description, -amount, scope);
             return true;
         }
 

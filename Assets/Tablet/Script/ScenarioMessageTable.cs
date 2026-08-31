@@ -1,19 +1,41 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using UnityEngine;
 
 public sealed class ScenarioMessage
 {
-    public string trigger;
+    public int sequence;
     public SpeakerType speaker;
     public string title;
     public string message;
+    public string delivery;
+    public string choiceA;
+    public string actionA;
+    public string choiceB;
+    public string actionB;
+}
+
+public sealed class ScenarioEventDefinition
+{
+    public string id;
+    public string trigger;
+    public string condition;
+    public float chance = 1f;
+    public string selection;
+    public string once;
+    public string stateKey;
+    public string stateValue;
+    public readonly List<ScenarioMessage> steps = new List<ScenarioMessage>();
 }
 
 public sealed class ScenarioMessageTable
 {
-    private readonly Dictionary<string, List<ScenarioMessage>> messages = new Dictionary<string, List<ScenarioMessage>>();
+    private readonly Dictionary<string, ScenarioEventDefinition> eventsById =
+        new Dictionary<string, ScenarioEventDefinition>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<ScenarioEventDefinition>> eventsByTrigger =
+        new Dictionary<string, List<ScenarioEventDefinition>>(StringComparer.OrdinalIgnoreCase);
 
     public static ScenarioMessageTable Load()
     {
@@ -26,51 +48,95 @@ public sealed class ScenarioMessageTable
         }
 
         string[] lines = asset.text.Replace("\r\n", "\n").Split('\n');
-        for (int i = 1; i < lines.Length; i++)
+        if (lines.Length == 0)
+            return table;
+
+        List<string> headers = ParseCsvLine(lines[0]);
+        var columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < headers.Count; i++)
+            columns[headers[i].Trim()] = i;
+
+        for (int lineIndex = 1; lineIndex < lines.Length; lineIndex++)
         {
-            if (string.IsNullOrWhiteSpace(lines[i]))
+            if (string.IsNullOrWhiteSpace(lines[lineIndex]))
                 continue;
 
-            List<string> columns = ParseCsvLine(lines[i]);
-            if (columns.Count < 4 || !Enum.TryParse(columns[1], true, out SpeakerType speaker))
+            List<string> row = ParseCsvLine(lines[lineIndex]);
+            string eventId = Read(row, columns, "event_id");
+            string trigger = Read(row, columns, "trigger");
+            if (string.IsNullOrWhiteSpace(eventId) || string.IsNullOrWhiteSpace(trigger) ||
+                !Enum.TryParse(Read(row, columns, "speaker"), true, out SpeakerType speaker))
             {
-                Debug.LogWarning($"ScenarioMessages.csv {i + 1}행을 읽지 못했습니다.");
+                Debug.LogWarning($"ScenarioMessages.csv {lineIndex + 1}행을 읽지 못했습니다.");
                 continue;
             }
 
-            var entry = new ScenarioMessage
+            if (!table.eventsById.TryGetValue(eventId, out ScenarioEventDefinition definition))
             {
-                trigger = columns[0].Trim(),
+                float chance = 1f;
+                float.TryParse(Read(row, columns, "chance"), NumberStyles.Float, CultureInfo.InvariantCulture, out chance);
+                definition = new ScenarioEventDefinition
+                {
+                    id = eventId,
+                    trigger = trigger,
+                    condition = Read(row, columns, "condition"),
+                    chance = Mathf.Clamp01(chance),
+                    selection = Read(row, columns, "selection"),
+                    once = Read(row, columns, "once"),
+                    stateKey = Read(row, columns, "state_key"),
+                    stateValue = Read(row, columns, "state_value")
+                };
+                table.eventsById.Add(eventId, definition);
+                if (!table.eventsByTrigger.TryGetValue(trigger, out List<ScenarioEventDefinition> triggerEvents))
+                {
+                    triggerEvents = new List<ScenarioEventDefinition>();
+                    table.eventsByTrigger.Add(trigger, triggerEvents);
+                }
+                triggerEvents.Add(definition);
+            }
+
+            int sequence = definition.steps.Count;
+            int.TryParse(Read(row, columns, "sequence"), out sequence);
+            definition.steps.Add(new ScenarioMessage
+            {
+                sequence = sequence,
                 speaker = speaker,
-                title = columns[2].Trim(),
-                message = columns[3].Trim()
-            };
-
-            if (!table.messages.TryGetValue(entry.trigger, out List<ScenarioMessage> list))
-            {
-                list = new List<ScenarioMessage>();
-                table.messages.Add(entry.trigger, list);
-            }
-
-            list.Add(entry);
+                title = Read(row, columns, "title"),
+                message = Read(row, columns, "message"),
+                delivery = Read(row, columns, "delivery"),
+                choiceA = Read(row, columns, "choice_a"),
+                actionA = Read(row, columns, "action_a"),
+                choiceB = Read(row, columns, "choice_b"),
+                actionB = Read(row, columns, "action_b")
+            });
         }
+
+        foreach (ScenarioEventDefinition definition in table.eventsById.Values)
+            definition.steps.Sort((left, right) => left.sequence.CompareTo(right.sequence));
 
         return table;
     }
 
-    public bool TryGet(string trigger, int index, out ScenarioMessage message)
+    public IReadOnlyList<ScenarioEventDefinition> GetCandidates(string trigger)
     {
-        message = null;
-        if (!messages.TryGetValue(trigger, out List<ScenarioMessage> list) || list.Count == 0)
-            return false;
-
-        message = list[Mathf.Abs(index) % list.Count];
-        return true;
+        return eventsByTrigger.TryGetValue(trigger, out List<ScenarioEventDefinition> result)
+            ? result
+            : Array.Empty<ScenarioEventDefinition>();
     }
 
-    public int Count(string trigger)
+    public int Count(string eventId)
     {
-        return messages.TryGetValue(trigger, out List<ScenarioMessage> list) ? list.Count : 0;
+        return eventsById.TryGetValue(eventId, out ScenarioEventDefinition definition) ? definition.steps.Count : 0;
+    }
+
+    public int EventCount => eventsById.Count;
+    public IEnumerable<string> Triggers => eventsByTrigger.Keys;
+
+    private static string Read(List<string> row, Dictionary<string, int> columns, string key)
+    {
+        return columns.TryGetValue(key, out int index) && index >= 0 && index < row.Count
+            ? row[index].Trim()
+            : string.Empty;
     }
 
     private static List<string> ParseCsvLine(string line)
@@ -78,7 +144,6 @@ public sealed class ScenarioMessageTable
         var result = new List<string>();
         var current = new StringBuilder();
         bool quoted = false;
-
         for (int i = 0; i < line.Length; i++)
         {
             char character = line[i];
@@ -104,7 +169,6 @@ public sealed class ScenarioMessageTable
                 current.Append(character);
             }
         }
-
         result.Add(current.ToString());
         return result;
     }

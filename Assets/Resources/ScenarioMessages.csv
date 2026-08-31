@@ -1,69 +1,94 @@
-event_id,speaker,title,message
-initial,Friend,민재,"야 가입하면 무료 포인트를 준다는 곳을 찾았어. 링크 보내줄까?"
-tutorial_day1,Unknown,나,"아침이다. 학교에 가야 한다. 우선 지도 앱을 열어 목적지를 정해 보자."
-tutorial_day1,Unknown,나,"지도 앱에서는 현재 위치와 목적지까지 걸리는 시간을 확인할 수 있다. 학교를 선택해 보자."
-tutorial_day1,Unknown,나,"수업이 끝났다. 공부 앱을 열면 오늘 풀어야 할 숙제 다섯 문제가 나온다."
-tutorial_day1,Unknown,나,"메시지 앱에는 실제로 도착한 연락이 쌓인다. 새 연락이 오면 연락처가 위로 올라온다."
-tutorial_day1,Unknown,나,"숙제를 마쳤다. 은행 앱에서는 통장 거래 내역을 확인할 수 있다."
-tutorial_day1,Unknown,나,"하루를 마칠 때는 홈 화면의 잠자기를 누른다. 다음 날은 오전 7시에 시작된다."
-day_transition,Unknown,나,"{hours}시간 잠을 자고 일어났다. 아침 7시다."
-day_transition,Unknown,나,"밤을 새어버렸다. 어느새 아침 7시다."
-school_closed,Unknown,나,"학교에 너무 늦게까지 남아 있었다. 수위 아저씨에게 쫓겨나 집으로 돌아왔다."
-job_return,Unknown,나,"오후 4시다. 알바를 마치고 집으로 돌아왔다."
-spam_retempt,Unknown,광고 문자,"오늘 밤까지 받지 않으면 무료 포인트가 사라진다는 문자가 다시 왔다."
-spam_retempt,Site,사이트 알림,"첫 이용 보너스와 추가 혜택이 곧 종료된다는 알림이 도착했다."
-spam_retempt,Friend,민재,"아직 안 해봤어? 나는 방금 환전됐는데. 그래도 선택은 네가 해."
-school_project,Teacher,담임 선생님,"오늘 수업에서 내일까지 제출할 조별 과제가 나왔습니다. 숙제와 함께 확인하세요."
-school_project,Teacher,담임 선생님,"조별 과제가 기한 안에 제출되었습니다. 함께 준비한 친구에게도 전달했습니다."
-school_project,Teacher,담임 선생님,"조별 과제가 제출되지 않았습니다. 조원들이 기다렸다는 연락이 왔습니다."
-family_dinner,Mom,엄마,"오늘 저녁은 같이 먹자. 너무 늦지 않게 집에 들어와."
-family_dinner,Mom,엄마,"시간 맞춰 들어왔네. 밥 먹고 오늘 있었던 일도 이야기하자."
-family_dinner,Mom,엄마,"기다리다가 먼저 먹었어. 늦어질 때는 연락이라도 해 줘."
-weekend_shift,CafeManager,카페 매니저,"오늘 단체 손님 예약이 생겼어. 근무 시간에 맞춰 와 줄 수 있지?"
-weekend_shift,CafeManager,카페 매니저,"오늘 바빴는데 시간 맞춰 와 줘서 고마워. 급여를 확인해 줘."
-weekend_shift,CafeManager,카페 매니저,"근무 시간에 연락이 되지 않았어. 다음 근무는 다시 조정해야 할 것 같아."
-gambling_arc,Friend,민재,"진짜 들어갔네. 무료 포인트만 확인하고 나오려고 했던 거 맞지?"
-gambling_arc,Friend,민재,"벌써 다섯 판이야. 처음 생각했던 것보다 오래 보고 있는 것 같은데."
-gambling_arc,Friend,민재,"열 판이나 했네. 지금도 그만둘 수 있는지 한번 생각해 봐."
-bank_arc,Bank,은행 알림,"오늘 사이트 포인트 충전이 짧은 시간 안에 여러 차례 반복되었습니다. 원화 출금 내역을 확인하세요."
-bank_arc,Bank,은행 알림,"사이트 포인트를 반복해서 충전해 계좌 잔액이 빠르게 줄고 있습니다. 추가 충전 전에 거래 내역을 확인하세요."
-bank_arc,Bank,은행 알림,"최근 입금 직후 사이트 포인트 충전이 반복되었습니다. 본인이 진행한 충전인지 확인이 필요합니다."
-site_arc,Site,사이트 알림,"무료 체험 포인트 5,000P가 지급되었습니다."
-site_arc,Site,사이트 알림,"연속 접속 보상이 곧 만료된다는 안내가 도착했습니다."
-site_arc,Site,사이트 알림,"환전 처리 전 추가 확인이 필요합니다. 잠시 후 다시 시도하세요."
-site_arc,Site,사이트 알림,"고액 환전을 처리하려면 추가 보증금이 필요합니다."
-cashout_small,Bank,은행 알림,"사이트에서 소액이 입금되었지만 불법 도박 자금 흐름과 관련된 거래로 확인되었습니다."
-borrow_mom,Mom,엄마,"무슨 일인데 돈이 필요해? 필요한 이유를 솔직하게 말해 줘."
-borrow_mom,Mom,엄마,"이번에는 빌려줄게. 대신 혼자 감당하지 말고 같이 정리하자."
-borrow_mom,Mom,엄마,"알겠어. 돈보다 먼저 무슨 일이 있었는지 이야기해 줬으면 좋겠어."
-borrow_friend,Friend,민재,"급한 거면 내가 25,000원 정도는 빌려줄 수 있어. 정말 필요해?"
-borrow_friend,Friend,민재,"보냈어. 나중에 꼭 갚아 줘."
-borrow_friend,Friend,민재,"그래. 더 필요해지기 전에 일단 멈추는 게 좋겠다."
-help_story,Counselor,상담 선생님,"빚이 생겼다면 혼자 해결하려 하지 않아도 됩니다. 지금 상황부터 같이 정리할 수 있어요."
-help_story,Counselor,상담 선생님,"연락해 줘서 고마워요. 이용 기록과 빚부터 차근차근 확인해 봅시다."
-school_done,Teacher,학교,"수업이 끝났습니다. 집에 돌아가기 전에 오늘 숙제를 확인하세요."
-homework_done,Teacher,과제 제출,"오늘의 숙제 다섯 문제가 제출되었습니다."
-miss_school,Teacher,담임 선생님,"오늘 등교하지 않았습니다. 무슨 일이 있는지 확인이 필요합니다."
-miss_homework,Teacher,담임 선생님,"오늘 숙제가 제출되지 않았습니다. 내일까지 확인해 주세요."
-miss_job,CafeManager,카페 매니저,"근무 시간인데 연락이 되지 않네요. 다음 근무 조정이 필요합니다."
-sns_intro,Unknown,나,"아직 시간이 남아 있다. SNS에서 영상을 보며 잠깐 쉬어도 될 것 같다."
-sns_intro,Unknown,나,"SNS에서는 얼마나 볼지 먼저 정할 수 있다. 정한 시간만큼 게임 시간도 흐른다."
-sns_intro,Unknown,나,"쉬는 것도 필요하지만 학교와 숙제, 잠잘 시간은 직접 남겨 두어야 한다."
-sns_watch,Unknown,나,"한 시간 동안 영상을 봤다. 잠깐 쉬고 나니 머리가 조금 가벼워졌다."
-sns_watch,Unknown,나,"두 시간 동안 추천 영상을 이어 봤다. 생각했던 것보다 시간이 빨리 지났다."
-sns_watch,Unknown,나,"세 시간째 화면을 보고 있다. 오늘 해야 할 일이 남았는지 확인해 봐야겠다."
-sns_watch,Unknown,나,"다섯 시간을 거의 쉬지 않고 봤다. 바깥이 어두워졌고 하루 일정이 많이 밀렸다."
-sns_time_warning,Unknown,SNS,"다음 추천 영상이 준비되었습니다. 계속 시청할 수 있습니다."
-sns_time_warning,Unknown,나,"짧은 영상 하나만 더 보려고 했는데 비슷한 영상이 계속 이어진다."
-sns_time_warning,Unknown,나,"종료 버튼을 누르면 지금 바로 일상으로 돌아갈 수 있다."
-sns_time_warning,Unknown,나,"시간을 더 쓰기 전에 오늘 체크리스트를 한번 확인하는 편이 좋겠다."
-sns_daily_event,Mom,엄마,"쉬는 건 좋은데 오늘 숙제는 다 했어? 너무 늦게까지 화면만 보고 있지는 마."
-sns_daily_event,Teacher,학교,"내일까지 제출할 숙제가 남아 있습니다. 늦기 전에 공부 앱에서 확인하세요."
-sns_daily_event,CafeManager,카페 매니저,"오늘 근무가 있는 날이야. 출근 시간을 놓치지 않게 확인해 줘."
-sns_daily_event,Unknown,나,"볼 영상은 계속 남아 있지만 오늘 사용할 시간은 줄어들고 있다."
-sns_late_night,Unknown,나,"늦은 시간까지 영상을 보고 있다. 지금 멈춰도 잠잘 시간은 많이 남지 않는다."
-sns_late_night,Mom,엄마,"아직 안 자고 있어? 내일 아침에 힘들지 않게 이제 휴대폰은 내려놓자."
-sns_late_night,Unknown,나,"어느새 아침 7시가 가까워졌다. 영상을 더 보면 밤을 새울 수도 있다."
-sns_gambling_feed,Unknown,SNS,"최근 본 콘텐츠 사이에 무료 포인트를 강조하는 광고가 반복해서 나타났다."
-sns_gambling_feed,Unknown,나,"친구가 보낸 곳과 비슷한 광고다. 눌러 볼지 지나칠지는 내가 정할 수 있다."
-sns_gambling_feed,Unknown,나,"광고를 지나치고 원래 보던 화면으로 돌아왔다. 무료라는 문구가 계속 신경 쓰인다."
+event_id,trigger,condition,chance,selection,once,sequence,speaker,title,message,delivery,choice_a,action_a,choice_b,action_b,state_key,state_value
+tutorial_start,game_start,day=1,1,,game,0,Unknown,나,"아침이다. 학교에 가야 한다. 우선 지도 앱을 열어 목적지를 정해 보자.",narration,,,,,,
+tutorial_map,app_map_open,day=1,1,,game,0,Unknown,나,"지도 앱에서는 현재 위치와 목적지까지 걸리는 시간을 확인할 수 있다. 학교를 선택해 보자.",narration,,,,,,
+tutorial_school,school_complete,day=1,1,,game,0,Unknown,나,"수업이 끝났다. 공부 앱을 열면 오늘 풀어야 할 숙제 다섯 문제가 나온다.",narration,,,,,,
+tutorial_message,app_message_open,day=1,1,,game,0,Unknown,나,"메시지 앱에는 실제로 도착한 연락이 쌓인다. 새 연락이 오면 연락처가 위로 올라온다.",narration,,,,,,
+tutorial_bank,homework_complete,day=1,1,,game,0,Unknown,나,"숙제를 마쳤다. 은행 앱에서는 통장 거래 내역을 확인할 수 있다.",narration,,,,,,
+tutorial_sleep,app_bank_open,day=1,1,,game,0,Unknown,나,"하루를 마칠 때는 홈 화면의 잠자기를 누른다. 다음 날은 오전 7시에 시작된다.",narration,,,,,,
+day_wake,day_transition,slept=true,1,,day,0,Unknown,나,"{hours}시간 잠을 자고 일어났다. 아침 7시다.",narration,,,,,,
+day_all_nighter,day_transition,slept=false,1,,day,0,Unknown,나,"밤을 새어버렸다. 어느새 아침 7시다.",narration,,,,,,
+school_closed,school_closed,,1,,day,0,Unknown,나,"학교에 너무 늦게까지 남아 있었다. 수위 아저씨에게 쫓겨나 집으로 돌아왔다.",narration,,,,,,
+job_return,job_complete,,1,,day,0,Unknown,나,"오후 4시다. 알바를 마치고 집으로 돌아왔다.",narration,,,,,,
+job_income,job_complete,,1,,day,0,Bank,은행 알림,"카페 아르바이트 일당 {wage}원이 입금되었습니다.",message,,,,,,
+initial_invitation,school_complete,day=2;invitation_resolved=false,1,,game,0,Friend,민재,"야, 가입하면 무료 포인트를 준다는 곳을 찾았어. 링크 보내줄까?",message,"내용을 확인한다",ContinueInvitation,"문자를 지우고 차단한다",RejectFirstInvitation,,
+invitation_detail,invitation_detail,invitation_resolved=false,1,,game,0,Friend,민재,"무료 포인트만 받아도 된대. 접속할지는 네가 정해.",message,"무료 포인트만 받고 시작한다",AcceptGambling,"문자를 지우고 차단한다",RejectFirstInvitation,,
+invitation_retempt,invitation_retempt,invitation_resolved=false,1,,game,0,Unknown,광고 문자,"오늘 밤까지 받지 않으면 무료 포인트가 사라진다는 문자가 다시 왔다.",message,,,,,,
+invitation_retempt,invitation_retempt,invitation_resolved=false,1,,game,1,Site,사이트 알림,"첫 이용 보너스와 추가 혜택이 곧 종료된다는 알림이 도착했다.",message,,,,,,
+invitation_retempt,invitation_retempt,invitation_resolved=false,1,,game,2,Friend,민재,"아직 안 해봤어? 나는 방금 환전됐는데. 그래도 선택은 네가 해.",message,"호기심에 링크를 누른다",AcceptGambling,"알림을 끄고 휴대폰을 내려놓는다",DeclineGambling,,
+gambling_welcome,invitation_accept,,1,,game,0,Site,사이트 알림,"무료 체험 포인트 5,000P가 지급되었습니다.",message,,,,,,
+ending_block,invitation_decline,,1,,game,0,Unknown,위험 차단,"링크를 열지 않았다. 공짜라는 말에 시간을 빼앗기지 않고 평범한 일상을 이어 갔다.",ending,,,,,,
+school_project_start,day_start,weekend=false,1,daily_story,day,0,Teacher,담임 선생님,"오늘 수업에서 내일까지 제출할 조별 과제가 나왔습니다. 숙제와 함께 확인하세요.",message,,,,,active_story,school_project
+family_dinner_start,day_start,,1,daily_story,day,0,Mom,엄마,"오늘 저녁은 같이 먹자. 너무 늦지 않게 집에 들어와.",message,,,,,active_story,family_dinner
+weekend_shift_start,day_start,weekend=true,1,daily_story,day,0,CafeManager,카페 매니저,"오늘 단체 손님 예약이 생겼어. 근무 시간에 맞춰 와 줄 수 있지?",message,,,,,active_story,weekend_shift
+school_project_success,day_end,active_story=school_project;homework_done=true,1,,day,0,Teacher,담임 선생님,"조별 과제가 기한 안에 제출되었습니다. 함께 준비한 친구에게도 전달했습니다.",message,,,,,,
+school_project_fail,day_end,active_story=school_project;homework_done=false,1,,day,0,Teacher,담임 선생님,"조별 과제가 제출되지 않았습니다. 조원들이 기다렸다는 연락이 왔습니다.",message,,,,,,
+family_dinner_success,day_end,active_story=family_dinner;location=집;hour<=21,1,,day,0,Mom,엄마,"시간 맞춰 들어왔네. 밥 먹고 오늘 있었던 일도 이야기하자.",message,,,,,,
+family_dinner_fail,day_end,active_story=family_dinner;dinner_success=false,1,,day,0,Mom,엄마,"기다리다가 먼저 먹었어. 늦어질 때는 연락이라도 해 줘.",message,,,,,,
+weekend_shift_success,day_end,active_story=weekend_shift;job_done=true,1,,day,0,CafeManager,카페 매니저,"오늘 바빴는데 시간 맞춰 와 줘서 고마워. 급여를 확인해 줘.",message,,,,,,
+weekend_shift_fail,day_end,active_story=weekend_shift;job_done=false,1,,day,0,CafeManager,카페 매니저,"근무 시간에 연락이 되지 않았어. 다음 근무는 다시 조정해야 할 것 같아.",message,,,,,,
+joonho_casual,day_start,weekend=false,0.45,daily_social,day,0,Joonho,준호,"오늘 수업 끝나고 같이 편의점 갈래? 잠깐 바람도 쐬자.",message,,,,,,
+seoyeon_homework,day_start,weekend=false;homework_done=false,0.45,daily_social,day,0,Seoyeon,서연,"내일 제출할 숙제 어디까지 했어? 모르는 문제 있으면 같이 보자.",message,,,,,,
+mom_checkin,day_start,day>=3,0.35,daily_social,day,0,Mom,엄마,"요즘 표정이 피곤해 보여. 힘든 일이 있으면 이야기해도 돼.",message,,,,,,
+school_done,school_complete,day>=2,1,,day,0,Teacher,학교,"수업이 끝났습니다. 집에 돌아가기 전에 오늘 숙제를 확인하세요.",message,,,,,,
+homework_done,homework_complete,day>=2,1,,day,0,Teacher,과제 제출,"오늘의 숙제 다섯 문제가 제출되었습니다.",message,,,,,,
+study_locked,study_locked,,1,,day,0,Teacher,공부 앱,"오늘 수업을 마친 뒤 숙제가 열립니다.",message,,,,,,
+school_late,school_late,,1,,day,0,Teacher,담임 선생님,"등교 시간이 지났습니다. 오늘 일정과 숙제를 다시 확인해 주세요.",message,,,,,,
+job_late,job_late,,1,,day,0,CafeManager,카페 매니저,"오전 8시 출근 시간을 넘겼어. 오늘 근무 일정은 결근으로 처리할게.",message,,,,,,
+miss_school,schedule_missed,weekend=false;school_done=false,1,,day,0,Teacher,담임 선생님,"오늘 등교하지 않았습니다. 무슨 일이 있는지 확인이 필요합니다.",message,,,,,,
+miss_homework,schedule_missed,weekend=false;school_done=true;homework_done=false,1,,day,0,Teacher,담임 선생님,"오늘 숙제가 제출되지 않았습니다. 내일까지 확인해 주세요.",message,,,,,,
+miss_job,schedule_missed,weekend=true;job_done=false,1,,day,0,CafeManager,카페 매니저,"근무 시간인데 연락이 되지 않네요. 다음 근무 조정이 필요합니다.",message,,,,,,
+attendance_warning,day_start,schedule_failures>=2,1,,game,0,Teacher,학교 알림,"최근 지각과 결석 또는 과제 누락이 반복되고 있습니다. 무슨 일이 있는지 확인이 필요합니다.",message,,,,,,
+attendance_recovery,day_start,schedule_failures=0;day>=5,0.3,,game,0,Teacher,담임 선생님,"이번 주는 출석과 과제 제출이 안정적이네요. 지금 흐름을 이어가 봅시다.",message,,,,,,
+short_sleep,short_sleep,,1,,day,0,Mom,엄마,"오늘은 {hours}시간밖에 못 잤네. 내일은 조금 더 일찍 자자.",message,,,,,,
+gamble_round_1,gamble_resolved,rounds=1,1,,game,0,Friend,민재,"진짜 들어갔네. 무료 포인트만 확인하고 나오려고 했던 거 맞지?",message,,,,,,
+gamble_round_5,gamble_resolved,rounds=5,1,,game,0,Friend,민재,"벌써 다섯 판이야. 처음 생각했던 것보다 오래 보고 있는 것 같은데.",message,,,,,,
+gamble_round_10,gamble_resolved,rounds=10,1,,game,0,Friend,민재,"열 판이나 했네. 지금도 그만둘 수 있는지 한번 생각해 봐.",message,,,,,,
+gamble_win,gamble_resolved,won=true,0.4,,day,0,Friend,민재,"포인트가 늘었네. 이런 결과가 계속될 거라고 생각하지는 마.",message,,,,,,
+gamble_loss,gamble_resolved,won=false;losses>=3,0.45,,day,0,Friend,민재,"계속 결과만 보고 있으면 시간이 금방 지나가더라. 잠깐 멈춰 보는 건 어때?",message,,,,,,
+charge_repeat,casino_charge,charges=3,1,,day,0,Bank,은행 알림,"오늘 사이트 포인트 충전이 짧은 시간 안에 여러 차례 반복되었습니다. 원화 출금 내역을 확인하세요.",message,,,,,,
+charge_excessive,casino_charge,charges=5,1,,day,0,Bank,은행 알림,"사이트 포인트를 반복해서 충전해 계좌 잔액이 빠르게 줄고 있습니다. 추가 충전 전에 거래 내역을 확인하세요.",message,,,,,,
+charge_after_debt,casino_charge,debt>0;charges=1,1,,day,0,Bank,은행 알림,"최근 입금 직후 사이트 포인트 충전이 반복되었습니다. 본인이 진행한 충전인지 확인이 필요합니다.",message,,,,,,
+low_balance,bank_changed,bank_cash<=20000;gambling_unlocked=true,1,,game,0,Bank,은행 알림,"계좌 잔액이 20,000원 아래로 내려갔습니다. 최근 거래 내역을 확인하세요.",message,,,,,,
+loan_spam,bank_changed,bank_cash<=20000;gambling_unlocked=true,0.65,,game,0,Stranger,Web발신,"잔액이 부족한 이용자를 노린 간편 대출 연락입니다. 개인정보와 추가 입금 요구에 응하지 마세요.",message,,,,,,
+site_retempt,day_start,gambling_unlocked=true;day>=3;day_mod_3=0,0.35,,day,0,Site,사이트 알림,"연속 접속 보상이 곧 만료된다는 안내가 도착했습니다.",message,,,,,,
+site_near_miss,gamble_resolved,won=false;rounds>=3,0.25,,day,0,Site,사이트 알림,"조금 전 결과와 가까웠습니다. 다음 참여를 재촉하는 알림에 주의하세요.",message,,,,,,
+cashout_retry,cashout_success,cashout_attempts=2,1,,game,0,Site,사이트 알림,"환전 처리 전 추가 확인이 필요합니다. 잠시 후 다시 시도하세요.",message,,,,,,
+cashout_success,cashout_success,,1,,none,0,Bank,은행 알림,"사이트에서 {points}P가 {won}원으로 입금되었습니다. 불법 도박 자금 흐름과 관련된 거래는 문제가 될 수 있습니다.",message,,,,,,
+ending_cashout,cashout_scam,,1,,game,0,Site,먹튀,"고액 또는 반복 환전을 요청하자 추가 보증금을 요구했고, 잠시 뒤 계정에 접속할 수 없게 되었다.",ending,,,,,,
+borrow_mom_request,borrow_mom_request,,1,,none,0,Mom,엄마,"무슨 일인데 돈이 필요해? 필요한 이유를 솔직하게 말해 줘.",message,"빌린다",AcceptMomLoan,"괜찮다고 한다",DeclineMomLoan,,
+borrow_mom_accept,borrow_mom_result,accepted=true,1,,none,0,Mom,엄마,"이번에는 빌려줄게. 대신 혼자 감당하지 말고 같이 정리하자.",message,,,,,,
+borrow_mom_decline,borrow_mom_result,accepted=false,1,,none,0,Mom,엄마,"알겠어. 돈보다 먼저 무슨 일이 있었는지 이야기해 줬으면 좋겠어.",message,,,,,,
+borrow_friend_request,borrow_friend_request,,1,,none,0,Friend,민재,"급한 거면 내가 25,000원 정도는 빌려줄 수 있어. 정말 필요해?",message,"빌린다",AcceptFriendLoan,"거절한다",DeclineFriendLoan,,
+borrow_friend_accept,borrow_friend_result,accepted=true,1,,none,0,Friend,민재,"보냈어. 나중에 꼭 갚아 줘.",message,,,,,,
+borrow_friend_decline,borrow_friend_result,accepted=false,1,,none,0,Friend,민재,"그래. 더 필요해지기 전에 일단 멈추는 게 좋겠다.",message,,,,,,
+help_available,debt_created,debt>0,1,,game,0,Counselor,상담 선생님,"빚이 생겼다면 혼자 해결하려 하지 않아도 됩니다. 지금 상황부터 같이 정리할 수 있어요.",message,,,,,,
+ending_help,help_requested,,1,,game,0,Counselor,도움 요청,"상황을 숨기지 않고 도움을 요청했다. 이용 기록과 빚을 함께 확인하며 일상을 정리하기 시작했다.",ending,,,,,,
+debt_repay_partial,debt_repaid,debt>0,1,,none,0,Bank,은행 알림,"빌린 돈 일부를 갚았습니다. 남은 금액은 일상 수입 안에서 정리하세요.",message,,,,,,
+debt_repay_complete,debt_repaid,debt=0,1,,none,0,Bank,은행 알림,"빌린 돈을 모두 갚았습니다. 다시 빚으로 손실을 메우지 않는 것이 중요합니다.",message,,,,,,
+debt_followup,day_start,debt>0,0.45,,day,0,Stranger,Web발신,"상환을 재촉하며 추가 비용을 요구하는 연락에는 응하지 말고 주변에 도움을 요청하세요.",message,,,,,,
+sns_intro,app_sns_open,,1,,game,0,Unknown,나,"아직 시간이 남아 있다. SNS에서 영상을 보며 잠깐 쉬어도 될 것 같다.",narration,,,,,,
+sns_intro,app_sns_open,,1,,game,1,Unknown,나,"SNS에서는 얼마나 볼지 먼저 정할 수 있다. 정한 시간만큼 게임 시간도 흐른다.",narration,,,,,,
+sns_intro,app_sns_open,,1,,game,2,Unknown,나,"쉬는 것도 필요하지만 학교와 숙제, 잠잘 시간은 직접 남겨 두어야 한다.",narration,,,,,,
+sns_watch_1,sns_watch,hours=1,1,,none,0,Unknown,나,"한 시간 동안 영상을 봤다. 잠깐 쉬고 나니 머리가 조금 가벼워졌다.",narration,,,,,,
+sns_watch_2,sns_watch,hours=2,1,,none,0,Unknown,나,"두 시간 동안 추천 영상을 이어 봤다. 생각했던 것보다 시간이 빨리 지났다.",narration,,,,,,
+sns_watch_3,sns_watch,hours=3,1,,none,0,Unknown,나,"세 시간째 화면을 보고 있다. 오늘 해야 할 일이 남았는지 확인해 봐야겠다.",narration,,,,,,
+sns_watch_5,sns_watch,hours=5,1,,none,0,Unknown,나,"다섯 시간을 거의 쉬지 않고 봤다. 바깥이 어두워졌고 하루 일정이 많이 밀렸다.",narration,,,,,,
+sns_continue_1,sns_watch,hours=1,1,,none,1,Unknown,SNS,"다음 추천 영상이 준비되었습니다. 계속 시청할 수 있습니다.",narration,,,,,,
+sns_continue_2,sns_watch,hours=2,1,,none,1,Unknown,나,"짧은 영상 하나만 더 보려고 했는데 비슷한 영상이 계속 이어진다.",narration,,,,,,
+sns_continue_3,sns_watch,hours=3,1,,none,1,Unknown,나,"종료 버튼을 누르면 지금 바로 일상으로 돌아갈 수 있다.",narration,,,,,,
+sns_continue_5,sns_watch,hours=5,1,,none,1,Unknown,나,"시간을 더 쓰기 전에 오늘 체크리스트를 한번 확인하는 편이 좋겠다.",narration,,,,,,
+sns_mom_homework,sns_watch,hours>=3;weekend=false;homework_done=false,1,,day,2,Mom,엄마,"쉬는 건 좋은데 오늘 숙제는 다 했어? 너무 늦게까지 화면만 보고 있지는 마.",message,,,,,,
+sns_school_homework,sns_watch,hours>=3;weekend=false;homework_done=false,1,,day,3,Teacher,학교,"내일까지 제출할 숙제가 남아 있습니다. 늦기 전에 공부 앱에서 확인하세요.",message,,,,,,
+sns_job_warning,sns_watch,hours>=3;weekend=true;job_done=false,1,,day,2,CafeManager,카페 매니저,"오늘 근무가 있는 날이야. 출근 시간을 놓치지 않게 확인해 줘.",message,,,,,,
+sns_time_loss,sns_watch,hours>=3,1,,none,4,Unknown,나,"볼 영상은 계속 남아 있지만 오늘 사용할 시간은 줄어들고 있다.",narration,,,,,,
+sns_late,sns_watch,late=true,1,,day,5,Unknown,나,"늦은 시간까지 영상을 보고 있다. 지금 멈춰도 잠잘 시간은 많이 남지 않는다.",narration,,,,,,
+sns_late_mom,sns_watch,late=true,1,,day,6,Mom,엄마,"아직 안 자고 있어? 내일 아침에 힘들지 않게 이제 휴대폰은 내려놓자.",message,,,,,,
+sns_all_night,sns_watch,near_day_boundary=true,1,,day,7,Unknown,나,"어느새 아침 7시가 가까워졌다. 영상을 더 보면 밤을 새울 수도 있다.",narration,,,,,,
+sns_gambling_feed,sns_watch,gambling_unlocked=true;sns_hours>=2,1,,day,8,Unknown,SNS,"최근 본 콘텐츠 사이에 무료 포인트를 강조하는 광고가 반복해서 나타났다.",narration,,,,,,
+sns_gambling_feed,sns_watch,gambling_unlocked=true;sns_hours>=2,1,,day,9,Unknown,나,"친구가 보낸 곳과 비슷한 광고다. 눌러 볼지 지나칠지는 내가 정할 수 있다.",narration,,,,,,
+sns_gambling_feed,sns_watch,gambling_unlocked=true;sns_hours>=2,1,,day,10,Unknown,나,"광고를 지나치고 원래 보던 화면으로 돌아왔다. 무료라는 문구가 계속 신경 쓰인다.",narration,,,,,,
+digital_wellbeing,sns_watch,sns_hours>=5,1,,day,11,Unknown,디지털 웰빙,"오늘 화면 사용 시간이 길어졌습니다. 잠시 화면을 끄고 쉬어 보세요.",message,,,,,,
+ending_collapse,ending_collapse,,1,,game,0,Unknown,일상 붕괴,"필수 일정과 수면을 반복해서 놓쳤다. 학교와 알바, 가족과의 일상이 더는 유지되지 않았다.",ending,,,,,,
+ending_debt,ending_debt,,1,,game,0,Unknown,빚,"갚아야 할 돈이 감당할 수 없는 수준까지 커졌다. 더 빌리는 것으로는 해결할 수 없었다.",ending,,,,,,
+ending_sleep,ending_sleep,,1,,game,0,Unknown,수면 부족,"사흘 연속 5시간도 자지 못했다. 집중력이 떨어지고 학교와 일상을 이어 가기 어려워졌다.",ending,,,,,,
+ending_recovery,ending_recovery,,1,,game,0,Unknown,일상 회복,"도박을 접했지만 시간을 다시 일상에 사용했다. 필요한 일정과 관계를 지키며 14일을 마쳤다.",ending,,,,,,

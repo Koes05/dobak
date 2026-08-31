@@ -247,6 +247,18 @@ namespace Dobak.Editor
                         "A successful low-value cashout did not remove the site points.");
                     Expect(CoinManager.Instance != null && CoinManager.Instance.BankCash == bankBeforeCashOut + 50000,
                         "A 5,000P cashout did not deposit 50,000 won into the bank.");
+                    Dobak.App.Casino.CasinoUIManager casino = UnityEngine.Object.FindAnyObjectByType<Dobak.App.Casino.CasinoUIManager>(FindObjectsInactive.Include);
+                    Button slotMenuButton = GetPrivate<Button>(casino, "menu_slotMachineButton");
+                    GameObject casinoHome = GetPrivate<GameObject>(casino, "homePanel");
+                    GameObject slotPanel = GetPrivate<GameObject>(casino, "slotMachinePanel");
+                    Expect(casinoHome != null && casinoHome.activeSelf,
+                        "A successful cashout did not return the casino to its home panel.");
+                    Expect(slotMenuButton != null && slotMenuButton.interactable,
+                        "The slot-machine menu button stayed disabled after a successful cashout.");
+                    slotMenuButton?.onClick.Invoke();
+                    Expect(slotPanel != null && slotPanel.activeSelf,
+                        "The slot-machine panel did not open after a successful cashout.");
+                    casino?.ReturnToHomeAfterCashOut();
                     CoinManager.Instance?.AddCasinoCredit(5000);
                     SetPrivate(flow, "currentHour", 6);
                     flow?.SpendTime(1, "밤샘 확인");
@@ -472,6 +484,11 @@ namespace Dobak.Editor
         private static void SetPrivate(object target, string fieldName, object value)
         {
             target?.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)?.SetValue(target, value);
+        }
+
+        private static T GetPrivate<T>(object target, string fieldName) where T : class
+        {
+            return target?.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(target) as T;
         }
 
         private static void InvokePrivate(object target, string methodName, params object[] arguments)

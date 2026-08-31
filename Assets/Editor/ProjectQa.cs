@@ -21,15 +21,19 @@ namespace Dobak.Editor
             var failures = new List<string>();
 
             ScenarioMessageTable scenario = ScenarioMessageTable.Load();
-            if (scenario.Count("initial") < 1 || scenario.Count("school_project") < 3 ||
-                scenario.Count("family_dinner") < 3 || scenario.Count("gambling_arc") < 3 ||
-                scenario.Count("borrow_mom") < 3 || scenario.Count("borrow_friend") < 3 ||
-                scenario.Count("tutorial_day1") < 6 || scenario.Count("day_transition") < 2 ||
-                scenario.Count("spam_retempt") < 3 || scenario.Count("cashout_small") < 1 ||
-                scenario.Count("sns_intro") < 3 || scenario.Count("sns_watch") < 4 ||
-                scenario.Count("sns_daily_event") < 4 || scenario.Count("sns_late_night") < 3)
+            if (scenario.EventCount < 75 || scenario.Count("initial_invitation") < 1 ||
+                scenario.Count("invitation_retempt") < 3 || scenario.Count("sns_intro") < 3 ||
+                scenario.Count("sns_gambling_feed") < 3 || scenario.Count("ending_cashout") < 1 ||
+                scenario.Count("debt_repay_complete") < 1 || scenario.Count("ending_recovery") < 1)
             {
                 failures.Add("ScenarioMessages.csv does not contain enough playable event messages.");
+            }
+
+            string flowSource = File.ReadAllText("Assets/Tablet/Script/GameFlowManager.cs");
+            foreach (string trigger in scenario.Triggers)
+            {
+                if (!flowSource.Contains($"TriggerScenario(\"{trigger}\"", StringComparison.Ordinal))
+                    failures.Add($"CSV trigger is not connected to the game flow: {trigger}");
             }
 
             TextAsset scenarioAsset = Resources.Load<TextAsset>("ScenarioMessages");

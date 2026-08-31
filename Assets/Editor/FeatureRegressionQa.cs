@@ -235,6 +235,23 @@ namespace Dobak.Editor
                     if (coins != null && coins.CasinoCash < 10000)
                         coins.AddCasinoCredit(10000 - coins.CasinoCash);
                     Expect(flow != null && flow.WillCashOutScam, "A 10,000P cash-out does not trigger the scam branch.");
+                    int bankBeforeLoan = coins != null ? coins.BankCash : 0;
+                    flow?.ResolveMomLoan(true);
+                    Expect(flow != null && flow.CurrentDebt == 15000 && flow.CanRepayDebt,
+                        "Borrowed money did not create a repayable debt.");
+                    flow?.RepayDebt();
+                    Expect(flow != null && flow.CurrentDebt == 0,
+                        "Debt repayment did not clear the debt.");
+                    Expect(coins != null && coins.BankCash == bankBeforeLoan,
+                        "Debt repayment did not return the borrowed amount from the bank balance.");
+                    bool repaymentRecorded = false;
+                    if (coins != null)
+                    {
+                        foreach (TransactionRecord record in coins.History)
+                            if (record.scope == TransactionScope.DebtRepayment)
+                                repaymentRecorded = true;
+                    }
+                    Expect(repaymentRecorded, "Debt repayment was not added to the bank transaction history.");
                     apps?.OpenMessage();
                     Next(10, 0.8d);
                     break;

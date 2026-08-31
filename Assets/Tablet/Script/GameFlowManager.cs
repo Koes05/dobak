@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Dobak.App.Casino;
 using Dobak.Manager;
 using TMPro;
 using UnityEngine;
@@ -26,6 +27,8 @@ public sealed class GameFlowManager : MonoBehaviour
     private const int CashOutEndingAttempts = 3;
 
     private readonly HashSet<string> sentMessages = new HashSet<string>();
+    private readonly HashSet<string> firedScenarioEvents = new HashSet<string>();
+    private readonly Dictionary<string, int> lastScenarioEventDay = new Dictionary<string, int>();
 
     private QuizManager quizManager;
     private NotificationManager notificationManager;
@@ -42,6 +45,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private Button sleepButton;
     private Button helpButton;
     private Button loanButton;
+    private Button repayDebtButton;
     private Button cashOutButton;
     private CanvasGroup fadeGroup;
     private GameObject endPanel;
@@ -77,8 +81,6 @@ public sealed class GameFlowManager : MonoBehaviour
     private int snsHoursToday;
     private string currentLocation = "집";
     private string activeStoryEvent = "";
-    private readonly Dictionary<string, int> lastStoryDay = new Dictionary<string, int>();
-    private readonly HashSet<string> shownTutorialSteps = new HashSet<string>();
     private readonly Queue<(string title, string body)> narrationQueue = new Queue<(string title, string body)>();
 
     private bool schoolDone;
@@ -96,6 +98,8 @@ public sealed class GameFlowManager : MonoBehaviour
     public bool IsGameEnded => gameEnded;
     public bool IsGamblingUnlocked => gamblingUnlocked;
     public bool CanRequestHelp => gamblingUnlocked && debt > 0 && !gameEnded;
+    public bool CanRepayDebt => debt > 0 && !gameEnded && coinManager != null && coinManager.BankCash > 0;
+    public int CurrentDebt => debt;
     public int CurrentDay => currentDay;
     public int CurrentHour => currentHour;
     public string CurrentLocation => currentLocation;
@@ -169,7 +173,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
         StartNewDay(false);
         yield return new WaitForSeconds(0.8f);
-        ShowTutorialStep(0);
+        TriggerScenario("game_start");
     }
 
     private void OnDestroy()
@@ -227,7 +231,7 @@ public sealed class GameFlowManager : MonoBehaviour
             if (arrivalHour > SchoolArrivalDeadline)
             {
                 ShowFeedback("오전 10시까지 도착할 수 없어 오늘은 등교할 수 없습니다.");
-                SendOnce($"school_late_{currentDay}", "담임 선생님", "등교 시간이 지났습니다. 오늘 일정과 숙제를 다시 확인해 주세요.", SpeakerType.Unknown);
+                TriggerScenario("school_late");
                 return;
             }
         }
@@ -244,7 +248,7 @@ public sealed class GameFlowManager : MonoBehaviour
             if (arrivalHour > JobStartHour)
             {
                 ShowFeedback("오전 8시 출근 시간을 지나 오늘은 근무할 수 없습니다.");
-                SendOnce($"job_late_{currentDay}", "카페 매니저", "오전 8시 출근 시간을 넘겼어. 오늘 근무 일정은 결근으로 처리할게.", SpeakerType.CafeManager);
+                TriggerScenario("job_late");
                 return;
             }
         }
@@ -265,19 +269,18 @@ public sealed class GameFlowManager : MonoBehaviour
             {
                 schoolDone = true;
                 AdvanceHours(7);
-                SendStoryStep("school_done", $"school_done_{currentDay}", 0);
-                if (currentDay == 1)
-                    ShowTutorialStep(2);
-                TrySendInvitationAfterSchool();
+                TriggerScenario("school_complete");
             }
             else if (location == "카페" && IsWeekend && !jobDone)
             {
                 jobDone = true;
                 AdvanceHours(JobEndHour - JobStartHour);
                 coinManager?.AddBankCash(JobDailyWage, "카페 아르바이트 일당");
-                SendOnce($"job_{currentDay}", "은행 알림", $"카페 아르바이트 일당 {JobDailyWage:N0}원이 입금되었습니다.", SpeakerType.Bank);
                 currentLocation = "집";
-                ShowNarrationStep("job_return", 0);
+                TriggerScenario("job_complete", new Dictionary<string, string>
+                {
+                    ["wage"] = JobDailyWage.ToString("N0")
+                });
             }
 
             appWindow?.CloseCurrentApp();
@@ -295,13 +298,13 @@ public sealed class GameFlowManager : MonoBehaviour
 
         if (!accepted)
         {
-            EndGame("위험 차단", "링크를 열지 않았다. 공짜라는 말에 시간을 빼앗기지 않고 평범한 일상을 이어 갔다.");
+            TriggerScenario("invitation_decline");
             return;
         }
 
         coinManager?.AddCasinoCredit(5000);
         SetGamblingAppVisibility(true);
-        SendStoryStep("site_arc", "welcome", 0);
+        TriggerScenario("invitation_accept");
     }
 
     public void RequestHelp()
@@ -309,8 +312,30 @@ public sealed class GameFlowManager : MonoBehaviour
         if (!CanRequestHelp)
             return;
 
-        SendStoryStep("help_story", "help", 1);
-        EndGame("도움 요청", "상황을 숨기지 않고 도움을 요청했다. 남은 빚과 일정, 이용 기록을 함께 정리하기 시작했다.");
+        TriggerScenario("help_requested");
+    }
+
+    public void RepayDebt()
+    {
+        if (gameEnded || debt <= 0 || coinManager == null)
+            return;
+
+        int repayment = Mathf.Min(debt, coinManager.BankCash);
+        if (repayment <= 0)
+        {
+            ShowFeedback("상환할 수 있는 통장 잔액이 없다.");
+            return;
+        }
+
+        if (!coinManager.TrySpendBankCash(repayment, "빌린 돈 상환", TransactionScope.DebtRepayment))
+            return;
+
+        debt -= repayment;
+        TriggerScenario("debt_repaid");
+        ShowFeedback(debt == 0
+            ? $"{repayment:N0}원을 갚아 빌린 돈을 모두 정리했다."
+            : $"{repayment:N0}원을 갚았다. 아직 갚을 돈이 남아 있다.");
+        RefreshUI();
     }
 
     private void CompleteHomework(int correctAnswers, int totalQuestions)
@@ -320,9 +345,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
         homeworkDone = true;
         AdvanceHours(2);
-        SendStoryStep("homework_done", $"homework_{currentDay}", 0);
-        if (currentDay == 1)
-            ShowTutorialStep(4);
+        TriggerScenario("homework_complete");
     }
 
     public bool CanOpenStudy()
@@ -333,7 +356,7 @@ public sealed class GameFlowManager : MonoBehaviour
         if (!IsWeekend && !schoolDone)
         {
             ShowFeedback("학교 수업을 마친 뒤 오늘의 숙제를 풀 수 있습니다.");
-            SendOnce($"study_locked_{currentDay}", "공부 앱", "오늘 수업을 마친 뒤 숙제가 열립니다.", SpeakerType.Unknown);
+            TriggerScenario("study_locked");
             return false;
         }
 
@@ -376,7 +399,7 @@ public sealed class GameFlowManager : MonoBehaviour
         if (hours < MinimumSleepHours)
         {
             consecutiveShortSleepDays++;
-            SendOnce($"short_sleep_{currentDay}", "엄마", $"오늘은 {hours}시간밖에 못 잤네. 내일은 조금 더 일찍 자자.", SpeakerType.Mom);
+            TriggerScenario("short_sleep", new Dictionary<string, string> { ["hours"] = hours.ToString() });
         }
         else
         {
@@ -384,12 +407,16 @@ public sealed class GameFlowManager : MonoBehaviour
         }
 
         if (consecutiveShortSleepDays >= ShortSleepEndingLimit)
-            EndGame("수면 부족", "사흘 연속 5시간도 자지 못했다. 집중력이 떨어지고 학교와 일상을 이어 가기 어려워졌다.");
+            TriggerScenario("ending_sleep");
     }
 
     private void CompleteDayAtSeven(bool slept, int sleepHours)
     {
-        ResolveActiveStoryEvent();
+        TriggerScenario("day_end", new Dictionary<string, string>
+        {
+            ["dinner_success"] = (currentLocation == "집" && currentHour <= 21).ToString().ToLowerInvariant()
+        });
+        activeStoryEvent = "";
 
         bool requiredDone = IsWeekend ? jobDone : schoolDone && homeworkDone;
         if (!requiredDone)
@@ -404,27 +431,31 @@ public sealed class GameFlowManager : MonoBehaviour
 
         if (scheduleFailureDays >= CollapseFailureLimit)
         {
-            EndGame("일상 붕괴", "필수 일정과 수면을 반복해서 놓쳤다. 학교와 알바, 가족과의 일상이 더는 유지되지 않았다.");
+            TriggerScenario("ending_collapse");
             return;
         }
 
         if (debt >= DebtEndingThreshold)
         {
-            EndGame("빚", "갚아야 할 돈이 감당할 수 없는 수준까지 커졌다. 더 빌리는 것으로는 해결할 수 없었다.");
+            TriggerScenario("ending_debt");
             return;
         }
 
         currentDay++;
         if (currentDay > FinalDay)
         {
-            EndGame("일상 회복", "도박을 접했지만 시간을 다시 일상에 사용했다. 필요한 일정과 관계를 지키며 14일을 마쳤다.");
+            TriggerScenario("ending_recovery");
             return;
         }
 
         currentHour = DayStartHour;
         StartNewDay(true);
 
-        ShowNarrationStep("day_transition", slept ? 0 : 1, sleepHours);
+        TriggerScenario("day_transition", new Dictionary<string, string>
+        {
+            ["slept"] = slept.ToString().ToLowerInvariant(),
+            ["hours"] = sleepHours.ToString()
+        });
     }
 
     private void StartNewDay(bool sendDailyMessage)
@@ -439,12 +470,7 @@ public sealed class GameFlowManager : MonoBehaviour
         quizManager?.ConfigureForDay(currentDay, !IsWeekend);
 
         if (sendDailyMessage)
-        {
-            TryStartRandomStoryEvent();
-
-            if (gamblingUnlocked && currentDay >= 3 && currentDay % 3 == 0 && UnityEngine.Random.value < 0.35f)
-                SendStoryStep("site_arc", $"site_push_{currentDay}", 1);
-        }
+            TriggerScenario("day_start");
 
         RefreshUI();
     }
@@ -491,7 +517,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
         RefreshUI();
         if (wasEjectedFromSchool && !gameEnded)
-            ShowNarrationStep("school_closed", 0);
+            TriggerScenario("school_closed");
     }
 
     public static int GetHoursUntilDayBoundary(int hour)
@@ -504,18 +530,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private void SendScheduleWarning()
     {
-        if (IsWeekend)
-        {
-            SendStoryStep("miss_job", $"miss_job_{currentDay}", 0);
-        }
-        else if (!schoolDone)
-        {
-            SendStoryStep("miss_school", $"miss_school_{currentDay}", 0);
-        }
-        else if (!homeworkDone)
-        {
-            SendStoryStep("miss_homework", $"miss_homework_{currentDay}", 0);
-        }
+        TriggerScenario("schedule_missed");
     }
 
     private void OnGambleResolved(bool won, int payout)
@@ -523,14 +538,11 @@ public sealed class GameFlowManager : MonoBehaviour
         gambleRounds++;
         if (!won)
             gambleLosses++;
-
-        if (gambleRounds == 1)
-            SendStoryStep("gambling_arc", "gambling_arc_1", 0);
-
-        if (gambleRounds == 5)
-            SendStoryStep("gambling_arc", "gambling_arc_5", 1);
-        if (gambleRounds == 10)
-            SendStoryStep("gambling_arc", "gambling_arc_10", 2);
+        TriggerScenario("gamble_resolved", new Dictionary<string, string>
+        {
+            ["won"] = won.ToString().ToLowerInvariant(),
+            ["payout"] = payout.ToString()
+        });
     }
 
     private void ShowBorrowChoices()
@@ -551,11 +563,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
         momBorrowRequested = true;
         borrowChoicePanel.SetActive(false);
-        SendStoryWithChoices("borrow_mom", "borrow_mom_request", 0, SpeakerType.Mom, new List<Choice>
-        {
-            new Choice { choiceText = "빌린다", nextDialogueID = -1, action = ChoiceAction.AcceptMomLoan },
-            new Choice { choiceText = "괜찮다고 한다", nextDialogueID = -1, action = ChoiceAction.DeclineMomLoan }
-        });
+        TriggerScenario("borrow_mom_request");
         appWindow?.OpenMessage();
     }
 
@@ -566,11 +574,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
         friendBorrowRequested = true;
         borrowChoicePanel.SetActive(false);
-        SendStoryWithChoices("borrow_friend", "borrow_friend_request", 0, SpeakerType.Friend, new List<Choice>
-        {
-            new Choice { choiceText = "빌린다", nextDialogueID = -1, action = ChoiceAction.AcceptFriendLoan },
-            new Choice { choiceText = "거절한다", nextDialogueID = -1, action = ChoiceAction.DeclineFriendLoan }
-        });
+        TriggerScenario("borrow_friend_request");
         appWindow?.OpenMessage();
     }
 
@@ -580,12 +584,12 @@ public sealed class GameFlowManager : MonoBehaviour
         {
             coinManager?.AddBankCash(15000, "엄마에게 빌린 돈");
             debt += 15000;
-            SendStoryStep("borrow_mom", "borrow_mom_accept", 1);
+            TriggerScenario("borrow_mom_result", new Dictionary<string, string> { ["accepted"] = "true" });
             UnlockHelpStory();
         }
         else
         {
-            SendStoryStep("borrow_mom", "borrow_mom_decline", 2);
+            TriggerScenario("borrow_mom_result", new Dictionary<string, string> { ["accepted"] = "false" });
         }
 
         RefreshUI();
@@ -597,12 +601,12 @@ public sealed class GameFlowManager : MonoBehaviour
         {
             coinManager?.AddBankCash(25000, "민재에게 빌린 돈");
             debt += 25000;
-            SendStoryStep("borrow_friend", "borrow_friend_accept", 1);
+            TriggerScenario("borrow_friend_result", new Dictionary<string, string> { ["accepted"] = "true" });
             UnlockHelpStory();
         }
         else
         {
-            SendStoryStep("borrow_friend", "borrow_friend_decline", 2);
+            TriggerScenario("borrow_friend_result", new Dictionary<string, string> { ["accepted"] = "false" });
         }
 
         RefreshUI();
@@ -610,10 +614,10 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private void UnlockHelpStory()
     {
-        SendStoryStep("help_story", "help_available", 0);
+        TriggerScenario("debt_created");
 
         if (debt >= DebtEndingThreshold)
-            EndGame("빚", "빌린 돈이 감당할 수 없는 수준까지 늘어났다.");
+            TriggerScenario("ending_debt");
     }
 
     public bool CanAttemptCashOut => !gameEnded && coinManager != null && coinManager.CasinoCash > 0;
@@ -635,31 +639,33 @@ public sealed class GameFlowManager : MonoBehaviour
         cashOutAttempts++;
         if (coinManager.CasinoCash >= CashOutEndingBalance || cashOutAttempts >= CashOutEndingAttempts)
         {
-            SendStoryStep("site_arc", "cashout_scam", 3);
-            EndGame("먹튀", "고액 환전 또는 반복 환전을 요청하자 추가 입금을 요구했고, 잠시 뒤 접속할 수 없게 되었다.");
+            TriggerScenario("cashout_scam");
             return;
         }
 
         if (!coinManager.TryCashOutCasino(out int points, out int won))
             return;
 
-        SendStoryStep("cashout_small", $"cashout_small_{cashOutAttempts}", 0);
+        TriggerScenario("cashout_success", new Dictionary<string, string>
+        {
+            ["points"] = points.ToString("N0"),
+            ["won"] = won.ToString("N0")
+        });
         ShowFeedback($"{points:N0}P가 {won:N0}원으로 정상 환전되었다.");
+        FindAnyObjectByType<CasinoUIManager>(FindObjectsInactive.Include)?.ReturnToHomeAfterCashOut();
         RefreshUI();
     }
 
     private void OnBankCashChanged(int value)
     {
+        TriggerScenario("bank_changed");
         RefreshUI();
     }
 
     private void OnCasinoChargeCompleted(int won, int points)
     {
         casinoChargesToday++;
-        if (casinoChargesToday == 3)
-            SendStoryStep("bank_arc", $"charge_repeat_{currentDay}", 0);
-        else if (casinoChargesToday == 5)
-            SendStoryStep("bank_arc", $"charge_excessive_{currentDay}", 1);
+        TriggerScenario("casino_charge");
 
         RefreshUI();
     }
@@ -676,23 +682,17 @@ public sealed class GameFlowManager : MonoBehaviour
         if (openedApp != null && borrowChoicePanel != null)
             borrowChoicePanel.SetActive(false);
 
-        if (currentDay != 1 || openedApp == null)
+        if (openedApp == null)
             return;
 
         if (openedApp == AppType.Map)
-            ShowTutorialStep(1);
+            TriggerScenario("app_map_open");
         else if (openedApp == AppType.Message)
-            ShowTutorialStep(3);
+            TriggerScenario("app_message_open");
         else if (openedApp == AppType.Bank)
-        {
-            ShowTutorialStep(4);
-            ShowTutorialStep(5);
-        }
-        else if (openedApp == AppType.SNS && shownTutorialSteps.Add("sns_intro"))
-        {
-            ShowNarrationStep("sns_intro", 0);
-            ShowNarrationStep("sns_intro", 1);
-        }
+            TriggerScenario("app_bank_open");
+        else if (openedApp == AppType.SNS)
+            TriggerScenario("app_sns_open");
     }
 
     private void SetGamblingAppVisibility(bool visible)
@@ -701,100 +701,17 @@ public sealed class GameFlowManager : MonoBehaviour
             gamblingAppIcon.SetActive(visible);
     }
 
-    private void TrySendInvitationAfterSchool()
-    {
-        if (currentDay < 2 || !schoolDone || invitationResolved || sentMessages.Contains("initial"))
-            return;
-
-        SendStoryStep("initial", "initial", 0);
-    }
-
     public void StartInvitationRetempt()
     {
         if (invitationResolved || gameEnded)
             return;
-
-        SendStoryStep("spam_retempt", "spam_retempt_ad", 0);
-        SendStoryStep("spam_retempt", "spam_retempt_site", 1);
-        SendStoryWithChoices("spam_retempt", "spam_retempt_friend", 2, SpeakerType.Friend, new List<Choice>
-        {
-            new Choice { choiceText = "호기심에 링크를 누른다", nextDialogueID = -1, action = ChoiceAction.AcceptGambling, openApp = true, targetApp = AppType.Browser },
-            new Choice { choiceText = "알림을 끄고 휴대폰을 내려놓는다", nextDialogueID = -1, action = ChoiceAction.DeclineGambling }
-        });
+        TriggerScenario("invitation_retempt");
     }
 
-    private void TryStartRandomStoryEvent()
+    public void ContinueInvitation()
     {
-        if (!string.IsNullOrEmpty(activeStoryEvent))
-            return;
-
-        string[] candidates = IsWeekend
-            ? new[] { "weekend_shift", "family_dinner" }
-            : new[] { "school_project", "family_dinner" };
-
-        var available = new List<string>();
-        foreach (string candidate in candidates)
-        {
-            if (!lastStoryDay.TryGetValue(candidate, out int lastDay) || lastDay < currentDay - 1)
-                available.Add(candidate);
-        }
-
-        if (available.Count == 0)
-            available.AddRange(candidates);
-
-        activeStoryEvent = available[UnityEngine.Random.Range(0, available.Count)];
-        lastStoryDay[activeStoryEvent] = currentDay;
-        SendStoryStep(activeStoryEvent, $"story_{activeStoryEvent}_{currentDay}_start", 0);
-    }
-
-    private void ResolveActiveStoryEvent()
-    {
-        if (string.IsNullOrEmpty(activeStoryEvent))
-            return;
-
-        bool success = activeStoryEvent switch
-        {
-            "school_project" => homeworkDone,
-            "family_dinner" => currentLocation == "집" && currentHour <= 21,
-            "weekend_shift" => jobDone,
-            _ => false
-        };
-
-        SendStoryStep(activeStoryEvent, $"story_{activeStoryEvent}_{currentDay}_result", success ? 1 : 2);
-        activeStoryEvent = "";
-    }
-
-    private void SendStoryStep(string eventId, string key, int step)
-    {
-        if (scenarioMessages != null && scenarioMessages.TryGet(eventId, step, out ScenarioMessage entry))
-        {
-            SendOnce(key, entry.title, entry.message, entry.speaker);
-            return;
-        }
-
-        Debug.LogWarning($"시나리오 메시지를 찾지 못했습니다: {eventId} / {step}");
-    }
-
-    private void ShowTutorialStep(int step)
-    {
-        string key = $"tutorial_day1_{step}";
-        if (currentDay != 1 || !shownTutorialSteps.Add(key))
-            return;
-
-        ShowNarrationStep("tutorial_day1", step, 0);
-    }
-
-    private void ShowNarrationStep(string eventId, int step, int hours = 0)
-    {
-        if (scenarioMessages == null || !scenarioMessages.TryGet(eventId, step, out ScenarioMessage entry))
-        {
-            Debug.LogWarning($"독백 시나리오를 찾지 못했습니다: {eventId} / {step}");
-            return;
-        }
-
-        string body = entry.message.Replace("{hours}", hours.ToString());
-        narrationQueue.Enqueue((string.IsNullOrWhiteSpace(entry.title) ? "나" : entry.title, body));
-        ShowNextNarration();
+        if (!invitationResolved && !gameEnded)
+            TriggerScenario("invitation_detail");
     }
 
     private void ShowNextNarration()
@@ -816,12 +733,6 @@ public sealed class GameFlowManager : MonoBehaviour
 
         narrationPanel.SetActive(false);
         ShowNextNarration();
-    }
-
-    private void SendStoryWithChoices(string eventId, string key, int step, SpeakerType speaker, List<Choice> choices)
-    {
-        SendStoryStep(eventId, key, step);
-        dialogueManager?.SetEventChoices(speaker, choices);
     }
 
     private void SendOnce(string key, string title, string message, SpeakerType speaker)
@@ -942,6 +853,11 @@ public sealed class GameFlowManager : MonoBehaviour
             loanButton.gameObject.SetActive(!gameEnded && coinManager != null && coinManager.BankCash <= 0 && canAskSomeone);
             loanButton.interactable = debt < DebtEndingThreshold;
         }
+        if (repayDebtButton != null)
+        {
+            repayDebtButton.gameObject.SetActive(CanRepayDebt);
+            repayDebtButton.interactable = CanRepayDebt;
+        }
         if (cashOutButton != null)
         {
             cashOutButton.gameObject.SetActive(false);
@@ -1037,6 +953,10 @@ public sealed class GameFlowManager : MonoBehaviour
         loanButton = CreateButton("Loan Button", panel.transform, font, "돈 부탁", new Color(0.72f, 0.36f, 0.18f));
         SetRect(loanButton.GetComponent<RectTransform>(), new Vector2(490f, -16f), new Vector2(115f, 58f));
         loanButton.onClick.AddListener(ShowBorrowChoices);
+
+        repayDebtButton = CreateButton("Repay Debt Button", panel.transform, font, "빌린 돈 갚기", new Color(0.18f, 0.5f, 0.42f));
+        SetRect(repayDebtButton.GetComponent<RectTransform>(), new Vector2(490f, -16f), new Vector2(220f, 58f));
+        repayDebtButton.onClick.AddListener(RepayDebt);
 
         cashOutButton = CreateButton("Cashout Button", panel.transform, font, "환전 시도", new Color(0.66f, 0.28f, 0.3f));
         SetRect(cashOutButton.GetComponent<RectTransform>(), new Vector2(615f, -16f), new Vector2(115f, 58f));
@@ -1218,6 +1138,235 @@ public sealed class GameFlowManager : MonoBehaviour
         }
     }
 
+    private void TriggerScenario(string trigger, Dictionary<string, string> context = null)
+    {
+        if (scenarioMessages == null || gameEnded && !trigger.StartsWith("ending_", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var selectionGroups = new Dictionary<string, List<ScenarioEventDefinition>>(StringComparer.OrdinalIgnoreCase);
+        foreach (ScenarioEventDefinition definition in scenarioMessages.GetCandidates(trigger))
+        {
+            if (!CanFireScenario(definition, context))
+                continue;
+
+            if (string.IsNullOrWhiteSpace(definition.selection))
+            {
+                FireScenario(definition, context);
+                if (gameEnded)
+                    return;
+            }
+            else
+            {
+                if (!selectionGroups.TryGetValue(definition.selection, out List<ScenarioEventDefinition> group))
+                {
+                    group = new List<ScenarioEventDefinition>();
+                    selectionGroups.Add(definition.selection, group);
+                }
+                group.Add(definition);
+            }
+        }
+
+        foreach (List<ScenarioEventDefinition> group in selectionGroups.Values)
+        {
+            int oldestDay = int.MaxValue;
+            foreach (ScenarioEventDefinition definition in group)
+            {
+                int lastDay = lastScenarioEventDay.TryGetValue(definition.id, out int value) ? value : int.MinValue;
+                oldestDay = Math.Min(oldestDay, lastDay);
+            }
+
+            var oldest = new List<ScenarioEventDefinition>();
+            foreach (ScenarioEventDefinition definition in group)
+            {
+                int lastDay = lastScenarioEventDay.TryGetValue(definition.id, out int value) ? value : int.MinValue;
+                if (lastDay == oldestDay)
+                    oldest.Add(definition);
+            }
+
+            if (oldest.Count > 0)
+                FireScenario(oldest[UnityEngine.Random.Range(0, oldest.Count)], context);
+        }
+    }
+
+    private bool CanFireScenario(ScenarioEventDefinition definition, Dictionary<string, string> context)
+    {
+        string onceKey = definition.once?.ToLowerInvariant() switch
+        {
+            "game" => definition.id,
+            "day" => $"{definition.id}_{currentDay}",
+            _ => string.Empty
+        };
+        if (!string.IsNullOrEmpty(onceKey) && firedScenarioEvents.Contains(onceKey))
+            return false;
+        if (!EvaluateScenarioCondition(definition.condition, context))
+            return false;
+        return definition.chance >= 1f || UnityEngine.Random.value <= definition.chance;
+    }
+
+    private void FireScenario(ScenarioEventDefinition definition, Dictionary<string, string> context)
+    {
+        string onceKey = definition.once?.ToLowerInvariant() switch
+        {
+            "game" => definition.id,
+            "day" => $"{definition.id}_{currentDay}",
+            _ => string.Empty
+        };
+        if (!string.IsNullOrEmpty(onceKey))
+            firedScenarioEvents.Add(onceKey);
+        lastScenarioEventDay[definition.id] = currentDay;
+
+        if (definition.stateKey == "active_story")
+            activeStoryEvent = definition.stateValue;
+
+        foreach (ScenarioMessage step in definition.steps)
+        {
+            string title = ExpandScenarioText(step.title, context);
+            string body = ExpandScenarioText(step.message, context);
+            if (string.Equals(step.delivery, "ending", StringComparison.OrdinalIgnoreCase))
+            {
+                EndGame(title, body);
+                return;
+            }
+
+            if (string.Equals(step.delivery, "narration", StringComparison.OrdinalIgnoreCase))
+                QueueNarration(title, body);
+            else
+                SendOnce($"scenario_{definition.id}_{currentDay}_{step.sequence}_{sentMessages.Count}", title, body, step.speaker);
+
+            List<Choice> choices = BuildScenarioChoices(step);
+            if (choices.Count > 0)
+                dialogueManager?.SetEventChoices(step.speaker, choices);
+        }
+    }
+
+    private static List<Choice> BuildScenarioChoices(ScenarioMessage step)
+    {
+        var choices = new List<Choice>();
+        AddScenarioChoice(choices, step.choiceA, step.actionA);
+        AddScenarioChoice(choices, step.choiceB, step.actionB);
+        return choices;
+    }
+
+    private static void AddScenarioChoice(List<Choice> choices, string text, string actionName)
+    {
+        if (string.IsNullOrWhiteSpace(text) || !Enum.TryParse(actionName, true, out ChoiceAction action))
+            return;
+        choices.Add(new Choice
+        {
+            choiceText = text,
+            nextDialogueID = -1,
+            action = action,
+            openApp = action == ChoiceAction.AcceptGambling,
+            targetApp = AppType.Browser
+        });
+    }
+
+    private bool EvaluateScenarioCondition(string expression, Dictionary<string, string> context)
+    {
+        if (string.IsNullOrWhiteSpace(expression))
+            return true;
+
+        foreach (string rawClause in expression.Split(';'))
+        {
+            string clause = rawClause.Trim();
+            if (clause.Length == 0)
+                continue;
+
+            string[] operators = { ">=", "<=", "!=", ">", "<", "=" };
+            string selected = null;
+            int operatorIndex = -1;
+            foreach (string candidate in operators)
+            {
+                operatorIndex = clause.IndexOf(candidate, StringComparison.Ordinal);
+                if (operatorIndex > 0)
+                {
+                    selected = candidate;
+                    break;
+                }
+            }
+            if (selected == null)
+                return false;
+
+            string key = clause.Substring(0, operatorIndex).Trim();
+            string expected = clause.Substring(operatorIndex + selected.Length).Trim();
+            string actual = GetScenarioValue(key, context);
+            if (!CompareScenarioValue(actual, expected, selected))
+                return false;
+        }
+        return true;
+    }
+
+    private string GetScenarioValue(string key, Dictionary<string, string> context)
+    {
+        if (context != null && context.TryGetValue(key, out string supplied))
+            return supplied;
+        return key.ToLowerInvariant() switch
+        {
+            "day" => currentDay.ToString(),
+            "day_mod_3" => (currentDay % 3).ToString(),
+            "hour" => currentHour.ToString(),
+            "weekend" => IsWeekend.ToString().ToLowerInvariant(),
+            "school_done" => schoolDone.ToString().ToLowerInvariant(),
+            "homework_done" => homeworkDone.ToString().ToLowerInvariant(),
+            "job_done" => jobDone.ToString().ToLowerInvariant(),
+            "gambling_unlocked" => gamblingUnlocked.ToString().ToLowerInvariant(),
+            "invitation_resolved" => invitationResolved.ToString().ToLowerInvariant(),
+            "rounds" => gambleRounds.ToString(),
+            "losses" => gambleLosses.ToString(),
+            "charges" => casinoChargesToday.ToString(),
+            "cashout_attempts" => cashOutAttempts.ToString(),
+            "debt" => debt.ToString(),
+            "bank_cash" => (coinManager?.BankCash ?? 0).ToString(),
+            "casino_cash" => (coinManager?.CasinoCash ?? 0).ToString(),
+            "sns_hours" => snsHoursToday.ToString(),
+            "schedule_failures" => scheduleFailureDays.ToString(),
+            "short_sleep_days" => consecutiveShortSleepDays.ToString(),
+            "location" => currentLocation,
+            "active_story" => activeStoryEvent,
+            _ => string.Empty
+        };
+    }
+
+    private static bool CompareScenarioValue(string actual, string expected, string operation)
+    {
+        if (double.TryParse(actual, out double actualNumber) && double.TryParse(expected, out double expectedNumber))
+        {
+            return operation switch
+            {
+                "=" => Math.Abs(actualNumber - expectedNumber) < 0.0001,
+                "!=" => Math.Abs(actualNumber - expectedNumber) >= 0.0001,
+                ">" => actualNumber > expectedNumber,
+                "<" => actualNumber < expectedNumber,
+                ">=" => actualNumber >= expectedNumber,
+                "<=" => actualNumber <= expectedNumber,
+                _ => false
+            };
+        }
+
+        int comparison = string.Compare(actual, expected, StringComparison.OrdinalIgnoreCase);
+        return operation switch
+        {
+            "=" => comparison == 0,
+            "!=" => comparison != 0,
+            _ => false
+        };
+    }
+
+    private string ExpandScenarioText(string value, Dictionary<string, string> context)
+    {
+        string result = value ?? string.Empty;
+        if (context != null)
+            foreach (KeyValuePair<string, string> pair in context)
+                result = result.Replace("{" + pair.Key + "}", pair.Value);
+        return result;
+    }
+
+    private void QueueNarration(string title, string body)
+    {
+        narrationQueue.Enqueue((string.IsNullOrWhiteSpace(title) ? "나" : title, body));
+        ShowNextNarration();
+    }
+
     private void CreateSnsApp(Canvas canvas, TMP_FontAsset font)
     {
         Transform appArea = FindSceneObject("AppUi")?.transform ?? canvas.transform;
@@ -1361,13 +1510,21 @@ public sealed class GameFlowManager : MonoBehaviour
         if (!CanSpendTime(hours) || (hours != 1 && hours != 2 && hours != 3 && hours != 5))
             return;
 
+        int startHour = currentHour;
+        bool nearDayBoundary = GetHoursUntilDayBoundary(currentHour) <= hours;
         snsHoursToday += hours;
         AdvanceHours(hours);
         if (gameEnded)
             return;
 
+        bool late = startHour >= 22 || startHour < DayStartHour || currentHour >= 22 || currentHour < DayStartHour;
+        TriggerScenario("sns_watch", new Dictionary<string, string>
+        {
+            ["hours"] = hours.ToString(),
+            ["late"] = late.ToString().ToLowerInvariant(),
+            ["near_day_boundary"] = nearDayBoundary.ToString().ToLowerInvariant()
+        });
         int index = hours == 1 ? 0 : hours == 2 ? 1 : hours == 3 ? 2 : 3;
-        ShowNarrationStep("sns_watch", index);
         string[] feedImages =
         {
             "TestAssets/Gemini_Generated_Image_39o0xn39o0xn39o0",
@@ -1379,24 +1536,6 @@ public sealed class GameFlowManager : MonoBehaviour
         if (snsStatusText != null)
             snsStatusText.text = $"오늘 SNS를 본 시간  {snsHoursToday}시간";
 
-        if (currentHour >= 22 || currentHour < DayStartHour)
-            ShowNarrationStep("sns_late_night", 0);
-
-        if (hours >= 3)
-        {
-            if (!IsWeekend && !homeworkDone)
-                SendStoryStep("sns_daily_event", $"sns_homework_{currentDay}", 1);
-            else if (IsWeekend && !jobDone)
-                SendStoryStep("sns_daily_event", $"sns_job_{currentDay}", 2);
-            else
-                ShowNarrationStep("sns_daily_event", 3);
-        }
-
-        if (gamblingUnlocked && snsHoursToday >= 2 && sentMessages.Add($"sns_gambling_feed_{currentDay}"))
-        {
-            ShowNarrationStep("sns_gambling_feed", 0);
-            ShowNarrationStep("sns_gambling_feed", 1);
-        }
     }
 
     private static string NormalizeLocation(string raw)
