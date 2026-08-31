@@ -141,7 +141,7 @@ public sealed class GameFlowManager : MonoBehaviour
         yield return null;
 
         quizManager = FindAnyObjectByType<QuizManager>(FindObjectsInactive.Include);
-        notificationManager = FindAnyObjectByType<NotificationManager>();
+        notificationManager = FindAnyObjectByType<NotificationManager>(FindObjectsInactive.Include);
         dialogueManager = FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
         appWindow = FindAnyObjectByType<AppWindow>();
         coinManager = CoinManager.Instance ?? FindAnyObjectByType<CoinManager>();
@@ -737,16 +737,21 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private void SendOnce(string key, string title, string message, SpeakerType speaker)
     {
-        if (!sentMessages.Add(key) || notificationManager == null)
+        if (!sentMessages.Add(key))
             return;
 
-        notificationManager.SendNotification(new NotificationData
+        var data = new NotificationData
         {
             title = title,
             message = message,
             appType = AppType.Message,
             speakerType = speaker
-        });
+        };
+
+        if (notificationManager != null)
+            notificationManager.SendNotification(data);
+        else
+            dialogueManager?.ReceiveNotificationMessage(speaker, title, message);
     }
 
     private IEnumerator FadeTransition(string caption, Action midpoint, float hold = 0.3f)

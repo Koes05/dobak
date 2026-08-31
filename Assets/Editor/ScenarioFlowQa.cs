@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using Dobak.App.Map;
@@ -212,12 +213,17 @@ namespace Dobak.Editor
                     break;
 
                 case 16:
+                    DialogueManager dialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
+                    Expect(ChannelContains(dialogue, SpeakerType.Friend, "무료 포인트"),
+                        "The CSV invitation event did not reach Minjae's stored chat messages.");
                     Capture("scenario-10-minjae-after-school.png");
                     OpenContact(SpeakerType.Friend);
                     Next(17, 0.45d);
                     break;
 
                 case 17:
+                    Expect(ActiveTextContains("무료 포인트"),
+                        "The stored CSV invitation was not rendered as a visible chat bubble.");
                     Capture("scenario-11-minjae-invitation.png");
                     ClickChoice("내용을 확인한다");
                     Next(18, 0.7d);
@@ -270,6 +276,9 @@ namespace Dobak.Editor
                         "Crossing 7 AM while awake did not advance exactly one day.");
                     Expect(flow != null && !string.IsNullOrEmpty(flow.ActiveStoryEvent),
                         "A daily story event was not activated after the day transition.");
+                    DialogueManager dailyDialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
+                    Expect(DailyStoryReachedChat(dailyDialogue, flow?.ActiveStoryEvent),
+                        "The selected daily CSV event did not reach its contact's stored chat messages.");
                     Expect(TextContains("Narration Body", "밤을 새어버렸다"), "All-nighter narration was not shown over the active app.");
                     Capture("scenario-14-all-nighter.png");
                     DismissNarration();
@@ -479,6 +488,35 @@ namespace Dobak.Editor
                     return text.text.Contains(expected);
             }
             return false;
+        }
+
+        private static bool ActiveTextContains(string expected)
+        {
+            foreach (TMP_Text text in Resources.FindObjectsOfTypeAll<TMP_Text>())
+            {
+                if (text.gameObject.scene.IsValid() && text.gameObject.activeInHierarchy && text.text.Contains(expected))
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool ChannelContains(DialogueManager dialogue, SpeakerType speaker, string expected)
+        {
+            Dictionary<SpeakerType, ChatChannel> channels =
+                GetPrivate<Dictionary<SpeakerType, ChatChannel>>(dialogue, "channels");
+            return channels != null && channels.TryGetValue(speaker, out ChatChannel channel) &&
+                   channel.receivedMessages.Exists(message => message.Contains(expected));
+        }
+
+        private static bool DailyStoryReachedChat(DialogueManager dialogue, string storyId)
+        {
+            return storyId switch
+            {
+                "school_project" => ChannelContains(dialogue, SpeakerType.Teacher, "조별 과제"),
+                "family_dinner" => ChannelContains(dialogue, SpeakerType.Mom, "저녁"),
+                "weekend_shift" => ChannelContains(dialogue, SpeakerType.CafeManager, "단체 손님"),
+                _ => false
+            };
         }
 
         private static void SetPrivate(object target, string fieldName, object value)
