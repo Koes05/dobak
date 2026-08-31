@@ -114,6 +114,7 @@ public class DialogueManager : MonoBehaviour
     private void Start()
     {
         EnsureInitialized();
+        ConfigureChatWindowArt();
         ConfigureChatViewport();
 
         // 초기 프로필 UI 갱신
@@ -384,12 +385,12 @@ public class DialogueManager : MonoBehaviour
         viewport.pivot = new Vector2(0.5f, 0.5f);
         viewport.anchoredPosition = Vector2.zero;
 
-        float safeBottom = 260f;
+        float safeBottom = 245f;
         if (choiceButtonContainer is RectTransform choiceRect)
             safeBottom = Mathf.Max(safeBottom, choiceRect.anchoredPosition.y + choiceRect.rect.height + 36f);
 
         viewport.offsetMin = new Vector2(0f, safeBottom);
-        viewport.offsetMax = new Vector2(-24f, -80f);
+        viewport.offsetMax = new Vector2(-24f, -145f);
 
         if (scrollRect.verticalScrollbar != null)
         {
@@ -398,7 +399,7 @@ public class DialogueManager : MonoBehaviour
             scrollbarRect.anchorMax = new Vector2(1f, 1f);
             scrollbarRect.pivot = new Vector2(1f, 0.5f);
             scrollbarRect.offsetMin = new Vector2(-10f, safeBottom);
-            scrollbarRect.offsetMax = new Vector2(-4f, -80f);
+            scrollbarRect.offsetMax = new Vector2(-4f, -145f);
         }
 
         Mask legacyMask = viewport.GetComponent<Mask>();
@@ -409,6 +410,55 @@ public class DialogueManager : MonoBehaviour
 
         if (chatContent.TryGetComponent(out VerticalLayoutGroup layout))
             layout.padding.bottom = Mathf.Max(layout.padding.bottom, 24);
+    }
+
+    private void ConfigureChatWindowArt()
+    {
+        if (scrollRect == null || scrollRect.transform.Find("Chat Window Middle") != null)
+            return;
+
+        Texture2D texture = Resources.Load<Texture2D>("Message/chat_window");
+        if (texture == null)
+        {
+            Debug.LogWarning("메시지 창 이미지를 찾을 수 없습니다: Resources/Message/chat_window");
+            return;
+        }
+
+        Transform root = scrollRect.transform;
+        if (root.TryGetComponent(out Image oldBackground))
+            oldBackground.color = new Color(1f, 1f, 1f, 0.001f);
+
+        CreateChatWindowSlice("Chat Window Footer", root, texture,
+            new Rect(0f, 0f, 1f, 0.16f), Vector2.zero, new Vector2(1f, 0f), 0f, 165f);
+        CreateChatWindowSlice("Chat Window Middle", root, texture,
+            new Rect(0f, 0.16f, 1f, 0.72f), new Vector2(0f, 0f), Vector2.one, 165f, -145f);
+        CreateChatWindowSlice("Chat Window Header", root, texture,
+            new Rect(0f, 0.875f, 1f, 0.125f), new Vector2(0f, 1f), Vector2.one, -145f, 0f);
+
+        if (scrollRect.viewport != null && scrollRect.viewport.TryGetComponent(out Image viewportImage))
+            viewportImage.color = new Color(1f, 1f, 1f, 0.001f);
+    }
+
+    private static void CreateChatWindowSlice(string objectName, Transform parent, Texture texture,
+        Rect uvRect, Vector2 anchorMin, Vector2 anchorMax, float bottomOffset, float topOffset)
+    {
+        GameObject slice = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+        slice.layer = parent.gameObject.layer;
+        slice.transform.SetParent(parent, false);
+        slice.transform.SetAsFirstSibling();
+
+        RectTransform rect = slice.GetComponent<RectTransform>();
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.offsetMin = new Vector2(0f, bottomOffset);
+        rect.offsetMax = new Vector2(0f, topOffset);
+
+        RawImage image = slice.GetComponent<RawImage>();
+        image.texture = texture;
+        image.uvRect = uvRect;
+        image.color = Color.white;
+        image.raycastTarget = false;
     }
 
     // -------------------------------------------------------------

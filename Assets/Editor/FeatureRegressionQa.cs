@@ -260,8 +260,13 @@ namespace Dobak.Editor
                     float choiceTop = choices != null ? choices.anchoredPosition.y + choices.rect.height : 0f;
                     Expect(chatViewport != null && chatViewport.offsetMin.y >= choiceTop + 30f,
                         $"Chat viewport overlaps the choice/input area: viewport {chatViewport?.offsetMin.y}, choices {choiceTop}.");
+                    Expect(chatViewport != null && chatViewport.offsetMax.y <= -140f,
+                        $"Chat viewport extends into the fixed header: {chatViewport?.offsetMax.y}.");
                     Expect(chatViewport != null && chatViewport.GetComponent<RectMask2D>() != null,
                         "Chat viewport does not have a rectangular clipping mask.");
+                    Expect(GameObject.Find("Chat Window Header") != null && GameObject.Find("Chat Window Middle") != null &&
+                           GameObject.Find("Chat Window Footer") != null,
+                        "The supplied three-part message window art was not created.");
                     Capture("feature-10-message-chat-safe-area.png");
                     apps?.CloseCurrentApp();
                     SetPrivate(flow, "currentLocation", "학교");
