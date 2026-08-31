@@ -24,6 +24,7 @@ namespace Dobak.Editor
         private static int step;
         private static double nextStepAt;
         private static int bankBeforeJob;
+        private static int pointsBeforeInterruptedSpin;
         private static bool previousOptionsEnabled;
         private static EnterPlayModeOptions previousOptions;
 
@@ -211,6 +212,42 @@ namespace Dobak.Editor
                     Expect(finishedSlot != null && finishedSlot.CurrentRound == 1, "Slot spin did not finish.");
                     Expect(increase != null && increase.interactable, "Bet control stayed disabled after the spin.");
                     Capture("feature-07-after-spin.png");
+                    pointsBeforeInterruptedSpin = coins != null ? coins.CasinoCash : 0;
+                    Button interruptedSpin = GetPrivate<Button>(finishedSlot, "spinButton");
+                    interruptedSpin?.onClick.Invoke();
+                    Expect(coins != null && coins.CasinoCash == pointsBeforeInterruptedSpin - finishedSlot.CurrentBetAmount,
+                        "Interrupted spin did not commit its stake before starting.");
+                    apps?.CloseCurrentApp();
+                    Expect(coins != null && coins.CasinoCash == pointsBeforeInterruptedSpin,
+                        "Closing the app during a spin did not refund the stake.");
+                    apps?.OpenBrowser();
+                    Next(9, 0.8d);
+                    break;
+
+                case 9:
+                    CasinoUIManager reopenedCasino = UnityEngine.Object.FindAnyObjectByType<CasinoUIManager>(FindObjectsInactive.Include);
+                    InvokePrivate(reopenedCasino, "OnSlotMachineButtonClicked");
+                    Next(10, 0.4d);
+                    break;
+
+                case 10:
+                    SlotMachineManager resumedSlot = UnityEngine.Object.FindAnyObjectByType<SlotMachineManager>(FindObjectsInactive.Include);
+                    Button resumedSpin = GetPrivate<Button>(resumedSlot, "spinButton");
+                    Expect(resumedSlot != null && resumedSlot.CurrentRound == 1,
+                        "Interrupted spin was incorrectly counted as a completed round.");
+                    Expect(resumedSpin != null && resumedSpin.interactable,
+                        "Spin button stayed disabled after reopening the gambling app.");
+                    resumedSpin?.onClick.Invoke();
+                    Next(11, 4.0d);
+                    break;
+
+                case 11:
+                    SlotMachineManager resumedFinishedSlot = UnityEngine.Object.FindAnyObjectByType<SlotMachineManager>(FindObjectsInactive.Include);
+                    Button resumedFinishedSpin = GetPrivate<Button>(resumedFinishedSlot, "spinButton");
+                    Expect(resumedFinishedSlot != null && resumedFinishedSlot.CurrentRound == 2,
+                        "A spin did not complete after reopening the gambling app.");
+                    Expect(resumedFinishedSpin != null && resumedFinishedSpin.interactable,
+                        "Spin button did not recover after the resumed spin.");
                     apps?.CloseCurrentApp();
                     SetPrivate(flow, "currentDay", 6);
                     SetPrivate(flow, "currentHour", 7);
@@ -219,10 +256,10 @@ namespace Dobak.Editor
                     InvokePrivate(flow, "RefreshUI");
                     bankBeforeJob = coins != null ? coins.BankCash : 0;
                     flow?.TravelTo("2");
-                    Next(9, 1.5d);
+                    Next(12, 1.5d);
                     break;
 
-                case 9:
+                case 12:
                     Expect(flow != null && flow.CurrentDay == 6 && flow.CurrentHour == 16 && flow.CurrentLocation == "집",
                         $"Weekend job schedule is wrong: day {flow?.CurrentDay}, hour {flow?.CurrentHour}, place {flow?.CurrentLocation}.");
                     Expect(coins != null && coins.BankCash == bankBeforeJob + 80000,
@@ -254,10 +291,10 @@ namespace Dobak.Editor
                     }
                     Expect(repaymentRecorded, "Debt repayment was not added to the bank transaction history.");
                     apps?.OpenMessage();
-                    Next(10, 0.8d);
+                    Next(13, 0.8d);
                     break;
 
-                case 10:
+                case 13:
                     DialogueManager dialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
                     ScrollRect contacts = FindScrollRect("Contact Viewport");
                     Expect(contacts != null && contacts.verticalNormalizedPosition >= 0.99f,
@@ -268,10 +305,10 @@ namespace Dobak.Editor
                     Capture("feature-09-message-contacts.png");
                     FireCsvEvent(flow, "seoyeon_homework");
                     dialogue?.OpenDialogue(SpeakerType.Seoyeon);
-                    Next(11, 0.8d);
+                    Next(14, 0.8d);
                     break;
 
-                case 11:
+                case 14:
                     DialogueManager openDialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
                     RectTransform chatViewport = openDialogue?.scrollRect?.viewport;
                     RectTransform choices = openDialogue?.choiceButtonContainer as RectTransform;
@@ -285,34 +322,45 @@ namespace Dobak.Editor
                     Expect(GameObject.Find("Chat Window Header") != null && GameObject.Find("Chat Window Middle") != null &&
                            GameObject.Find("Chat Window Footer") != null,
                         "The supplied three-part message window art was not created.");
-                    Expect(VisibleTextContains("오늘 숙제 문제 봤어?"),
+                    Expect(VisibleTextContains("오늘 숙제 시작했어?"),
                         "Seoyeon's CSV event was not rendered in her chat room.");
-                    Expect(ClickVisibleChoice("같이 확인하자고 한다"),
+                    Expect(ClickVisibleChoice("나도 헷갈린다고 답한다"),
                         "Seoyeon's reply choice was not available.");
                     Capture("feature-10-message-chat-safe-area.png");
-                    Next(12, 0.7d);
+                    Next(15, 0.7d);
                     break;
 
-                case 12:
+                case 15:
                     DialogueManager repliedDialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
-                    Expect(ChannelContains(repliedDialogue, SpeakerType.Seoyeon, "사진으로 보내자"),
+                    Expect(ChannelContains(repliedDialogue, SpeakerType.Seoyeon, "조건부터 다시 읽어 봤어"),
                         "Selecting a CSV reply did not trigger Seoyeon's follow-up message.");
-                    Expect(VisibleTextContains("사진으로 보내자"),
+                    Expect(VisibleTextContains("조건부터 다시 읽어 봤어"),
                         "Seoyeon's follow-up was stored but not rendered as a chat bubble.");
-                    FireCsvEvent(flow, "joonho_casual");
-                    repliedDialogue?.OpenDialogue(SpeakerType.Joonho);
-                    Next(13, 0.7d);
+                    Expect(ClickVisibleChoice("조건부터 다시 봤다고 답한다"),
+                        "Seoyeon's second reply choice was not available.");
+                    Next(16, 0.7d);
                     break;
 
-                case 13:
+                case 16:
+                    DialogueManager completedSeoyeonDialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
+                    Expect(ChannelContains(completedSeoyeonDialogue, SpeakerType.Seoyeon, "각자 숙제 마저 하자"),
+                        "Seoyeon's second CSV reply did not trigger the closing message.");
+                    Expect(VisibleTextContains("각자 숙제 마저 하자"),
+                        "Seoyeon's closing message was stored but not rendered.");
+                    FireCsvEvent(flow, "joonho_casual");
+                    completedSeoyeonDialogue?.OpenDialogue(SpeakerType.Joonho);
+                    Next(17, 0.7d);
+                    break;
+
+                case 17:
                     Expect(VisibleTextContains("오늘 하루 어땠어?"),
                         "Joonho's CSV event was not rendered in his chat room.");
                     Expect(ClickVisibleChoice("괜찮았다고 답한다"),
                         "Joonho's reply choice was not available.");
-                    Next(14, 0.7d);
+                    Next(18, 0.7d);
                     break;
 
-                case 14:
+                case 18:
                     DialogueManager joonhoDialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
                     Expect(ChannelContains(joonhoDialogue, SpeakerType.Joonho, "다행이네"),
                         "Selecting a CSV reply did not trigger Joonho's follow-up message.");
@@ -322,10 +370,10 @@ namespace Dobak.Editor
                     SetPrivate(flow, "currentLocation", "학교");
                     SetPrivate(flow, "currentHour", 19);
                     flow?.SpendTime(1, "학교에 남아 있기");
-                    Next(15, 0.6d);
+                    Next(19, 0.6d);
                     break;
 
-                case 15:
+                case 19:
                     Expect(flow != null && flow.CurrentHour == 20 && flow.CurrentLocation == "집",
                         $"School closing did not send the player home: {flow?.CurrentHour}:00 at {flow?.CurrentLocation}.");
                     Capture("feature-11-school-closing.png");
