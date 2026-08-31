@@ -54,6 +54,8 @@ public class QuizManager : MonoBehaviour
     private bool isWeekday = true;
     private bool listenersBound;
     private bool completionReported;
+    private GameObject answerHeaderObject;
+    private GameObject answerPanelObject;
 
 
     //==================================================
@@ -62,6 +64,7 @@ public class QuizManager : MonoBehaviour
 
     private void Start()
     {
+        ResolveSceneLabels();
         BindButtonListeners();
 
         // 테스트용 초기화 버튼
@@ -72,6 +75,20 @@ public class QuizManager : MonoBehaviour
 
         if (configuredDay < 0)
             ConfigureForDay(1, true);
+    }
+
+    private void ResolveSceneLabels()
+    {
+        foreach (TMP_Text label in GetComponentsInChildren<TMP_Text>(true))
+        {
+            if (label.gameObject.name == "Q_Text")
+                label.gameObject.SetActive(false);
+            else if (label.gameObject.name == "Question_Text" && label != questionText)
+            {
+                answerHeaderObject = label.gameObject;
+                answerPanelObject = label.transform.parent.gameObject;
+            }
+        }
     }
 
     private void BindButtonListeners()
@@ -212,9 +229,12 @@ public class QuizManager : MonoBehaviour
 
         // 결과 텍스트 초기화
         if (resultText != null)
+        {
+            resultText.gameObject.SetActive(false);
             resultText.text = "";
+        }
         if (resultBox != null)
-            resultBox.color = Color.white;
+            resultBox.gameObject.SetActive(false);
     }
 
 
@@ -239,6 +259,13 @@ public class QuizManager : MonoBehaviour
         int quizIndex = dailyQuestionIndices[currentIndex];
 
         QuizData quiz = quizzes[quizIndex];
+        if (answerPanelObject != null)
+            answerPanelObject.SetActive(true);
+
+        if (resultText != null)
+            resultText.gameObject.SetActive(true);
+        if (resultBox != null)
+            resultBox.gameObject.SetActive(true);
 
         // 정답 확인
         if (selectedIndex == quiz.answerIndex)
@@ -298,20 +325,26 @@ public class QuizManager : MonoBehaviour
         isAnswerLocked = true;
 
         // 문제 영역에 완료 메시지
-        questionText.text = $"오늘의 숙제를 끝냈습니다!\n정답 {correctAnswerCount} / {dailyQuestionIndices.Count}";
+        questionText.text = $"오늘의 숙제를 끝냈습니다!\n정답 {correctAnswerCount} / {dailyQuestionIndices.Count}\n\n2시간이 지났습니다.";
 
         // 결과 텍스트 제거
         if (progressText != null)
             progressText.text = "오늘 숙제 완료";
         if (resultText != null)
-            resultText.text = "공부에 2시간을 사용했습니다.";
+        {
+            resultText.text = "";
+            resultText.gameObject.SetActive(false);
+        }
         if (resultBox != null)
-            resultBox.color = Color.white;
+            resultBox.gameObject.SetActive(false);
+        if (answerPanelObject != null)
+            answerPanelObject.SetActive(false);
 
-        // 선택 버튼 전부 잠금
+        // 완료 화면에서는 이전 문제의 선택지를 남기지 않는다.
         for (int i = 0; i < answerButtons.Length; i++)
         {
             answerButtons[i].interactable = false;
+            answerButtons[i].gameObject.SetActive(false);
         }
 
         if (!completionReported)
@@ -332,9 +365,14 @@ public class QuizManager : MonoBehaviour
         if (progressText != null)
             progressText.text = "주말";
         if (resultText != null)
+        {
             resultText.text = "";
+            resultText.gameObject.SetActive(false);
+        }
         if (resultBox != null)
-            resultBox.color = Color.white;
+            resultBox.gameObject.SetActive(false);
+        if (answerPanelObject != null)
+            answerPanelObject.SetActive(false);
 
         foreach (Button button in answerButtons)
             button.gameObject.SetActive(false);
@@ -347,6 +385,12 @@ public class QuizManager : MonoBehaviour
         questionText.text = "등록된 문제가 없습니다.";
         if (progressText != null)
             progressText.text = "0 / 0";
+        if (resultText != null)
+            resultText.gameObject.SetActive(false);
+        if (resultBox != null)
+            resultBox.gameObject.SetActive(false);
+        if (answerPanelObject != null)
+            answerPanelObject.SetActive(false);
         foreach (Button button in answerButtons)
             button.gameObject.SetActive(false);
     }

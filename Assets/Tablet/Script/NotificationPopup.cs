@@ -37,6 +37,12 @@ public class NotificationPopup : MonoBehaviour
         StartCoroutine(PopupRoutine());
     }
 
+    public void HideImmediately()
+    {
+        StopAllCoroutines();
+        rect.anchoredPosition = hidePos;
+    }
+
     private void ConfigurePreviewText()
     {
         RectTransform messageRect = message.rectTransform;

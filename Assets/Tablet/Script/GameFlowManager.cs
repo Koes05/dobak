@@ -15,7 +15,10 @@ public sealed class GameFlowManager : MonoBehaviour
     private const int DayStartHour = 7;
     private const int CollapseFailureLimit = 3;
     private const int DebtEndingThreshold = 15000;
+    private const int SchoolOpeningHour = 8;
     private const int SchoolArrivalDeadline = 10;
+    private const int MinimumSleepHours = 5;
+    private const int ShortSleepEndingLimit = 3;
     private const int CashOutMinimumBalance = 3000;
     private const int CashOutMinimumRounds = 5;
     private const int CashOutEndingBalance = 10000;
@@ -32,6 +35,8 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private TMP_Text moneyText;
     private TMP_Text feedbackText;
+    private GameObject feedbackPanel;
+    private CanvasGroup feedbackGroup;
     private TMP_Text fadeCaption;
     private Button sleepButton;
     private Button helpButton;
@@ -42,6 +47,10 @@ public sealed class GameFlowManager : MonoBehaviour
     private TMP_Text endTitleText;
     private TMP_Text endBodyText;
     private Button restartButton;
+    private GameObject narrationPanel;
+    private TMP_Text narrationTitleText;
+    private TMP_Text narrationBodyText;
+    private Button narrationContinueButton;
     private Coroutine feedbackCoroutine;
     private GameObject actionBar;
     private GameObject gamblingAppIcon;
@@ -56,13 +65,15 @@ public sealed class GameFlowManager : MonoBehaviour
     private int currentDay = 1;
     private int currentHour = DayStartHour;
     private int scheduleFailureDays;
-    private int sleepDebt;
+    private int consecutiveShortSleepDays;
     private int debt;
     private int gambleRounds;
     private int gambleLosses;
     private string currentLocation = "집";
     private string activeStoryEvent = "";
     private readonly Dictionary<string, int> lastStoryDay = new Dictionary<string, int>();
+    private readonly HashSet<string> shownTutorialSteps = new HashSet<string>();
+    private readonly Queue<(string title, string body)> narrationQueue = new Queue<(string title, string body)>();
 
     private bool schoolDone;
     private bool homeworkDone;
@@ -82,11 +93,19 @@ public sealed class GameFlowManager : MonoBehaviour
     public int CurrentDay => currentDay;
     public int CurrentHour => currentHour;
     public string CurrentLocation => currentLocation;
+    public bool IsHomeworkDone => homeworkDone;
+    public int ConsecutiveShortSleepDays => consecutiveShortSleepDays;
 
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Bootstrap()
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void RegisterSceneBootstrap()
     {
-        if (SceneManager.GetActiveScene().name != "TabletUI")
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+        SceneManager.sceneLoaded += OnSceneLoaded;
+    }
+
+    private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        if (scene.name != "TabletUI")
             return;
 
         if (FindAnyObjectByType<GameFlowManager>() != null)
@@ -110,7 +129,7 @@ public sealed class GameFlowManager : MonoBehaviour
     {
         yield return null;
 
-        quizManager = FindAnyObjectByType<QuizManager>();
+        quizManager = FindAnyObjectByType<QuizManager>(FindObjectsInactive.Include);
         notificationManager = FindAnyObjectByType<NotificationManager>();
         dialogueManager = FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
         appWindow = FindAnyObjectByType<AppWindow>();
@@ -142,7 +161,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
         StartNewDay(false);
         yield return new WaitForSeconds(0.8f);
-        SendInitialInvitation();
+        ShowTutorialStep(0);
     }
 
     private void OnDestroy()
@@ -187,17 +206,27 @@ public sealed class GameFlowManager : MonoBehaviour
         string location = NormalizeLocation(rawLocation);
         int travelHours = GetTravelHours(location);
 
+        if (location == "학교" && !IsWeekend && !schoolDone)
+        {
+            int arrivalHour = currentHour + travelHours;
+            if (arrivalHour < SchoolOpeningHour)
+            {
+                ShowFeedback("학교에는 오전 8시부터 갈 수 있습니다.");
+                return;
+            }
+
+            if (arrivalHour > SchoolArrivalDeadline)
+            {
+                ShowFeedback("오전 10시까지 도착할 수 없어 오늘은 등교할 수 없습니다.");
+                SendOnce($"school_late_{currentDay}", "담임 선생님", "등교 시간이 지났습니다. 오늘 일정과 숙제를 다시 확인해 주세요.", SpeakerType.Unknown);
+                return;
+            }
+        }
+
         if (location == currentLocation)
         {
             ShowFeedback($"현재 {location}에 있습니다.");
             appWindow?.CloseCurrentApp();
-            return;
-        }
-
-        if (location == "학교" && !IsWeekend && !schoolDone && currentHour + travelHours > SchoolArrivalDeadline)
-        {
-            ShowFeedback("오전 10시까지 도착할 수 없어 오늘은 등교할 수 없습니다.");
-            SendOnce($"school_late_{currentDay}", "담임 선생님", "등교 시간이 지났습니다. 오늘 일정과 숙제를 다시 확인해 주세요.", SpeakerType.Unknown);
             return;
         }
 
@@ -211,12 +240,15 @@ public sealed class GameFlowManager : MonoBehaviour
                 schoolDone = true;
                 AdvanceHours(7);
                 SendStoryStep("school_done", $"school_done_{currentDay}", 0);
+                if (currentDay == 1)
+                    ShowTutorialStep(2);
+                TrySendInvitationAfterSchool();
             }
             else if (location == "카페" && IsWeekend && !jobDone)
             {
                 jobDone = true;
                 AdvanceHours(6);
-                coinManager?.AddBankCash(60, "Cafe part-time wage");
+                coinManager?.AddBankCash(60, "카페 아르바이트 급여");
                 SendOnce($"job_{currentDay}", "은행 알림", "카페 아르바이트 급여 60원이 입금되었습니다.", SpeakerType.Unknown);
             }
 
@@ -242,7 +274,6 @@ public sealed class GameFlowManager : MonoBehaviour
         coinManager?.AddCasinoCredit(5000);
         SetGamblingAppVisibility(true);
         SendStoryStep("site_arc", "welcome", 0);
-        ShowFeedback("도박 사이트가 열렸다. 이용 여부는 계속 선택할 수 있다.");
     }
 
     public void RequestHelp()
@@ -261,8 +292,9 @@ public sealed class GameFlowManager : MonoBehaviour
 
         homeworkDone = true;
         AdvanceHours(2);
-        ShowFeedback($"숙제 완료: {totalQuestions}문제 중 {correctAnswers}문제 정답");
         SendStoryStep("homework_done", $"homework_{currentDay}", 0);
+        if (currentDay == 1)
+            ShowTutorialStep(4);
     }
 
     public bool CanOpenStudy()
@@ -291,28 +323,43 @@ public sealed class GameFlowManager : MonoBehaviour
         if (gameEnded || isTransitioning)
             return;
 
-        int sleepHours = currentHour < DayStartHour
-            ? DayStartHour - currentHour
-            : 24 - currentHour + DayStartHour;
-
-        sleepHours = Mathf.Clamp(sleepHours, 1, 12);
+        int sleepHours = GetSleepHoursUntilSeven(currentHour);
         sleepDone = true;
         RefreshUI();
 
         StartCoroutine(FadeTransition("하루를 마무리하는 중", () =>
         {
             currentLocation = "집";
-
-            if (sleepHours < 7)
-                sleepDebt += 7 - sleepHours;
-            else
-                sleepDebt = Mathf.Max(0, sleepDebt - 1);
-
-            FinishDay();
+            CompleteDayAtSeven(true, sleepHours);
         }, 0.55f));
     }
 
-    private void FinishDay()
+    public static int GetSleepHoursUntilSeven(int hour)
+    {
+        int normalizedHour = ((hour % 24) + 24) % 24;
+        int hours = normalizedHour < DayStartHour
+            ? DayStartHour - normalizedHour
+            : 24 - normalizedHour + DayStartHour;
+        return Mathf.Clamp(hours, 1, 24);
+    }
+
+    private void RegisterSleep(int hours)
+    {
+        if (hours < MinimumSleepHours)
+        {
+            consecutiveShortSleepDays++;
+            SendOnce($"short_sleep_{currentDay}", "엄마", $"오늘은 {hours}시간밖에 못 잤네. 내일은 조금 더 일찍 자자.", SpeakerType.Mom);
+        }
+        else
+        {
+            consecutiveShortSleepDays = 0;
+        }
+
+        if (consecutiveShortSleepDays >= ShortSleepEndingLimit)
+            EndGame("수면 부족", "사흘 연속 5시간도 자지 못했다. 집중력이 떨어지고 학교와 일상을 이어 가기 어려워졌다.");
+    }
+
+    private void CompleteDayAtSeven(bool slept, int sleepHours)
     {
         ResolveActiveStoryEvent();
 
@@ -323,8 +370,9 @@ public sealed class GameFlowManager : MonoBehaviour
             SendScheduleWarning();
         }
 
-        if (!sleepDone)
-            sleepDebt += 7;
+        RegisterSleep(slept ? sleepHours : 0);
+        if (gameEnded)
+            return;
 
         if (scheduleFailureDays >= CollapseFailureLimit)
         {
@@ -347,6 +395,8 @@ public sealed class GameFlowManager : MonoBehaviour
 
         currentHour = DayStartHour;
         StartNewDay(true);
+
+        ShowNarrationStep("day_transition", slept ? 0 : 1, sleepHours);
     }
 
     private void StartNewDay(bool sendDailyMessage)
@@ -371,40 +421,32 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private void AdvanceHours(int hours)
     {
-        currentHour += Mathf.Max(0, hours);
-
-        while (currentHour >= 24 && !gameEnded)
+        int remaining = Mathf.Max(0, hours);
+        while (remaining > 0 && !gameEnded)
         {
-            ResolveActiveStoryEvent();
-            currentHour -= 24;
+            int untilBoundary = GetHoursUntilDayBoundary(currentHour);
+            if (remaining < untilBoundary)
+            {
+                currentHour = (currentHour + remaining) % 24;
+                remaining = 0;
+                break;
+            }
+
+            remaining -= untilBoundary;
+            currentHour = DayStartHour;
             sleepDone = false;
-
-            bool requiredDone = IsWeekend ? jobDone : schoolDone && homeworkDone;
-            if (!requiredDone)
-            {
-                scheduleFailureDays++;
-                SendScheduleWarning();
-            }
-
-            sleepDebt += 7;
-            currentDay++;
-
-            if (scheduleFailureDays >= CollapseFailureLimit)
-            {
-                EndGame("일상 붕괴", "밤을 넘겨 가며 시간을 사용했고 필수 일정과 수면이 무너졌다.");
-                return;
-            }
-
-            if (currentDay > FinalDay)
-            {
-                EndGame("일상 회복", "14일 동안 선택한 시간의 결과를 확인했다.");
-                return;
-            }
-
-            StartNewDay(true);
+            CompleteDayAtSeven(false, 0);
         }
 
         RefreshUI();
+    }
+
+    public static int GetHoursUntilDayBoundary(int hour)
+    {
+        int normalizedHour = ((hour % 24) + 24) % 24;
+        return normalizedHour < DayStartHour
+            ? DayStartHour - normalizedHour
+            : 24 - normalizedHour + DayStartHour;
     }
 
     private void SendScheduleWarning()
@@ -485,7 +527,7 @@ public sealed class GameFlowManager : MonoBehaviour
     {
         if (accepted)
         {
-            coinManager?.AddBankCash(1500, "Borrowed from mom");
+            coinManager?.AddBankCash(1500, "엄마에게 빌린 돈");
             debt += 1500;
             SendStoryStep("borrow_mom", "borrow_mom_accept", 1);
             UnlockHelpStory();
@@ -502,7 +544,7 @@ public sealed class GameFlowManager : MonoBehaviour
     {
         if (accepted)
         {
-            coinManager?.AddBankCash(2500, "Borrowed from Minjae");
+            coinManager?.AddBankCash(2500, "민재에게 빌린 돈");
             debt += 2500;
             SendStoryStep("borrow_friend", "borrow_friend_accept", 1);
             UnlockHelpStory();
@@ -535,8 +577,8 @@ public sealed class GameFlowManager : MonoBehaviour
             return;
         }
 
-        SendStoryStep("site_arc", $"cashout_pending_{gambleRounds}", 2);
-        ShowFeedback("환전 처리가 지연되었다. 게임은 계속 진행된다.");
+        SendStoryStep("cashout_small", $"cashout_small_{gambleRounds}", 0);
+        EndGame("불법 도박 연루", "소액 환전은 처리되었지만 계좌가 불법 도박 자금 흐름에 사용되어 조사를 받게 되었다. 금액이 작아도 위험은 사라지지 않는다.");
     }
 
     private void OnBankCashChanged(int value)
@@ -558,6 +600,19 @@ public sealed class GameFlowManager : MonoBehaviour
             actionBar.SetActive(openedApp == null);
         if (openedApp != null && borrowChoicePanel != null)
             borrowChoicePanel.SetActive(false);
+
+        if (currentDay != 1 || openedApp == null)
+            return;
+
+        if (openedApp == AppType.Map)
+            ShowTutorialStep(1);
+        else if (openedApp == AppType.Message)
+            ShowTutorialStep(3);
+        else if (openedApp == AppType.Bank)
+        {
+            ShowTutorialStep(4);
+            ShowTutorialStep(5);
+        }
     }
 
     private void SetGamblingAppVisibility(bool visible)
@@ -566,9 +621,26 @@ public sealed class GameFlowManager : MonoBehaviour
             gamblingAppIcon.SetActive(visible);
     }
 
-    private void SendInitialInvitation()
+    private void TrySendInvitationAfterSchool()
     {
+        if (currentDay < 2 || !schoolDone || invitationResolved || sentMessages.Contains("initial"))
+            return;
+
         SendStoryStep("initial", "initial", 0);
+    }
+
+    public void StartInvitationRetempt()
+    {
+        if (invitationResolved || gameEnded)
+            return;
+
+        SendStoryStep("spam_retempt", "spam_retempt_ad", 0);
+        SendStoryStep("spam_retempt", "spam_retempt_site", 1);
+        SendStoryWithChoices("spam_retempt", "spam_retempt_friend", 2, SpeakerType.Friend, new List<Choice>
+        {
+            new Choice { choiceText = "호기심에 링크를 누른다", nextDialogueID = -1, action = ChoiceAction.AcceptGambling, openApp = true, targetApp = AppType.Browser },
+            new Choice { choiceText = "알림을 끄고 휴대폰을 내려놓는다", nextDialogueID = -1, action = ChoiceAction.DeclineGambling }
+        });
     }
 
     private void TryStartRandomStoryEvent()
@@ -623,6 +695,49 @@ public sealed class GameFlowManager : MonoBehaviour
         Debug.LogWarning($"시나리오 메시지를 찾지 못했습니다: {eventId} / {step}");
     }
 
+    private void ShowTutorialStep(int step)
+    {
+        string key = $"tutorial_day1_{step}";
+        if (currentDay != 1 || !shownTutorialSteps.Add(key))
+            return;
+
+        ShowNarrationStep("tutorial_day1", step, 0);
+    }
+
+    private void ShowNarrationStep(string eventId, int step, int hours)
+    {
+        if (scenarioMessages == null || !scenarioMessages.TryGet(eventId, step, out ScenarioMessage entry))
+        {
+            Debug.LogWarning($"독백 시나리오를 찾지 못했습니다: {eventId} / {step}");
+            return;
+        }
+
+        string body = entry.message.Replace("{hours}", hours.ToString());
+        narrationQueue.Enqueue((string.IsNullOrWhiteSpace(entry.title) ? "나" : entry.title, body));
+        ShowNextNarration();
+    }
+
+    private void ShowNextNarration()
+    {
+        if (narrationPanel == null || isTransitioning || narrationPanel.activeSelf || narrationQueue.Count == 0)
+            return;
+
+        (string title, string body) = narrationQueue.Dequeue();
+        narrationTitleText.text = title;
+        narrationBodyText.text = body;
+        narrationPanel.SetActive(true);
+        narrationPanel.transform.SetAsLastSibling();
+    }
+
+    private void CloseNarration()
+    {
+        if (narrationPanel == null)
+            return;
+
+        narrationPanel.SetActive(false);
+        ShowNextNarration();
+    }
+
     private void SendStoryWithChoices(string eventId, string key, int step, SpeakerType speaker, List<Choice> choices)
     {
         SendStoryStep(eventId, key, step);
@@ -663,6 +778,7 @@ public sealed class GameFlowManager : MonoBehaviour
         fadeGroup.blocksRaycasts = false;
         isTransitioning = false;
         RefreshUI();
+        ShowNextNarration();
     }
 
     private IEnumerator FadeTo(float target, float duration)
@@ -686,6 +802,18 @@ public sealed class GameFlowManager : MonoBehaviour
             return;
 
         gameEnded = true;
+        narrationQueue.Clear();
+        if (narrationPanel != null)
+            narrationPanel.SetActive(false);
+        if (feedbackCoroutine != null)
+        {
+            StopCoroutine(feedbackCoroutine);
+            feedbackCoroutine = null;
+        }
+        if (feedbackGroup != null)
+            feedbackGroup.alpha = 0f;
+        notificationManager?.Clear();
+
         if (endPanel != null)
         {
             endTitleText.text = title;
@@ -776,7 +904,7 @@ public sealed class GameFlowManager : MonoBehaviour
             ? new[]
             {
                 $"{Mark(jobDone)} 알바 가기  (지도 · 카페)",
-                $"{Mark(sleepDone)} 잠자기",
+                $"{Mark(sleepDone)} 잠자기  (최소 5시간)",
                 CanRequestHelp ? "[  ] 도움 요청  (빚이 생긴 지금 선택 가능)" : "",
                 ""
             }
@@ -784,7 +912,7 @@ public sealed class GameFlowManager : MonoBehaviour
             {
                 $"{Mark(schoolDone)} 학교 가기  (오전 10시 도착 마감)",
                 $"{Mark(homeworkDone)} 숙제하기  (공부 · 5문제)",
-                $"{Mark(sleepDone)} 잠자기",
+                $"{Mark(sleepDone)} 잠자기  (최소 5시간)",
                 CanRequestHelp ? "[  ] 도움 요청  (빚이 생긴 지금 선택 가능)" : ""
             };
 
@@ -799,6 +927,8 @@ public sealed class GameFlowManager : MonoBehaviour
             return;
 
         TMP_FontAsset font = FindPreferredFont();
+
+        CreateSettingsApp(canvas, font);
 
         GameObject panel = CreatePanel("Daily Action Bar", canvas.transform, new Color(0.035f, 0.075f, 0.13f, 0.92f));
         actionBar = panel;
@@ -854,15 +984,20 @@ public sealed class GameFlowManager : MonoBehaviour
         closeBorrowButton.onClick.AddListener(() => borrowChoicePanel.SetActive(false));
         borrowChoicePanel.SetActive(false);
 
-        feedbackText = CreateText("Action Feedback", canvas.transform, font, 24, FontStyles.Bold, Color.white);
+        feedbackPanel = CreatePanel("Action Feedback Toast", canvas.transform, new Color(0.03f, 0.05f, 0.09f, 0.9f));
+        RectTransform toastRect = feedbackPanel.GetComponent<RectTransform>();
+        toastRect.anchorMin = new Vector2(0.5f, 0f);
+        toastRect.anchorMax = new Vector2(0.5f, 0f);
+        toastRect.pivot = new Vector2(0.5f, 0f);
+        toastRect.anchoredPosition = new Vector2(0f, 220f);
+        toastRect.sizeDelta = new Vector2(760f, 66f);
+        feedbackGroup = feedbackPanel.AddComponent<CanvasGroup>();
+        feedbackGroup.alpha = 0f;
+        feedbackGroup.blocksRaycasts = false;
+
+        feedbackText = CreateText("Action Feedback", feedbackPanel.transform, font, 24, FontStyles.Bold, Color.white);
         feedbackText.alignment = TextAlignmentOptions.Center;
-        feedbackText.color = new Color(1f, 1f, 1f, 0f);
-        RectTransform feedbackRect = feedbackText.rectTransform;
-        feedbackRect.anchorMin = new Vector2(0.5f, 0f);
-        feedbackRect.anchorMax = new Vector2(0.5f, 0f);
-        feedbackRect.pivot = new Vector2(0.5f, 0f);
-        feedbackRect.anchoredPosition = new Vector2(0f, 105f);
-        feedbackRect.sizeDelta = new Vector2(900f, 64f);
+        Stretch(feedbackText.rectTransform);
 
         GameObject fade = CreatePanel("Screen Fade", canvas.transform, Color.black);
         RectTransform fadeRect = fade.GetComponent<RectTransform>();
@@ -874,7 +1009,39 @@ public sealed class GameFlowManager : MonoBehaviour
         fadeCaption.alignment = TextAlignmentOptions.Center;
         Stretch(fadeCaption.rectTransform);
 
-        endPanel = CreatePanel("Ending Panel", canvas.transform, new Color(0.025f, 0.05f, 0.09f, 0.98f));
+        narrationPanel = CreatePanel("Narration Dialogue", canvas.transform, new Color(0f, 0f, 0f, 0.42f));
+        Stretch(narrationPanel.GetComponent<RectTransform>());
+
+        GameObject narrationBox = CreatePanel("Narration Box", narrationPanel.transform, new Color(0.035f, 0.065f, 0.11f, 1f));
+        RectTransform narrationBoxRect = narrationBox.GetComponent<RectTransform>();
+        narrationBoxRect.anchorMin = new Vector2(0.16f, 0.12f);
+        narrationBoxRect.anchorMax = new Vector2(0.84f, 0.42f);
+        narrationBoxRect.offsetMin = narrationBoxRect.offsetMax = Vector2.zero;
+
+        narrationTitleText = CreateText("Narration Speaker", narrationBox.transform, font, 28, FontStyles.Bold, new Color(0.45f, 0.72f, 1f));
+        narrationTitleText.alignment = TextAlignmentOptions.Left;
+        SetRect(narrationTitleText.rectTransform, new Vector2(42f, -28f), new Vector2(180f, 46f));
+
+        narrationBodyText = CreateText("Narration Body", narrationBox.transform, font, 31, FontStyles.Normal, Color.white);
+        narrationBodyText.textWrappingMode = TextWrappingModes.Normal;
+        narrationBodyText.alignment = TextAlignmentOptions.TopLeft;
+        RectTransform narrationBodyRect = narrationBodyText.rectTransform;
+        narrationBodyRect.anchorMin = new Vector2(0f, 0f);
+        narrationBodyRect.anchorMax = new Vector2(1f, 1f);
+        narrationBodyRect.offsetMin = new Vector2(42f, 72f);
+        narrationBodyRect.offsetMax = new Vector2(-210f, -82f);
+
+        narrationContinueButton = CreateButton("Narration Continue Button", narrationBox.transform, font, "계속", new Color(0.16f, 0.45f, 0.78f));
+        RectTransform narrationButtonRect = narrationContinueButton.GetComponent<RectTransform>();
+        narrationButtonRect.anchorMin = new Vector2(1f, 0f);
+        narrationButtonRect.anchorMax = new Vector2(1f, 0f);
+        narrationButtonRect.pivot = new Vector2(1f, 0f);
+        narrationButtonRect.anchoredPosition = new Vector2(-34f, 28f);
+        narrationButtonRect.sizeDelta = new Vector2(150f, 62f);
+        narrationContinueButton.onClick.AddListener(CloseNarration);
+        narrationPanel.SetActive(false);
+
+        endPanel = CreatePanel("Ending Panel", canvas.transform, new Color(0.025f, 0.05f, 0.09f, 1f));
         Stretch(endPanel.GetComponent<RectTransform>());
         endTitleText = CreateText("Ending Title", endPanel.transform, font, 58, FontStyles.Bold, Color.white);
         endTitleText.alignment = TextAlignmentOptions.Center;
@@ -901,7 +1068,7 @@ public sealed class GameFlowManager : MonoBehaviour
         endPanel.SetActive(false);
 
         panel.transform.SetAsLastSibling();
-        feedbackText.transform.SetAsLastSibling();
+        feedbackPanel.transform.SetAsLastSibling();
         fade.transform.SetAsLastSibling();
     }
 
@@ -918,20 +1085,52 @@ public sealed class GameFlowManager : MonoBehaviour
     private IEnumerator FeedbackRoutine(string message)
     {
         feedbackText.text = message;
-        feedbackText.color = Color.white;
+        feedbackGroup.alpha = 1f;
         yield return new WaitForSeconds(1.8f);
 
         float elapsed = 0f;
         while (elapsed < 0.35f)
         {
             elapsed += Time.deltaTime;
-            Color color = feedbackText.color;
-            color.a = 1f - elapsed / 0.35f;
-            feedbackText.color = color;
+            feedbackGroup.alpha = 1f - elapsed / 0.35f;
             yield return null;
         }
 
+        feedbackGroup.alpha = 0f;
         feedbackCoroutine = null;
+    }
+
+    private void CreateSettingsApp(Canvas canvas, TMP_FontAsset font)
+    {
+        GameObject settings = CreatePanel("Runtime Settings App", canvas.transform, new Color(0.94f, 0.95f, 0.97f, 1f));
+        Stretch(settings.GetComponent<RectTransform>());
+
+        TMP_Text title = CreateText("Settings Title", settings.transform, font, 46, FontStyles.Bold, new Color(0.08f, 0.1f, 0.15f));
+        title.text = "설정";
+        SetRect(title.rectTransform, new Vector2(100f, -115f), new Vector2(520f, 70f));
+
+        TMP_Text info = CreateText("Settings Info", settings.transform, font, 28, FontStyles.Normal, new Color(0.18f, 0.21f, 0.27f));
+        info.text = "공짜 5천원\n청소년 도박 예방 시뮬레이션\n\n플레이 기록은 기기에 저장되지 않습니다.\n도박 문제 예방·상담 1336";
+        info.textWrappingMode = TextWrappingModes.Normal;
+        SetRect(info.rectTransform, new Vector2(100f, -230f), new Vector2(1100f, 360f));
+
+        Button clearNotifications = CreateButton("Clear Notifications Button", settings.transform, font, "알림 기록 지우기", new Color(0.16f, 0.45f, 0.78f));
+        SetRect(clearNotifications.GetComponent<RectTransform>(), new Vector2(100f, -630f), new Vector2(360f, 76f));
+        clearNotifications.onClick.AddListener(() =>
+        {
+            notificationManager?.Clear();
+            ShowFeedback("알림 기록을 지웠습니다.");
+        });
+
+        settings.SetActive(false);
+        appWindow?.RegisterRuntimeApp(AppType.Setting, settings);
+
+        Button settingButton = FindSceneObject("Setting_Btn")?.GetComponent<Button>();
+        if (settingButton != null && appWindow != null)
+        {
+            settingButton.onClick.RemoveAllListeners();
+            settingButton.onClick.AddListener(appWindow.OpenSetting);
+        }
     }
 
     private static string NormalizeLocation(string raw)

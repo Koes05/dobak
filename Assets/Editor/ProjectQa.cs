@@ -23,7 +23,9 @@ namespace Dobak.Editor
             ScenarioMessageTable scenario = ScenarioMessageTable.Load();
             if (scenario.Count("initial") < 1 || scenario.Count("school_project") < 3 ||
                 scenario.Count("family_dinner") < 3 || scenario.Count("gambling_arc") < 3 ||
-                scenario.Count("borrow_mom") < 3 || scenario.Count("borrow_friend") < 3)
+                scenario.Count("borrow_mom") < 3 || scenario.Count("borrow_friend") < 3 ||
+                scenario.Count("tutorial_day1") < 6 || scenario.Count("day_transition") < 2 ||
+                scenario.Count("spam_retempt") < 3 || scenario.Count("cashout_small") < 1)
             {
                 failures.Add("ScenarioMessages.csv does not contain enough playable event messages.");
             }
@@ -37,6 +39,20 @@ namespace Dobak.Editor
                 SlotMachineManager.GetSessionWinBoost(10) <= SlotMachineManager.GetSessionWinBoost(5))
             {
                 failures.Add("Slot session win boost is not configured for rounds 5 and 10.");
+            }
+
+            if (GameFlowManager.GetSleepHoursUntilSeven(23) != 8 ||
+                GameFlowManager.GetSleepHoursUntilSeven(2) != 5 ||
+                GameFlowManager.GetSleepHoursUntilSeven(4) != 3)
+            {
+                failures.Add("Sleep duration must be calculated from the current hour until 7 AM.");
+            }
+
+            if (GameFlowManager.GetHoursUntilDayBoundary(23) != 8 ||
+                GameFlowManager.GetHoursUntilDayBoundary(2) != 5 ||
+                GameFlowManager.GetHoursUntilDayBoundary(7) != 24)
+            {
+                failures.Add("A game day must advance only when the clock reaches 7 AM.");
             }
 
             if (!File.Exists(MainScene))

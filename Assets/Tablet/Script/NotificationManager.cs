@@ -140,6 +140,7 @@ public class NotificationManager : MonoBehaviour
     public void Clear()
     {
         notifications.Clear();
+        popup.HideImmediately();
 
         foreach (Transform child in content)
         {

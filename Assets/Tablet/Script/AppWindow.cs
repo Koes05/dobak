@@ -215,6 +215,15 @@ public class AppWindow : MonoBehaviour
         OpenApp(AppType.Study);
     }
 
+    public void RegisterRuntimeApp(AppType type, GameObject app)
+    {
+        if (app == null)
+            return;
+
+        appDictionary[type] = app;
+        app.SetActive(false);
+    }
+
     public void OpenSetting()
     {
         OpenApp(AppType.Setting);

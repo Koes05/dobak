@@ -100,6 +100,8 @@ public class DialogueManager : MonoBehaviour
     private ProfileSlot profileTemplate;
     private Vector2 contactStartPosition;
     private float contactSpacing = 120f;
+    private RectTransform contactContent;
+    private ScrollRect contactScroll;
 
     private void Awake()
     {
@@ -163,7 +165,6 @@ public class DialogueManager : MonoBehaviour
             return;
 
         profileTemplate = profileSlots[0];
-        contactStartPosition = profileTemplate.GetComponent<RectTransform>().anchoredPosition;
         if (profileSlots.Count > 1)
         {
             float measuredSpacing = Mathf.Abs(profileSlots[0].GetComponent<RectTransform>().anchoredPosition.y -
@@ -171,6 +172,8 @@ public class DialogueManager : MonoBehaviour
             if (measuredSpacing > 1f)
                 contactSpacing = measuredSpacing;
         }
+
+        ConfigureContactScroll();
 
         contactOrder.Clear();
         contactOrder.Add(SpeakerType.Friend);
@@ -243,10 +246,16 @@ public class DialogueManager : MonoBehaviour
 
         contactOrder.Insert(0, speaker);
         ReflowProfileSlots();
+        if (contactScroll != null)
+            contactScroll.verticalNormalizedPosition = 0f;
     }
 
     private void ReflowProfileSlots()
     {
+        bool keepAtTop = contactScroll == null || contactContent == null ||
+                         contactContent.rect.height <= contactScroll.viewport.rect.height + 1f ||
+                         contactScroll.verticalNormalizedPosition <= 0.05f;
+
         for (int i = 0; i < contactOrder.Count; i++)
         {
             if (!profileSlotsBySpeaker.TryGetValue(contactOrder[i], out ProfileSlot slot))
@@ -256,6 +265,58 @@ public class DialogueManager : MonoBehaviour
             rect.anchoredPosition = new Vector2(contactStartPosition.x, contactStartPosition.y - contactSpacing * i);
             slot.transform.SetSiblingIndex(i);
         }
+
+        if (contactContent != null)
+        {
+            float requiredHeight = Mathf.Max(contactScroll.viewport.rect.height, 30f + contactSpacing * contactOrder.Count);
+            contactContent.sizeDelta = new Vector2(0f, requiredHeight);
+            LayoutRebuilder.ForceRebuildLayoutImmediate(contactContent);
+            if (keepAtTop)
+                contactScroll.verticalNormalizedPosition = 0f;
+        }
+    }
+
+    private void ConfigureContactScroll()
+    {
+        if (profileTemplate == null || contactScroll != null)
+            return;
+
+        Transform messageRoot = profileTemplate.transform.parent;
+        GameObject viewportObject = new GameObject("Contact Viewport", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(RectMask2D), typeof(ScrollRect));
+        viewportObject.layer = profileTemplate.gameObject.layer;
+        viewportObject.transform.SetParent(messageRoot, false);
+
+        RectTransform viewport = viewportObject.GetComponent<RectTransform>();
+        viewport.anchorMin = viewport.anchorMax = new Vector2(0.5f, 0.5f);
+        viewport.pivot = new Vector2(0.5f, 0.5f);
+        viewport.anchoredPosition = new Vector2(-630f, -65f);
+        viewport.sizeDelta = new Vector2(560f, 650f);
+
+        Image viewportImage = viewportObject.GetComponent<Image>();
+        viewportImage.color = new Color(1f, 1f, 1f, 0.001f);
+
+        GameObject contentObject = new GameObject("Contact Content", typeof(RectTransform));
+        contentObject.layer = profileTemplate.gameObject.layer;
+        contentObject.transform.SetParent(viewport, false);
+        contactContent = contentObject.GetComponent<RectTransform>();
+        contactContent.anchorMin = new Vector2(0f, 1f);
+        contactContent.anchorMax = new Vector2(1f, 1f);
+        contactContent.pivot = new Vector2(0.5f, 1f);
+        contactContent.anchoredPosition = Vector2.zero;
+        contactContent.sizeDelta = new Vector2(0f, 650f);
+
+        foreach (ProfileSlot slot in profileSlots)
+            slot.transform.SetParent(contactContent, false);
+
+        contactStartPosition = new Vector2(0f, -60f);
+        contactScroll = viewportObject.GetComponent<ScrollRect>();
+        contactScroll.content = contactContent;
+        contactScroll.viewport = viewport;
+        contactScroll.horizontal = false;
+        contactScroll.vertical = true;
+        contactScroll.movementType = ScrollRect.MovementType.Clamped;
+        contactScroll.scrollSensitivity = 45f;
+        contactScroll.verticalNormalizedPosition = 0f;
     }
 
     private void ConfigureChatViewport()
@@ -464,6 +525,11 @@ public class DialogueManager : MonoBehaviour
                 case ChoiceAction.DeclineGambling:
                     GameFlowManager.Instance.ResolveInvitation(false);
                     break;
+                case ChoiceAction.RejectFirstInvitation:
+                    GameFlowManager.Instance.StartInvitationRetempt();
+                    channels[currentSpeaker].currentDialogueID = -1;
+                    channels[currentSpeaker].showDialogueChoices = false;
+                    return;
                 case ChoiceAction.RequestHelp:
                     GameFlowManager.Instance.RequestHelp();
                     break;
@@ -544,7 +610,7 @@ public class DialogueManager : MonoBehaviour
         if (slot == null)
             return;
 
-        string contactLabel = speaker == SpeakerType.Friend ? "동창친구" : channels[speaker].speakerName;
+        string contactLabel = channels[speaker].speakerName;
         slot.Configure(speaker, contactLabel, () => OpenDialogue(speaker));
         slot.SetLastMessage(lastMsg);
         slot.UpdateUnreadBadge(unread);
@@ -609,8 +675,8 @@ public class DialogueManager : MonoBehaviour
 
         var friendNodes = new Dictionary<int, DialogueNode>
         {
-            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Friend, speakerName = "민재", message = "야, 가입하면 무료 포인트를 준다는 곳을 찾았어. 링크 보내줄까?", choices = new List<Choice> { new Choice { choiceText = "예", nextDialogueID = 2 }, new Choice { choiceText = "아니오", nextDialogueID = -1, action = ChoiceAction.DeclineGambling } } }},
-            { 2, new DialogueNode { id = 2, speakerType = SpeakerType.Friend, speakerName = "민재", message = "무료 포인트만 받아도 된대. 접속할지는 네가 정해.", choices = new List<Choice> { new Choice { choiceText = "접속한다", nextDialogueID = -1, action = ChoiceAction.AcceptGambling, openApp = true, targetApp = AppType.Browser }, new Choice { choiceText = "닫는다", nextDialogueID = -1, action = ChoiceAction.DeclineGambling } } }}
+            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Friend, speakerName = "민재", message = "야, 가입하면 무료 포인트를 준다는 곳을 찾았어. 링크 보내줄까?", choices = new List<Choice> { new Choice { choiceText = "내용을 확인한다", nextDialogueID = 2 }, new Choice { choiceText = "문자를 지우고 차단한다", nextDialogueID = -1, action = ChoiceAction.RejectFirstInvitation } } }},
+            { 2, new DialogueNode { id = 2, speakerType = SpeakerType.Friend, speakerName = "민재", message = "무료 포인트만 받아도 된대. 접속할지는 네가 정해.", choices = new List<Choice> { new Choice { choiceText = "무료 포인트만 받고 시작한다", nextDialogueID = -1, action = ChoiceAction.AcceptGambling, openApp = true, targetApp = AppType.Browser }, new Choice { choiceText = "문자를 지우고 차단한다", nextDialogueID = -1, action = ChoiceAction.RejectFirstInvitation } } }}
         };
 
         allDialogues[SpeakerType.Friend] = friendNodes;
@@ -632,8 +698,7 @@ public class DialogueManager : MonoBehaviour
             };
         }
 
-        if (!string.IsNullOrWhiteSpace(speakerName))
-            channels[speaker].speakerName = speakerName;
+        channels[speaker].speakerName = GetContactName(speaker, speakerName);
 
         // 마지막 메시지 변경
         channels[speaker].lastMessage = message;
@@ -671,6 +736,21 @@ public class DialogueManager : MonoBehaviour
         if (dialoguePanel != null && dialoguePanel.activeInHierarchy && currentSpeaker == speaker)
             CreateChoiceButtons(channel.eventChoices);
     }
+
+    private static string GetContactName(SpeakerType speaker, string providedName)
+    {
+        return speaker switch
+        {
+            SpeakerType.Friend => string.IsNullOrWhiteSpace(providedName) ? "동창친구" : providedName,
+            SpeakerType.Mom => "엄마",
+            SpeakerType.Teacher => "학교",
+            SpeakerType.CafeManager => "카페 매니저",
+            SpeakerType.Bank => "은행 알림",
+            SpeakerType.Site => "사이트 알림",
+            SpeakerType.Counselor => "상담 선생님",
+            _ => string.IsNullOrWhiteSpace(providedName) ? speaker.ToString() : providedName
+        };
+    }
 }
 
 public enum ChoiceAction
@@ -678,6 +758,7 @@ public enum ChoiceAction
     None,
     AcceptGambling,
     DeclineGambling,
+    RejectFirstInvitation,
     RequestHelp,
     AcceptMomLoan,
     DeclineMomLoan,

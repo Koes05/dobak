@@ -33,6 +33,7 @@ namespace Dobak.App.Casino
         [SerializeField] private GameObject profilePanel;
 
         private NotificationManager notificationManager;
+        private TMP_Text homePromotionText;
 
         private void OnEnable()
         {
@@ -56,6 +57,7 @@ namespace Dobak.App.Casino
             }
 
             Init();
+            EnsureHomeContent();
         }
 
         private void OnDisable()
@@ -77,7 +79,9 @@ namespace Dobak.App.Casino
 
         private void UpdateDisplay(int casinoCash)
         {
-            casinoCashText.text = $"Cash: ${casinoCash}";
+            casinoCashText.text = $"사이트 포인트  {casinoCash:N0}P";
+            if (home_cashText != null)
+                home_cashText.text = $"보유 포인트  {casinoCash:N0}P";
         }
 
         private void Init()
@@ -94,6 +98,26 @@ namespace Dobak.App.Casino
             // 예방 시뮬레이션은 계정을 만들지 않고 허구 사이트 홈으로 바로 진입한다.
             if (menu_myPageButton != null)
                 menu_myPageButton.gameObject.SetActive(false);
+        }
+
+        private void EnsureHomeContent()
+        {
+            if (homePanel == null || homePromotionText != null)
+                return;
+
+            GameObject message = new GameObject("Site Promotion", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+            message.transform.SetParent(homePanel.transform, false);
+            homePromotionText = message.GetComponent<TextMeshProUGUI>();
+            homePromotionText.font = casinoCashText.font;
+            homePromotionText.fontSize = 42f;
+            homePromotionText.color = Color.white;
+            homePromotionText.alignment = TextAlignmentOptions.Center;
+            homePromotionText.text = "첫 이용 보너스 지급 완료\n\n지금 시작하면 추가 포인트를 받을 수 있습니다";
+
+            RectTransform rect = homePromotionText.rectTransform;
+            rect.anchorMin = new Vector2(0.12f, 0.2f);
+            rect.anchorMax = new Vector2(0.88f, 0.8f);
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
         }
 
         private void OnHomeButtonClicked()

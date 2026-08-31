@@ -89,7 +89,7 @@ namespace Dobak.Manager
 
             OnBankCashChanged?.Invoke(BankCash);
             OnCasinoCashChanged?.Invoke(CasinoCash);
-            AddRecord($"Use {amount}$ in Casino", -amount, TransactionScope.BankToCasinoCharge);
+            AddRecord("사이트 포인트 충전", -amount, TransactionScope.BankToCasinoCharge);
 
             return true;
         }
@@ -114,7 +114,7 @@ namespace Dobak.Manager
             OnCasinoCashChanged?.Invoke(CasinoCash);
         }
 
-        public void AddBankCash(int amount, string description = "Bank deposit")
+        public void AddBankCash(int amount, string description = "입금")
         {
             if (amount <= 0) return;
 

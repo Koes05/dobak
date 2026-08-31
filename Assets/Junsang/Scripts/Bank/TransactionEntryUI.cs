@@ -11,9 +11,8 @@ namespace Dobak.App.Bank
 
         public void Set(TransactionRecord record)
         {
-            descriptionText.text = record.description;
-            // 필요하면 아래처럼 시각/잔액도 같이 표시 가능
-            // descriptionText.text = $"{record.description}  ({record.timestamp:HH:mm})";
+            string sign = record.amount >= 0 ? "+" : "";
+            descriptionText.text = $"{record.description}   {sign}{record.amount:N0}원   잔액 {record.bankBalanceAfter:N0}원";
         }
     }
 }
