@@ -8,6 +8,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using TMPro;
+using Dobak.App.Casino.SlotMachine;
 
 namespace Dobak.Editor
 {
@@ -18,6 +19,20 @@ namespace Dobak.Editor
         public static void Validate()
         {
             var failures = new List<string>();
+
+            ScenarioMessageTable scenario = ScenarioMessageTable.Load();
+            if (scenario.Count("initial") < 1 || scenario.Count("daily_weekday") < 5 ||
+                scenario.Count("spin_loss") < 4 || scenario.Count("round_10") < 2)
+            {
+                failures.Add("ScenarioMessages.csv does not contain enough playable event messages.");
+            }
+
+            if (SlotMachineManager.GetSessionWinBoost(4) != 0f ||
+                SlotMachineManager.GetSessionWinBoost(5) <= 0f ||
+                SlotMachineManager.GetSessionWinBoost(10) <= SlotMachineManager.GetSessionWinBoost(5))
+            {
+                failures.Add("Slot session win boost is not configured for rounds 5 and 10.");
+            }
 
             if (!File.Exists(MainScene))
                 failures.Add($"Main scene is missing: {MainScene}");

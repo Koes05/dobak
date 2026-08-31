@@ -101,6 +101,9 @@ public class AppWindow : MonoBehaviour
 
     public void OpenApp(AppType type)
     {
+        if (type == AppType.Browser && GameFlowManager.Instance != null && !GameFlowManager.Instance.IsGamblingUnlocked)
+            return;
+
         if (type == AppType.Study && GameFlowManager.Instance != null && !GameFlowManager.Instance.CanOpenStudy())
             return;
 

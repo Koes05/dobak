@@ -112,7 +112,7 @@ public class NotificationManager : MonoBehaviour
             // DialogueManager가 존재하는지 확인
             if (dialogueManager != null)
             {
-                dialogueManager.ReceiveNotificationMessage(data.speakerType, data.message);
+                dialogueManager.ReceiveNotificationMessage(data.speakerType, data.title, data.message);
             }
         }
 

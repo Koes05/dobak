@@ -23,6 +23,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private NotificationManager notificationManager;
     private AppWindow appWindow;
     private CoinManager coinManager;
+    private ScenarioMessageTable scenarioMessages;
 
     private TMP_Text moneyText;
     private TMP_Text feedbackText;
@@ -35,8 +36,10 @@ public sealed class GameFlowManager : MonoBehaviour
     private GameObject endPanel;
     private TMP_Text endTitleText;
     private TMP_Text endBodyText;
+    private Button restartButton;
     private Coroutine feedbackCoroutine;
     private GameObject actionBar;
+    private GameObject gamblingAppIcon;
     private readonly List<TMP_Text> dateTexts = new List<TMP_Text>();
     private readonly List<TMP_Text> clockTexts = new List<TMP_Text>();
     private readonly List<TMP_Text> locationTexts = new List<TMP_Text>();
@@ -99,10 +102,13 @@ public sealed class GameFlowManager : MonoBehaviour
         notificationManager = FindAnyObjectByType<NotificationManager>();
         appWindow = FindAnyObjectByType<AppWindow>();
         coinManager = CoinManager.Instance ?? FindAnyObjectByType<CoinManager>();
+        scenarioMessages = ScenarioMessageTable.Load();
 
         ApplyKoreanFont();
         BindExistingStatusText();
         CreateRuntimeUI();
+        gamblingAppIcon = FindSceneObject("BrowserApp");
+        SetGamblingAppVisibility(false);
 
         if (appWindow != null)
             appWindow.AppChanged += OnAppChanged;
@@ -191,7 +197,7 @@ public sealed class GameFlowManager : MonoBehaviour
             {
                 schoolDone = true;
                 AdvanceHours(7);
-                SendOnce("school_done", "학교", "수업이 끝났습니다. 오늘 숙제를 확인하세요.", SpeakerType.Unknown);
+                SendScenario("school_done", $"school_done_{currentDay}", currentDay);
             }
             else if (location == "카페" && IsWeekend && !jobDone)
             {
@@ -220,6 +226,8 @@ public sealed class GameFlowManager : MonoBehaviour
             return;
         }
 
+        coinManager?.AddCasinoCredit(5000);
+        SetGamblingAppVisibility(true);
         SendOnce("welcome", "사이트 알림", "무료 체험 포인트 5,000P가 지급되었습니다.", SpeakerType.Scammer);
         ShowFeedback("도박 사이트가 열렸다. 이용 여부는 계속 선택할 수 있다.");
     }
@@ -229,7 +237,7 @@ public sealed class GameFlowManager : MonoBehaviour
         if (!CanRequestHelp)
             return;
 
-        SendOnce("help", "상담 선생님", "혼자 해결하지 않아도 괜찮아. 지금 상황부터 같이 정리해 보자.", SpeakerType.Unknown);
+        SendScenario("help", "help", 0);
         EndGame("도움 요청", "상황을 숨기지 않고 도움을 요청했다. 남은 빚과 일정, 이용 기록을 함께 정리하기 시작했다.");
     }
 
@@ -241,7 +249,7 @@ public sealed class GameFlowManager : MonoBehaviour
         homeworkDone = true;
         AdvanceHours(2);
         ShowFeedback($"숙제 완료: {totalQuestions}문제 중 {correctAnswers}문제 정답");
-        SendOnce($"homework_{currentDay}", "과제 제출", "오늘의 숙제가 제출되었습니다.", SpeakerType.Unknown);
+        SendScenario("homework_done", $"homework_{currentDay}", currentDay);
     }
 
     public bool CanOpenStudy()
@@ -337,13 +345,10 @@ public sealed class GameFlowManager : MonoBehaviour
 
         if (sendDailyMessage)
         {
-            if (IsWeekend)
-                SendOnce($"shift_{currentDay}", "카페 매니저", "오늘 오후 근무가 있습니다. 늦지 않게 와 주세요.", SpeakerType.Unknown);
-            else if (UnityEngine.Random.value < 0.45f)
-                SendEverydayMessage();
+            SendEverydayMessage();
 
-            if (gamblingUnlocked && currentDay >= 2 && UnityEngine.Random.value < 0.3f)
-                SendOnce($"site_push_{currentDay}", "사이트 알림", "출석 보상이 곧 만료됩니다. 시간 제한을 강조하는 알림에 주의하세요.", SpeakerType.Scammer);
+            if (gamblingUnlocked && currentDay >= 2 && currentDay % 2 == 0)
+                SendScenario("site_push", $"site_push_{currentDay}", currentDay);
         }
 
         RefreshUI();
@@ -390,15 +395,15 @@ public sealed class GameFlowManager : MonoBehaviour
     {
         if (IsWeekend)
         {
-            SendOnce($"miss_job_{currentDay}", "카페 매니저", "오늘 근무 시간인데 연락이 되지 않네요. 다음 근무는 조정이 필요합니다.", SpeakerType.Unknown);
+            SendScenario("miss_job", $"miss_job_{currentDay}", currentDay);
         }
         else if (!schoolDone)
         {
-            SendOnce($"miss_school_{currentDay}", "담임 선생님", "오늘 등교하지 않았습니다. 무슨 일이 있는지 확인해 주세요.", SpeakerType.Unknown);
+            SendScenario("miss_school", $"miss_school_{currentDay}", currentDay);
         }
         else if (!homeworkDone)
         {
-            SendOnce($"miss_homework_{currentDay}", "담임 선생님", "오늘 숙제가 제출되지 않았습니다. 내일까지 확인해 주세요.", SpeakerType.Unknown);
+            SendScenario("miss_homework", $"miss_homework_{currentDay}", currentDay);
         }
     }
 
@@ -409,14 +414,18 @@ public sealed class GameFlowManager : MonoBehaviour
             gambleLosses++;
 
         if (gambleRounds == 1)
-            SendOnce("friend_after_first", "민재", "진짜 들어갔네? 무료 포인트로만 하면 손해 볼 건 없잖아.", SpeakerType.Friend);
-        else if (won && gambleRounds % 2 == 0)
-            SendOnce($"friend_win_{gambleRounds}", "민재", "포인트 늘었네. 이럴 때 조금 더 해보는 거지.", SpeakerType.Friend);
-        else if (!won && gambleLosses % 2 == 0)
-            SendOnce($"friend_loss_{gambleLosses}", "민재", "처음엔 원래 잘 안 맞아. 조금만 더 하면 돌아올 수도 있어.", SpeakerType.Friend);
+            SendScenario("first_spin", "friend_after_first", 0);
+        else if (won)
+            SendScenario("spin_win", $"friend_win_{gambleRounds}", gambleRounds);
+        else
+            SendScenario("spin_loss", $"friend_loss_{gambleRounds}", gambleLosses - 1);
 
-        if (gambleRounds >= 3)
-            SendOnce("bank_repeat", "은행 알림", "평소와 다른 반복 이체가 확인되었습니다. 거래 내역을 확인하세요.", SpeakerType.Unknown);
+        if (gambleRounds == 3)
+            SendScenario("round_3", "round_3", 0);
+        if (gambleRounds == 5)
+            SendScenario("round_5", "round_5", currentDay);
+        if (gambleRounds == 10)
+            SendScenario("round_10", "round_10", currentDay);
     }
 
     private void BorrowMoney()
@@ -426,8 +435,8 @@ public sealed class GameFlowManager : MonoBehaviour
 
         coinManager.AddBankCash(3000, "Fictional emergency loan");
         debt += 4500;
-        SendOnce($"loan_{debt}", "대출 알림", "3,000원이 입금되었습니다. 갚아야 할 금액은 4,500원입니다.", SpeakerType.Scammer);
-        SendOnce("help_available", "상담 안내", "빚이 생겼다면 혼자 감당하지 말고 도움을 요청할 수 있습니다.", SpeakerType.Unknown);
+        SendScenario("loan", $"loan_{debt}", debt);
+        SendScenario("help_available", "help_available", 0);
         RefreshUI();
 
         if (debt >= DebtEndingThreshold)
@@ -439,14 +448,14 @@ public sealed class GameFlowManager : MonoBehaviour
         if (gameEnded || coinManager == null || coinManager.CasinoCash < 1000)
             return;
 
-        SendOnce("cashout", "사이트 알림", "고액 환전을 위해 추가 보증금이 필요합니다.", SpeakerType.Scammer);
+        SendScenario("cashout", "cashout", 0);
         EndGame("먹튀", "환전을 요청하자 추가 입금을 요구했고, 잠시 뒤 계정에 접속할 수 없게 되었다.");
     }
 
     private void OnBankCashChanged(int value)
     {
         if (value <= 20)
-            SendOnce("low_balance", "은행 알림", "계좌 잔액이 거의 남지 않았습니다.", SpeakerType.Unknown);
+            SendScenario("low_balance", "low_balance", 0);
 
         RefreshUI();
     }
@@ -462,20 +471,32 @@ public sealed class GameFlowManager : MonoBehaviour
             actionBar.SetActive(openedApp == null);
     }
 
+    private void SetGamblingAppVisibility(bool visible)
+    {
+        if (gamblingAppIcon != null)
+            gamblingAppIcon.SetActive(visible);
+    }
+
     private void SendInitialInvitation()
     {
-        SendOnce("initial", "민재", "야, 가입하면 무료 포인트를 준다는 곳을 찾았어. 링크 보내줄까?", SpeakerType.Friend);
+        SendScenario("initial", "initial", 0);
     }
 
     private void SendEverydayMessage()
     {
-        int index = UnityEngine.Random.Range(0, 3);
-        if (index == 0)
-            SendOnce($"daily_{currentDay}", "준호", "오늘 수업 끝나고 같이 편의점 갈래?", SpeakerType.Unknown);
-        else if (index == 1)
-            SendOnce($"daily_{currentDay}", "서연", "내일 제출할 숙제 어디까지 했어? 모르는 문제 있으면 같이 보자.", SpeakerType.Unknown);
-        else
-            SendOnce($"daily_{currentDay}", "엄마", "오늘은 다 같이 저녁 먹자. 시간 맞으면 바로 와.", SpeakerType.Mom);
+        string trigger = IsWeekend ? "daily_weekend" : "daily_weekday";
+        SendScenario(trigger, $"daily_{currentDay}", currentDay - 1);
+    }
+
+    private void SendScenario(string trigger, string key, int index)
+    {
+        if (scenarioMessages != null && scenarioMessages.TryGet(trigger, index, out ScenarioMessage entry))
+        {
+            SendOnce(key, entry.title, entry.message, entry.speaker);
+            return;
+        }
+
+        Debug.LogWarning($"시나리오 메시지를 찾지 못했습니다: {trigger}");
     }
 
     private void SendOnce(string key, string title, string message, SpeakerType speaker)
@@ -546,6 +567,11 @@ public sealed class GameFlowManager : MonoBehaviour
         RefreshUI();
     }
 
+    public void RestartGame()
+    {
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
     private void RefreshUI()
     {
         string weekday = GetWeekdayName(currentDay);
@@ -565,13 +591,6 @@ public sealed class GameFlowManager : MonoBehaviour
 
         UpdateHomeChecklist();
 
-        if (moneyText != null)
-        {
-            int bank = coinManager != null ? coinManager.BankCash : 0;
-            int casino = coinManager != null ? coinManager.CasinoCash : 0;
-            moneyText.text = $"통장 {bank:N0}  ·  사이트 {casino:N0}  ·  빚 {debt:N0}  ·  일정 누락 {scheduleFailureDays}/{CollapseFailureLimit}";
-        }
-
         if (sleepButton != null)
             sleepButton.interactable = !gameEnded && !isTransitioning;
         if (helpButton != null)
@@ -585,7 +604,7 @@ public sealed class GameFlowManager : MonoBehaviour
             loanButton.interactable = debt < DebtEndingThreshold;
         }
         if (cashOutButton != null)
-            cashOutButton.gameObject.SetActive(!gameEnded && coinManager != null && coinManager.CasinoCash >= 1000);
+            cashOutButton.gameObject.SetActive(!gameEnded && gambleRounds >= 5 && coinManager != null && coinManager.CasinoCash >= 1000);
     }
 
     private void BindExistingStatusText()
@@ -656,25 +675,25 @@ public sealed class GameFlowManager : MonoBehaviour
         panelRect.anchorMax = Vector2.zero;
         panelRect.pivot = Vector2.zero;
         panelRect.anchoredPosition = new Vector2(200f, 125f);
-        panelRect.sizeDelta = new Vector2(750f, 130f);
+        panelRect.sizeDelta = new Vector2(750f, 90f);
 
         moneyText = CreateText("Money Text", panel.transform, font, 20, FontStyles.Normal, new Color(0.64f, 0.8f, 0.92f));
-        SetRect(moneyText.rectTransform, new Vector2(20f, -12f), new Vector2(710f, 30f));
+        moneyText.gameObject.SetActive(false);
 
         sleepButton = CreateButton("Sleep Button", panel.transform, font, "잠자기", new Color(0.16f, 0.45f, 0.78f));
-        SetRect(sleepButton.GetComponent<RectTransform>(), new Vector2(20f, -56f), new Vector2(220f, 58f));
+        SetRect(sleepButton.GetComponent<RectTransform>(), new Vector2(20f, -16f), new Vector2(220f, 58f));
         sleepButton.onClick.AddListener(Sleep);
 
         helpButton = CreateButton("Help Button", panel.transform, font, "도움 요청", new Color(0.16f, 0.58f, 0.48f));
-        SetRect(helpButton.GetComponent<RectTransform>(), new Vector2(255f, -56f), new Vector2(220f, 58f));
+        SetRect(helpButton.GetComponent<RectTransform>(), new Vector2(255f, -16f), new Vector2(220f, 58f));
         helpButton.onClick.AddListener(RequestHelp);
 
         loanButton = CreateButton("Loan Button", panel.transform, font, "돈 빌리기", new Color(0.72f, 0.36f, 0.18f));
-        SetRect(loanButton.GetComponent<RectTransform>(), new Vector2(490f, -56f), new Vector2(115f, 58f));
+        SetRect(loanButton.GetComponent<RectTransform>(), new Vector2(490f, -16f), new Vector2(115f, 58f));
         loanButton.onClick.AddListener(BorrowMoney);
 
         cashOutButton = CreateButton("Cashout Button", panel.transform, font, "환전 시도", new Color(0.66f, 0.28f, 0.3f));
-        SetRect(cashOutButton.GetComponent<RectTransform>(), new Vector2(615f, -56f), new Vector2(115f, 58f));
+        SetRect(cashOutButton.GetComponent<RectTransform>(), new Vector2(615f, -16f), new Vector2(115f, 58f));
         cashOutButton.onClick.AddListener(AttemptCashOut);
 
         feedbackText = CreateText("Action Feedback", canvas.transform, font, 24, FontStyles.Bold, Color.white);
@@ -712,6 +731,15 @@ public sealed class GameFlowManager : MonoBehaviour
         bodyRect.anchorMin = new Vector2(0.2f, 0.27f);
         bodyRect.anchorMax = new Vector2(0.8f, 0.57f);
         bodyRect.offsetMin = bodyRect.offsetMax = Vector2.zero;
+
+        restartButton = CreateButton("Restart Button", endPanel.transform, font, "처음부터 다시 시작", new Color(0.16f, 0.45f, 0.78f));
+        RectTransform restartRect = restartButton.GetComponent<RectTransform>();
+        restartRect.anchorMin = new Vector2(0.5f, 0.16f);
+        restartRect.anchorMax = new Vector2(0.5f, 0.16f);
+        restartRect.pivot = new Vector2(0.5f, 0.5f);
+        restartRect.anchoredPosition = Vector2.zero;
+        restartRect.sizeDelta = new Vector2(360f, 72f);
+        restartButton.onClick.AddListener(RestartGame);
         endPanel.SetActive(false);
 
         panel.transform.SetAsLastSibling();
@@ -785,6 +813,17 @@ public sealed class GameFlowManager : MonoBehaviour
         }
 
         return fallback;
+    }
+
+    private static GameObject FindSceneObject(string objectName)
+    {
+        foreach (GameObject candidate in Resources.FindObjectsOfTypeAll<GameObject>())
+        {
+            if (candidate.scene.IsValid() && candidate.name == objectName)
+                return candidate;
+        }
+
+        return null;
     }
 
     private static TMP_FontAsset FindPreferredFont()

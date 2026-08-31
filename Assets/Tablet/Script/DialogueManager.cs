@@ -50,6 +50,8 @@ public class ChatChannel
     public int currentDialogueID;  // 현재 진행 중인 대화 노드 ID
     public string lastMessage;     // 💡 [수정] 프로필창 표시용 마지막 대화 내용
     public int unreadCount;
+    public List<string> receivedMessages = new List<string>();
+    public int renderedReceivedCount;
     public List<GameObject> spawnedBubbles = new List<GameObject>(); // 생성된 말풍선 오브젝트 저장 (화면 전환 시 복원용)
 }
 
@@ -82,18 +84,33 @@ public class DialogueManager : MonoBehaviour
 
     private Dictionary<SpeakerType, ChatChannel> channels = new Dictionary<SpeakerType, ChatChannel>();
     private SpeakerType currentSpeaker;
+    private bool initialized;
+
+    private void Awake()
+    {
+        EnsureInitialized();
+        if (dialoguePanel != null)
+            dialoguePanel.SetActive(false);
+    }
 
     private void Start()
     {
-        if (dialoguePanel != null)
-            dialoguePanel.SetActive(false);
+        EnsureInitialized();
+
+        // 초기 프로필 UI 갱신
+        UpdateAllProfileUI();
+    }
+
+    private void EnsureInitialized()
+    {
+        if (initialized)
+            return;
+
         LoadPrototypeData();
 
         // 프로필용 채널을 먼저 생성
         InitializeChannels();
-
-        // 초기 프로필 UI 갱신
-        UpdateAllProfileUI();
+        initialized = true;
     }
 
     private void InitializeChannels()
@@ -130,6 +147,7 @@ public class DialogueManager : MonoBehaviour
     // -------------------------------------------------------------
     public void OpenDialogue(SpeakerType speaker)
     {
+        EnsureInitialized();
         currentSpeaker = speaker;
         if (dialoguePanel != null) dialoguePanel.SetActive(true);
 
@@ -160,28 +178,23 @@ public class DialogueManager : MonoBehaviour
 
         ChatChannel currentChannel = channels[speaker];
 
-        if (isNewChannel || currentChannel.spawnedBubbles.Count == 0)
-        {
-            // 아직 메시지를 받은 적이 없는 경우
-            if (string.IsNullOrEmpty(currentChannel.lastMessage))
-            {
-                Debug.Log("아직 받은 메시지가 없습니다.");
-                return;
-            }
-            DisplayNode(currentChannel.currentDialogueID);
-        }
-        else
-        {
-            if (currentChannel.currentDialogueID >= 0 && 
-                allDialogues.ContainsKey(speaker) && 
-                allDialogues[speaker].ContainsKey(currentChannel.currentDialogueID))
-            {
-                DialogueNode currentNode = allDialogues[speaker][currentChannel.currentDialogueID];
-                CreateChoiceButtons(currentNode.choices);
-            }
+        RenderReceivedMessages(currentChannel);
 
-            StartCoroutine(ScrollToBottom());
+        if (currentChannel.spawnedBubbles.Count == 0)
+        {
+            Debug.Log("아직 받은 메시지가 없습니다.");
+            return;
         }
+
+        if (currentChannel.currentDialogueID >= 0 &&
+            allDialogues.ContainsKey(speaker) &&
+            allDialogues[speaker].ContainsKey(currentChannel.currentDialogueID))
+        {
+            DialogueNode currentNode = allDialogues[speaker][currentChannel.currentDialogueID];
+            CreateChoiceButtons(currentNode.choices);
+        }
+
+        StartCoroutine(ScrollToBottom());
 
         // 채팅방 진입 시 해당 프로필의 배지 갱신 (0이 되었으므로 숨겨짐)
         UpdateProfileUI(speaker);
@@ -251,6 +264,15 @@ public class DialogueManager : MonoBehaviour
         }
 
         ClearChoices();
+    }
+
+    private void RenderReceivedMessages(ChatChannel channel)
+    {
+        while (channel.renderedReceivedCount < channel.receivedMessages.Count)
+        {
+            CreateBubble(otherBubblePrefab, channel.receivedMessages[channel.renderedReceivedCount]);
+            channel.renderedReceivedCount++;
+        }
     }
 
     private void DisplayNode(int nodeID)
@@ -470,24 +492,37 @@ public class DialogueManager : MonoBehaviour
         allDialogues[SpeakerType.Mom] = momNodes;
     }
 
-    public void ReceiveNotificationMessage(SpeakerType speaker, string message)
+    public void ReceiveNotificationMessage(SpeakerType speaker, string speakerName, string message)
     {
+        EnsureInitialized();
         // 해당 화자의 채널이 없으면 생성
         if (!channels.ContainsKey(speaker))
         {
             channels[speaker] = new ChatChannel
             {
                 speakerType = speaker,
+                speakerName = speakerName,
                 unreadCount = 0,
                 currentDialogueID = 1
             };
         }
 
+        if (!string.IsNullOrWhiteSpace(speakerName))
+            channels[speaker].speakerName = speakerName;
+
         // 마지막 메시지 변경
         channels[speaker].lastMessage = message;
+        channels[speaker].receivedMessages.Add(message);
 
-        // 읽지 않은 메시지 증가
-        channels[speaker].unreadCount++;
+        if (isActiveAndEnabled && dialoguePanel != null && dialoguePanel.activeInHierarchy && currentSpeaker == speaker)
+        {
+            RenderReceivedMessages(channels[speaker]);
+            channels[speaker].unreadCount = 0;
+        }
+        else
+        {
+            channels[speaker].unreadCount++;
+        }
 
         // 프로필 UI 즉시 갱신
         UpdateProfileUI(speaker);

@@ -32,6 +32,8 @@ namespace Dobak.App.Casino.SlotMachine
         private int currentRound = 0;
         private readonly SessionTracker sessionTracker = new SessionTracker();
 
+        public int CurrentRound => currentRound;
+
         private void OnEnable()
         {
             if (CoinManager.Instance == null) return;
@@ -96,6 +98,15 @@ namespace Dobak.App.Casino.SlotMachine
             for (int i = 0; i < reels.Length; i++)
                 finalResults[i] = symbolDatabase.GetRandomWeightedSymbol();
 
+            int upcomingRound = currentRound + 1;
+            float sessionWinBoost = GetSessionWinBoost(upcomingRound);
+            if (!IsAllSame(finalResults) && UnityEngine.Random.value < sessionWinBoost)
+            {
+                SlotSymbol boostedResult = symbolDatabase.GetRandomWeightedSymbol();
+                for (int i = 0; i < finalResults.Length; i++)
+                    finalResults[i] = boostedResult;
+            }
+
             bool wasNaturalWin = IsAllSame(finalResults);
             bool wasSuppressed = false;
 
@@ -144,6 +155,13 @@ namespace Dobak.App.Casino.SlotMachine
                 if (results[i] != results[0]) return false;
             }
             return true;
+        }
+
+        public static float GetSessionWinBoost(int round)
+        {
+            if (round >= 10) return 0.12f;
+            if (round >= 5) return 0.06f;
+            return 0f;
         }
 
         // 당첨 결과를 강제로 깨뜨린다: 마지막 릴 심볼을 첫 심볼과 다른 것으로 교체
