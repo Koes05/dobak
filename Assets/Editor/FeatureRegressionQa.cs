@@ -266,13 +266,7 @@ namespace Dobak.Editor
                     Expect(firstContact != null && firstContact.anchorMin.y >= 0.99f && firstContact.anchoredPosition.y > -100f,
                         $"First contact is not anchored near the top: anchor {firstContact?.anchorMin}, position {firstContact?.anchoredPosition}.");
                     Capture("feature-09-message-contacts.png");
-                    ScenarioMessageTable table = GetPrivate<ScenarioMessageTable>(flow, "scenarioMessages");
-                    ScenarioEventDefinition seoyeonEvent = null;
-                    if (table != null)
-                        foreach (ScenarioEventDefinition definition in table.Events)
-                            if (definition.id == "seoyeon_homework")
-                                seoyeonEvent = definition;
-                    InvokePrivate(flow, "FireScenario", seoyeonEvent, null);
+                    FireCsvEvent(flow, "seoyeon_homework");
                     dialogue?.OpenDialogue(SpeakerType.Seoyeon);
                     Next(11, 0.8d);
                     break;
@@ -305,14 +299,33 @@ namespace Dobak.Editor
                         "Selecting a CSV reply did not trigger Seoyeon's follow-up message.");
                     Expect(VisibleTextContains("사진으로 보내자"),
                         "Seoyeon's follow-up was stored but not rendered as a chat bubble.");
+                    FireCsvEvent(flow, "joonho_casual");
+                    repliedDialogue?.OpenDialogue(SpeakerType.Joonho);
+                    Next(13, 0.7d);
+                    break;
+
+                case 13:
+                    Expect(VisibleTextContains("오늘 하루 어땠어?"),
+                        "Joonho's CSV event was not rendered in his chat room.");
+                    Expect(ClickVisibleChoice("괜찮았다고 답한다"),
+                        "Joonho's reply choice was not available.");
+                    Next(14, 0.7d);
+                    break;
+
+                case 14:
+                    DialogueManager joonhoDialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
+                    Expect(ChannelContains(joonhoDialogue, SpeakerType.Joonho, "다행이네"),
+                        "Selecting a CSV reply did not trigger Joonho's follow-up message.");
+                    Expect(VisibleTextContains("다행이네"),
+                        "Joonho's follow-up was stored but not rendered as a chat bubble.");
                     apps?.CloseCurrentApp();
                     SetPrivate(flow, "currentLocation", "학교");
                     SetPrivate(flow, "currentHour", 19);
                     flow?.SpendTime(1, "학교에 남아 있기");
-                    Next(13, 0.6d);
+                    Next(15, 0.6d);
                     break;
 
-                case 13:
+                case 15:
                     Expect(flow != null && flow.CurrentHour == 20 && flow.CurrentLocation == "집",
                         $"School closing did not send the player home: {flow?.CurrentHour}:00 at {flow?.CurrentLocation}.");
                     Capture("feature-11-school-closing.png");
@@ -411,6 +424,25 @@ namespace Dobak.Editor
             Dictionary<SpeakerType, ChatChannel> channels = GetPrivate<Dictionary<SpeakerType, ChatChannel>>(dialogue, "channels");
             return channels != null && channels.TryGetValue(speaker, out ChatChannel channel) &&
                    channel.receivedMessages.Exists(message => message.Contains(expected));
+        }
+
+        private static void FireCsvEvent(GameFlowManager flow, string eventId)
+        {
+            ScenarioMessageTable table = GetPrivate<ScenarioMessageTable>(flow, "scenarioMessages");
+            if (table == null)
+            {
+                Fail($"Scenario table was unavailable for {eventId}.");
+                return;
+            }
+
+            foreach (ScenarioEventDefinition definition in table.Events)
+            {
+                if (definition.id != eventId)
+                    continue;
+                InvokePrivate(flow, "FireScenario", definition, null);
+                return;
+            }
+            Fail($"CSV event was not found: {eventId}.");
         }
 
         private static bool HasKoreanFont(Transform root)

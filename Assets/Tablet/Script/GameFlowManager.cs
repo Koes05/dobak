@@ -518,6 +518,8 @@ public sealed class GameFlowManager : MonoBehaviour
         RefreshUI();
         if (wasEjectedFromSchool && !gameEnded)
             TriggerScenario("school_closed");
+        if (!gameEnded)
+            TriggerScenario("time_changed");
     }
 
     public static int GetHoursUntilDayBoundary(int hour)
