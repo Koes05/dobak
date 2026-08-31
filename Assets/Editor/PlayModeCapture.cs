@@ -12,10 +12,14 @@ namespace Dobak.Editor
     public static class PlayModeCapture
     {
         private const string SessionKey = "Dobak.CodexCapture";
+        private const string ProcessKey = "Dobak.CodexCapture.ProcessId";
         private const string MainScene = "Assets/Tablet/TabletUI.unity";
         private static double enteredPlayAt;
         private static int captureStep;
         private static bool qaFailed;
+        private static int homeworkStartHour;
+        private static bool previousEnterPlayModeOptionsEnabled;
+        private static EnterPlayModeOptions previousEnterPlayModeOptions;
 
         static PlayModeCapture()
         {
@@ -25,9 +29,23 @@ namespace Dobak.Editor
 
         public static void StartCapture()
         {
+            int processId = System.Diagnostics.Process.GetCurrentProcess().Id;
+            Debug.Log($"[PLAY QA] StartCapture requested in process {processId}. Active process: {EditorPrefs.GetInt(ProcessKey, -1)}");
+
+            // Unity may invoke the command-line execute method again after the
+            // play-mode domain reload. Keep the existing run instead of resetting it.
+            if (SessionState.GetBool(SessionKey, false) || EditorPrefs.GetInt(ProcessKey, -1) == processId)
+                return;
+
+            EditorPrefs.SetInt(ProcessKey, processId);
             SessionState.SetBool(SessionKey, true);
+            previousEnterPlayModeOptionsEnabled = EditorSettings.enterPlayModeOptionsEnabled;
+            previousEnterPlayModeOptions = EditorSettings.enterPlayModeOptions;
+            EditorSettings.enterPlayModeOptionsEnabled = true;
+            EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
             captureStep = 0;
             qaFailed = false;
+            homeworkStartHour = -1;
             EditorSceneManager.OpenScene(MainScene, OpenSceneMode.Single);
             EditorApplication.EnterPlaymode();
         }
@@ -47,6 +65,9 @@ namespace Dobak.Editor
             {
                 EditorApplication.update -= Tick;
                 SessionState.EraseBool(SessionKey);
+                EditorPrefs.DeleteKey(ProcessKey);
+                EditorSettings.enterPlayModeOptionsEnabled = previousEnterPlayModeOptionsEnabled;
+                EditorSettings.enterPlayModeOptions = previousEnterPlayModeOptions;
 
                 string screenshot = GetScreenshotPath("codex-play.png");
                 string messageScreenshot = GetScreenshotPath("codex-message.png");
@@ -55,19 +76,34 @@ namespace Dobak.Editor
                 string fadeScreenshot = GetScreenshotPath("codex-fade.png");
                 string travelScreenshot = GetScreenshotPath("codex-after-travel.png");
                 string studyScreenshot = GetScreenshotPath("codex-study.png");
+                string studyCompleteScreenshot = GetScreenshotPath("codex-study-complete.png");
+                string homeworkHomeScreenshot = GetScreenshotPath("codex-home-after-homework.png");
+                string bankScreenshot = GetScreenshotPath("codex-bank.png");
                 string casinoScreenshot = GetScreenshotPath("codex-casino.png");
                 string slotScreenshot = GetScreenshotPath("codex-slot.png");
                 string winScreenshot = GetScreenshotPath("codex-win.png");
                 string sleepFadeScreenshot = GetScreenshotPath("codex-sleep-fade.png");
                 string nextDayScreenshot = GetScreenshotPath("codex-next-day.png");
                 string endingScreenshot = GetScreenshotPath("codex-ending.png");
+                string restartScreenshot = GetScreenshotPath("codex-restart.png");
+                string settingsScreenshot = GetScreenshotPath("codex-settings.png");
+                string cashoutEndingScreenshot = GetScreenshotPath("codex-cashout-ending.png");
+                string helpEndingScreenshot = GetScreenshotPath("codex-help-ending.png");
+                string sleepEndingScreenshot = GetScreenshotPath("codex-sleep-ending.png");
+                string declineEndingScreenshot = GetScreenshotPath("codex-decline-ending.png");
+                string weekendJobScreenshot = GetScreenshotPath("codex-weekend-job.png");
                 if (!qaFailed && File.Exists(screenshot) && File.Exists(messageScreenshot) && File.Exists(studyLockedScreenshot) &&
                     File.Exists(mapScreenshot) && File.Exists(fadeScreenshot) &&
-                    File.Exists(travelScreenshot) && File.Exists(studyScreenshot) &&
-                    File.Exists(casinoScreenshot) && File.Exists(slotScreenshot) && File.Exists(winScreenshot) &&
-                    File.Exists(sleepFadeScreenshot) && File.Exists(nextDayScreenshot) && File.Exists(endingScreenshot))
+                    File.Exists(travelScreenshot) && File.Exists(studyScreenshot) && File.Exists(studyCompleteScreenshot) &&
+                    File.Exists(homeworkHomeScreenshot) && File.Exists(bankScreenshot) && File.Exists(casinoScreenshot) &&
+                    File.Exists(slotScreenshot) && File.Exists(winScreenshot) &&
+                    File.Exists(sleepFadeScreenshot) && File.Exists(nextDayScreenshot) && File.Exists(endingScreenshot) &&
+                    File.Exists(restartScreenshot) && File.Exists(settingsScreenshot) &&
+                    File.Exists(cashoutEndingScreenshot) && File.Exists(helpEndingScreenshot) &&
+                    File.Exists(sleepEndingScreenshot) && File.Exists(declineEndingScreenshot) &&
+                    File.Exists(weekendJobScreenshot))
                 {
-                    Debug.Log($"[PLAY QA] PASS - stored message, study lock, map art, travel, study, login-free casino, sleep, ending, and restart captured in {Path.GetDirectoryName(screenshot)}");
+                    Debug.Log($"[PLAY QA] PASS - homework time/checklist, stored messages, travel, casino, sleep, ending, and full restart verified in {Path.GetDirectoryName(screenshot)}");
                     EditorApplication.Exit(0);
                 }
                 else
@@ -80,6 +116,16 @@ namespace Dobak.Editor
 
         private static void Tick()
         {
+            // Static fields are reset by the play-mode domain reload. In batch
+            // mode the EnteredPlayMode callback can occur before this class is
+            // reinitialized, so establish a fresh clock before running steps.
+            if (enteredPlayAt <= 0d)
+            {
+                enteredPlayAt = EditorApplication.timeSinceStartup;
+                Debug.Log("[PLAY QA] Play clock initialized after domain reload.");
+                return;
+            }
+
             double elapsed = EditorApplication.timeSinceStartup - enteredPlayAt;
             if (captureStep == 0 && elapsed >= 1.5)
             {
@@ -136,8 +182,7 @@ namespace Dobak.Editor
             if (captureStep == 4 && elapsed >= 4.3)
             {
                 CaptureGameView(GetScreenshotPath("codex-map.png"));
-                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.CloseCurrentApp();
-                GameFlowManager.Instance?.TravelTo("학교");
+                ClickMapLocation("학교");
                 captureStep = 5;
             }
 
@@ -150,6 +195,13 @@ namespace Dobak.Editor
             if (captureStep == 6 && elapsed >= 5.55)
             {
                 CaptureGameView(GetScreenshotPath("codex-after-travel.png"));
+                if (GameFlowManager.Instance == null || GameFlowManager.Instance.CurrentLocation != "학교" ||
+                    GameFlowManager.Instance.CurrentHour != 15)
+                {
+                    qaFailed = true;
+                    GameFlowManager flow = GameFlowManager.Instance;
+                    Debug.LogError($"[PLAY QA] School travel failed. Flow: {flow != null}, location: {flow?.CurrentLocation ?? "null"}, hour: {flow?.CurrentHour.ToString() ?? "null"}.");
+                }
                 UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.OpenStudy();
                 captureStep = 7;
             }
@@ -157,12 +209,64 @@ namespace Dobak.Editor
             if (captureStep == 7 && elapsed >= 6.45)
             {
                 CaptureGameView(GetScreenshotPath("codex-study.png"));
+                homeworkStartHour = GameFlowManager.Instance != null ? GameFlowManager.Instance.CurrentHour : -1;
+                ClickFirstQuizAnswer();
+                captureStep = 70;
+            }
+
+            if (captureStep == 70 && elapsed >= 7.6)
+            {
+                ClickFirstQuizAnswer();
+                captureStep = 71;
+            }
+
+            if (captureStep == 71 && elapsed >= 8.75)
+            {
+                ClickFirstQuizAnswer();
+                captureStep = 72;
+            }
+
+            if (captureStep == 72 && elapsed >= 9.9)
+            {
+                ClickFirstQuizAnswer();
+                captureStep = 73;
+            }
+
+            if (captureStep == 73 && elapsed >= 11.05)
+            {
+                ClickFirstQuizAnswer();
+                captureStep = 74;
+            }
+
+            if (captureStep == 74 && elapsed >= 12.25)
+            {
+                GameFlowManager flow = GameFlowManager.Instance;
+                if (flow == null || !flow.IsHomeworkDone || flow.CurrentHour != homeworkStartHour + 2)
+                {
+                    qaFailed = true;
+                    Debug.LogError("[PLAY QA] Completing homework did not add two hours and update game state.");
+                }
+                CaptureGameView(GetScreenshotPath("codex-study-complete.png"));
+                if (!ChecklistContains("[완료] 숙제하기"))
+                {
+                    qaFailed = true;
+                    Debug.LogError("[PLAY QA] Completed homework was not reflected in the home checklist.");
+                }
+                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.CloseCurrentApp();
+                CaptureGameView(GetScreenshotPath("codex-home-after-homework.png"));
+                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.OpenBank();
+                captureStep = 75;
+            }
+
+            if (captureStep == 75 && elapsed >= 13.1)
+            {
+                CaptureGameView(GetScreenshotPath("codex-bank.png"));
                 UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.CloseCurrentApp();
                 GameFlowManager.Instance?.ResolveInvitation(true);
                 if (Dobak.Manager.CoinManager.Instance == null || Dobak.Manager.CoinManager.Instance.CasinoCash != 5000)
                 {
                     qaFailed = true;
-                    Debug.LogError("[PLAY QA] Accepting Minjae's link did not grant 5,000P.");
+                    Debug.LogError($"[PLAY QA] Invitation grant failed. Flow: {GameFlowManager.Instance != null}, coin: {Dobak.Manager.CoinManager.Instance != null}, casino cash: {Dobak.Manager.CoinManager.Instance?.CasinoCash.ToString() ?? "null"}.");
                 }
                 if (GameObject.Find("BrowserApp") == null)
                 {
@@ -173,7 +277,7 @@ namespace Dobak.Editor
                 captureStep = 8;
             }
 
-            if (captureStep == 8 && elapsed >= 7.4)
+            if (captureStep == 8 && elapsed >= 13.85)
             {
                 CaptureGameView(GetScreenshotPath("codex-casino.png"));
                 object casino = UnityEngine.Object.FindAnyObjectByType<Dobak.App.Casino.CasinoUIManager>();
@@ -182,11 +286,11 @@ namespace Dobak.Editor
                 captureStep = 9;
             }
 
-            if (captureStep == 9 && elapsed >= 7.75)
+            if (captureStep == 9 && elapsed >= 14.6)
             {
-                var slot = UnityEngine.Object.FindAnyObjectByType<Dobak.App.Casino.SlotMachine.SlotMachineManager>();
-                GameObject increaseBet = GameObject.Find("Increase Bet");
-                increaseBet?.GetComponent<Button>()?.onClick.Invoke();
+                var slot = UnityEngine.Object.FindAnyObjectByType<Dobak.App.Casino.SlotMachine.SlotMachineManager>(FindObjectsInactive.Include);
+                Button increaseBet = FindActiveButton("Increase Bet");
+                increaseBet?.onClick.Invoke();
                 if (slot == null || slot.CurrentBetAmount != 500)
                 {
                     qaFailed = true;
@@ -206,7 +310,7 @@ namespace Dobak.Editor
                 captureStep = 10;
             }
 
-            if (captureStep == 10 && elapsed >= 9.95)
+            if (captureStep == 10 && elapsed >= 16.4)
             {
                 var slot = UnityEngine.Object.FindAnyObjectByType<Dobak.App.Casino.SlotMachine.SlotMachineManager>();
                 if (slot == null || slot.CurrentRound != 1)
@@ -221,7 +325,7 @@ namespace Dobak.Editor
                 captureStep = 101;
             }
 
-            if (captureStep == 101 && elapsed >= 10.25)
+            if (captureStep == 101 && elapsed >= 16.7)
             {
                 CaptureGameView(GetScreenshotPath("codex-win.png"));
                 UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.CloseCurrentApp();
@@ -229,13 +333,13 @@ namespace Dobak.Editor
                 captureStep = 11;
             }
 
-            if (captureStep == 11 && elapsed >= 10.43)
+            if (captureStep == 11 && elapsed >= 16.88)
             {
                 CaptureGameView(GetScreenshotPath("codex-sleep-fade.png"));
                 captureStep = 12;
             }
 
-            if (captureStep == 12 && elapsed >= 11.65)
+            if (captureStep == 12 && elapsed >= 18.1)
             {
                 CaptureGameView(GetScreenshotPath("codex-next-day.png"));
                 MethodInfo endGame = typeof(GameFlowManager).GetMethod("EndGame", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -243,19 +347,271 @@ namespace Dobak.Editor
                 captureStep = 13;
             }
 
-            if (captureStep == 13 && elapsed >= 12.0)
+            if (captureStep == 13 && elapsed >= 18.45)
             {
                 CaptureGameView(GetScreenshotPath("codex-ending.png"));
-                if (GameObject.Find("Restart Button") == null)
+                Button restart = GameObject.Find("Restart Button")?.GetComponent<Button>();
+                if (restart == null)
                 {
                     qaFailed = true;
                     Debug.LogError("[PLAY QA] Restart button was not created.");
                 }
+                else
+                {
+                    restart.onClick.Invoke();
+                }
                 captureStep = 14;
             }
 
-            if (captureStep == 14 && elapsed >= 12.35)
+            if (captureStep == 14 && elapsed >= 19.95)
+            {
+                GameFlowManager flow = GameFlowManager.Instance;
+                int activeContacts = CountActiveContacts();
+                if (flow == null || flow.CurrentDay != 1 || flow.CurrentHour != 7 || flow.IsGamblingUnlocked ||
+                    GameObject.Find("BrowserApp") != null || activeContacts != 2)
+                {
+                    qaFailed = true;
+                    Debug.LogError($"[PLAY QA] Restart did not restore the complete initial state. Contacts: {activeContacts}.");
+                }
+                CaptureGameView(GetScreenshotPath("codex-restart.png"));
+                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.OpenSetting();
+                captureStep = 15;
+            }
+
+            if (captureStep == 15 && elapsed >= 20.8)
+            {
+                CaptureGameView(GetScreenshotPath("codex-settings.png"));
+                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.CloseCurrentApp();
+                captureStep = 16;
+            }
+
+            if (captureStep == 16 && elapsed >= 21.1)
+            {
+                GameFlowManager flow = GameFlowManager.Instance;
+                flow?.ResolveInvitation(true);
+                SetPrivateField(flow, "gambleRounds", 5);
+                InvokePrivate(flow, "RefreshUI");
+                GameObject.Find("Cashout Button")?.GetComponent<Button>()?.onClick.Invoke();
+                if (flow == null || flow.IsGameEnded)
+                {
+                    qaFailed = true;
+                    Debug.LogError("[PLAY QA] A low-threshold cashout incorrectly ended the game.");
+                }
+
+                Dobak.Manager.CoinManager.Instance?.AddCasinoCredit(5000);
+                GameObject.Find("Cashout Button")?.GetComponent<Button>()?.onClick.Invoke();
+                if (flow == null || !flow.IsGameEnded)
+                {
+                    qaFailed = true;
+                    Debug.LogError("[PLAY QA] High-balance cashout did not trigger the scam ending.");
+                }
+                captureStep = 17;
+            }
+
+            if (captureStep == 17 && elapsed >= 21.45)
+            {
+                CaptureGameView(GetScreenshotPath("codex-cashout-ending.png"));
+                ClickRestart();
+                captureStep = 18;
+            }
+
+            if (captureStep == 18 && elapsed >= 22.95)
+            {
+                GameFlowManager flow = GameFlowManager.Instance;
+                flow?.ResolveInvitation(true);
+                flow?.ResolveMomLoan(true);
+                if (flow == null || !flow.CanRequestHelp)
+                {
+                    qaFailed = true;
+                    Debug.LogError("[PLAY QA] Borrowing did not unlock the help request branch.");
+                }
+                GameObject.Find("Help Button")?.GetComponent<Button>()?.onClick.Invoke();
+                if (flow == null || !flow.IsGameEnded)
+                {
+                    qaFailed = true;
+                    Debug.LogError("[PLAY QA] Help request did not reach its ending.");
+                }
+                captureStep = 19;
+            }
+
+            if (captureStep == 19 && elapsed >= 23.3)
+            {
+                CaptureGameView(GetScreenshotPath("codex-help-ending.png"));
+                ClickRestart();
+                captureStep = 20;
+            }
+
+            if (captureStep == 20 && elapsed >= 24.8)
+            {
+                GameFlowManager flow = GameFlowManager.Instance;
+                SetPrivateField(flow, "currentDay", 1);
+                InvokePrivate(flow, "RegisterSleep", 3);
+                SetPrivateField(flow, "currentDay", 2);
+                InvokePrivate(flow, "RegisterSleep", 3);
+                SetPrivateField(flow, "currentDay", 3);
+                InvokePrivate(flow, "RegisterSleep", 3);
+                if (flow == null || !flow.IsGameEnded || flow.ConsecutiveShortSleepDays != 3)
+                {
+                    qaFailed = true;
+                    Debug.LogError("[PLAY QA] Three short-sleep days did not trigger the sleep ending.");
+                }
+                captureStep = 21;
+            }
+
+            if (captureStep == 21 && elapsed >= 25.15)
+            {
+                CaptureGameView(GetScreenshotPath("codex-sleep-ending.png"));
+                ClickRestart();
+                captureStep = 22;
+            }
+
+            if (captureStep == 22 && elapsed >= 26.65)
+            {
+                GameFlowManager flow = GameFlowManager.Instance;
+                flow?.ResolveInvitation(false);
+                if (flow == null || !flow.IsGameEnded)
+                {
+                    qaFailed = true;
+                    Debug.LogError("[PLAY QA] Declining the invitation did not reach the safe ending.");
+                }
+                captureStep = 23;
+            }
+
+            if (captureStep == 23 && elapsed >= 27.0)
+            {
+                CaptureGameView(GetScreenshotPath("codex-decline-ending.png"));
+                ClickRestart();
+                captureStep = 24;
+            }
+
+            if (captureStep == 24 && elapsed >= 28.5)
+            {
+                GameFlowManager flow = GameFlowManager.Instance;
+                SetPrivateField(flow, "currentDay", 6);
+                SetPrivateField(flow, "currentHour", 7);
+                InvokePrivate(flow, "StartNewDay", false);
+                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.OpenMap();
+                captureStep = 25;
+            }
+
+            if (captureStep == 25 && elapsed >= 29.35)
+            {
+                ClickMapLocation("카페");
+                captureStep = 26;
+            }
+
+            if (captureStep == 26 && elapsed >= 30.55)
+            {
+                GameFlowManager flow = GameFlowManager.Instance;
+                if (flow == null || flow.CurrentLocation != "카페" || flow.CurrentHour != 14 ||
+                    Dobak.Manager.CoinManager.Instance == null || Dobak.Manager.CoinManager.Instance.BankCash != 1060 ||
+                    !ChecklistContains("[완료] 알바 가기"))
+                {
+                    qaFailed = true;
+                    Debug.LogError("[PLAY QA] Weekend cafe work did not complete its time, wage, and checklist flow.");
+                }
+                CaptureGameView(GetScreenshotPath("codex-weekend-job.png"));
+                captureStep = 27;
+            }
+
+            if (captureStep == 27 && elapsed >= 30.9)
                 EditorApplication.ExitPlaymode();
+        }
+
+        private static void ClickRestart()
+        {
+            GameObject.Find("Restart Button")?.GetComponent<Button>()?.onClick.Invoke();
+        }
+
+        private static void SetPrivateField(object target, string fieldName, object value)
+        {
+            target?.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)?.SetValue(target, value);
+        }
+
+        private static void InvokePrivate(object target, string methodName, params object[] arguments)
+        {
+            target?.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke(target, arguments);
+        }
+
+        private static void ClickMapLocation(string displayName)
+        {
+            var map = UnityEngine.Object.FindAnyObjectByType<Dobak.App.Map.MapLocationController>(FindObjectsInactive.Include);
+            FieldInfo locationsField = typeof(Dobak.App.Map.MapLocationController)
+                .GetField("locations", BindingFlags.Instance | BindingFlags.NonPublic);
+            var locations = locationsField?.GetValue(map) as Dobak.App.Map.MapLocationController.LocationPoint[];
+            if (locations != null)
+            {
+                string rawName = displayName == "학교" ? "1" : displayName == "카페" ? "2" : "3";
+                foreach (Dobak.App.Map.MapLocationController.LocationPoint location in locations)
+                {
+                    if (location != null && location.locationName == rawName && location.button != null)
+                    {
+                        Debug.Log($"[PLAY QA] Clicking map {displayName}. Listeners: {location.button.onClick.GetPersistentEventCount()}, active: {location.button.gameObject.activeInHierarchy}, flow: {GameFlowManager.Instance != null}.");
+                        location.button.onClick.Invoke();
+                        return;
+                    }
+                }
+            }
+
+            qaFailed = true;
+            Debug.LogError($"[PLAY QA] Map button for {displayName} was not available.");
+        }
+
+        private static void ClickFirstQuizAnswer()
+        {
+            QuizManager quiz = UnityEngine.Object.FindAnyObjectByType<QuizManager>(FindObjectsInactive.Include);
+            FieldInfo answerButtonsField = typeof(QuizManager).GetField("answerButtons", BindingFlags.Instance | BindingFlags.NonPublic);
+            Button[] answerButtons = answerButtonsField?.GetValue(quiz) as Button[];
+            if (answerButtons != null)
+            {
+                foreach (Button answer in answerButtons)
+                {
+                    if (answer != null && answer.gameObject.activeInHierarchy && answer.interactable)
+                    {
+                        answer.onClick.Invoke();
+                        return;
+                    }
+                }
+            }
+
+            qaFailed = true;
+            Debug.LogError("[PLAY QA] No playable quiz answer button was available.");
+        }
+
+        private static Button FindActiveButton(string objectName)
+        {
+            Button[] buttons = Resources.FindObjectsOfTypeAll<Button>();
+            foreach (Button button in buttons)
+            {
+                if (button.gameObject.name == objectName && button.gameObject.activeInHierarchy)
+                    return button;
+            }
+
+            return null;
+        }
+
+        private static int CountActiveContacts()
+        {
+            int count = 0;
+            foreach (ProfileSlot slot in UnityEngine.Object.FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (slot.gameObject.activeSelf)
+                    count++;
+            }
+
+            return count;
+        }
+
+        private static bool ChecklistContains(string expectedText)
+        {
+            foreach (TMPro.TMP_Text text in Resources.FindObjectsOfTypeAll<TMPro.TMP_Text>())
+            {
+                if (text != null && text.gameObject.scene.IsValid() &&
+                    !string.IsNullOrEmpty(text.text) && text.text.Contains(expectedText))
+                    return true;
+            }
+
+            return false;
         }
 
         private static void VerifyContactInsertionAndReordering(DialogueManager dialogueManager)
