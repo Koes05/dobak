@@ -60,14 +60,14 @@
         "*.asset": "yaml",
         "*.meta": "yaml",
         "*.prefab": "yaml",
-        "*.unity": "yaml",
+        "*.unity": "yaml"
     },
     "explorer.fileNesting.enabled": true,
     "explorer.fileNesting.patterns": {
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "dobak.slnx",
+    "dotnet.defaultSolution": "dobak-backup-work.slnx",
     "dotnet.enableWorkspaceBasedDevelopment": false,
     "cSpell.words": [
         "Mathf"
