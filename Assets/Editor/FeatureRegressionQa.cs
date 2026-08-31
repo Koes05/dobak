@@ -98,13 +98,25 @@ namespace Dobak.Editor
             {
                 case 0:
                     DismissNarration();
-                    Expect(GameObject.Find("SNSApp") != null, "SNS home icon was not created.");
+                    GameObject snsIcon = GameObject.Find("SNSApp");
+                    Expect(snsIcon != null, "SNS home icon was not created.");
+                    Expect(snsIcon != null && snsIcon.transform.parent?.name == "AppManager",
+                        "SNS did not reuse the existing home app slot.");
+                    RectTransform snsIconRect = snsIcon?.GetComponent<RectTransform>();
+                    Expect(snsIconRect != null && Vector2.Distance(snsIconRect.anchoredPosition, new Vector2(-600f, -100f)) < 1f,
+                        $"SNS icon is outside the extra app slot: {snsIconRect?.anchoredPosition}.");
+                    Capture("feature-00-home-sns-slot.png");
                     apps?.OpenSNS();
                     Next(1, 0.7d);
                     break;
 
                 case 1:
-                    Expect(GameObject.Find("Runtime SNS App")?.activeInHierarchy == true, "SNS app did not open.");
+                    GameObject snsApp = GameObject.Find("Runtime SNS App");
+                    Expect(snsApp?.activeInHierarchy == true, "SNS app did not open.");
+                    Expect(snsApp != null && snsApp.transform.parent?.name == "AppUi",
+                        "SNS app is not inside the system app viewport.");
+                    Expect(GameObject.Find("StatusBar")?.activeInHierarchy == true && GameObject.Find("Home_Btn")?.activeInHierarchy == true,
+                        "SNS app covered the system status or navigation bar.");
                     Expect(FindButton("SNS 2 Hour Button") != null, "SNS two-hour option is missing.");
                     DismissAllNarration();
                     Capture("feature-01-sns.png");

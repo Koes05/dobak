@@ -1143,7 +1143,8 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private void CreateSettingsApp(Canvas canvas, TMP_FontAsset font)
     {
-        GameObject settings = CreatePanel("Runtime Settings App", canvas.transform, new Color(0.94f, 0.95f, 0.97f, 1f));
+        Transform appArea = FindSceneObject("AppUi")?.transform ?? canvas.transform;
+        GameObject settings = CreatePanel("Runtime Settings App", appArea, new Color(0.94f, 0.95f, 0.97f, 1f));
         Stretch(settings.GetComponent<RectTransform>());
 
         TMP_Text title = CreateText("Settings Title", settings.transform, font, 46, FontStyles.Bold, new Color(0.08f, 0.1f, 0.15f));
@@ -1176,7 +1177,8 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private void CreateSnsApp(Canvas canvas, TMP_FontAsset font)
     {
-        GameObject sns = CreatePanel("Runtime SNS App", canvas.transform, new Color(0.965f, 0.97f, 0.98f, 1f));
+        Transform appArea = FindSceneObject("AppUi")?.transform ?? canvas.transform;
+        GameObject sns = CreatePanel("Runtime SNS App", appArea, new Color(0.965f, 0.97f, 0.98f, 1f));
         Stretch(sns.GetComponent<RectTransform>());
 
         GameObject header = CreatePanel("SNS Header", sns.transform, new Color(0.1f, 0.14f, 0.2f, 1f));
@@ -1252,36 +1254,63 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private void CreateSnsHomeIcon(TMP_FontAsset font)
     {
-        GameObject appManager = FindSceneObject("AppManager");
-        if (appManager == null || appWindow == null)
+        GameObject icon = FindSceneObject("Button (6)");
+        if (icon == null || appWindow == null)
             return;
 
-        GameObject icon = new GameObject("SNSApp", typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage), typeof(Button));
-        icon.layer = 5;
-        icon.transform.SetParent(appManager.transform, false);
-        RectTransform rect = icon.GetComponent<RectTransform>();
-        rect.anchorMin = rect.anchorMax = new Vector2(1f, 0.5f);
-        rect.pivot = new Vector2(1f, 0.5f);
-        rect.anchoredPosition = new Vector2(-280f, -100f);
-        rect.sizeDelta = new Vector2(150f, 150f);
+        icon.name = "SNSApp";
+        Image slotImage = icon.GetComponent<Image>();
+        if (slotImage != null)
+        {
+            slotImage.color = Color.clear;
+            slotImage.raycastTarget = true;
+        }
 
-        RawImage image = icon.GetComponent<RawImage>();
+        Transform oldVisual = icon.transform.Find("SNS Icon Visual");
+        RawImage image;
+        if (oldVisual != null)
+        {
+            image = oldVisual.GetComponent<RawImage>();
+        }
+        else
+        {
+            GameObject visual = new GameObject("SNS Icon Visual", typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+            visual.layer = icon.layer;
+            visual.transform.SetParent(icon.transform, false);
+            visual.transform.SetAsFirstSibling();
+            image = visual.GetComponent<RawImage>();
+            Stretch(image.rectTransform);
+        }
+
         image.texture = Resources.Load<Texture2D>("SNS/sns_icon");
-        image.uvRect = new Rect(0.18f, 0.18f, 0.64f, 0.64f);
+        image.uvRect = new Rect(0.235f, 0.235f, 0.53f, 0.53f);
         image.color = Color.white;
+        image.raycastTarget = false;
+
         Button button = icon.GetComponent<Button>();
-        button.targetGraphic = image;
+        button.onClick.RemoveAllListeners();
+        button.targetGraphic = slotImage;
         button.onClick.AddListener(appWindow.OpenSNS);
 
-        TMP_Text label = CreateText("SNS Icon Label", icon.transform, font, 24, FontStyles.Normal, Color.white);
-        label.text = "SNS";
-        label.alignment = TextAlignmentOptions.Center;
-        RectTransform labelRect = label.rectTransform;
-        labelRect.anchorMin = new Vector2(0f, 0f);
-        labelRect.anchorMax = new Vector2(1f, 0f);
-        labelRect.pivot = new Vector2(0.5f, 1f);
-        labelRect.anchoredPosition = new Vector2(0f, -8f);
-        labelRect.sizeDelta = new Vector2(0f, 38f);
+        TMP_Text label = icon.GetComponentInChildren<TMP_Text>(true);
+        if (label != null)
+        {
+            label.name = "SNS Icon Label";
+            if (label.font == null)
+                label.font = font;
+            label.fontSize = 24f;
+            label.text = "SNS";
+            label.color = new Color(0.196f, 0.196f, 0.196f, 1f);
+            label.alignment = TextAlignmentOptions.Center;
+            label.raycastTarget = false;
+
+            RectTransform labelRect = label.rectTransform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.pivot = new Vector2(0.5f, 0.5f);
+            labelRect.anchoredPosition = new Vector2(0f, -92f);
+            labelRect.sizeDelta = new Vector2(0f, -116.8f);
+        }
     }
 
     public void WatchSns(int hours)
