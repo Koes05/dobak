@@ -21,11 +21,16 @@ namespace Dobak.Editor
             var failures = new List<string>();
 
             ScenarioMessageTable scenario = ScenarioMessageTable.Load();
-            if (scenario.Count("initial") < 1 || scenario.Count("daily_weekday") < 5 ||
-                scenario.Count("spin_loss") < 4 || scenario.Count("round_10") < 2)
+            if (scenario.Count("initial") < 1 || scenario.Count("school_project") < 3 ||
+                scenario.Count("family_dinner") < 3 || scenario.Count("gambling_arc") < 3 ||
+                scenario.Count("borrow_mom") < 3 || scenario.Count("borrow_friend") < 3)
             {
                 failures.Add("ScenarioMessages.csv does not contain enough playable event messages.");
             }
+
+            TextAsset scenarioAsset = Resources.Load<TextAsset>("ScenarioMessages");
+            if (scenarioAsset != null && scenarioAsset.text.Contains("학원"))
+                failures.Add("ScenarioMessages.csv still contains an academy event, but the game only uses school, home, and cafe work.");
 
             if (SlotMachineManager.GetSessionWinBoost(4) != 0f ||
                 SlotMachineManager.GetSessionWinBoost(5) <= 0f ||

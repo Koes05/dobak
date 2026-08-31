@@ -21,6 +21,7 @@ namespace Dobak.App.Casino.SlotMachine
 
         [Header("게임 설정")]
         [SerializeField] private int betAmount = 10;
+        [SerializeField] private int[] betOptions = { 100, 500, 1000 };
 
         [Header("연출 타이밍")]
         [Tooltip("릴 하나가 도는 기본 시간(초)")]
@@ -31,8 +32,15 @@ namespace Dobak.App.Casino.SlotMachine
         private bool isSpinning = false;
         private int currentRound = 0;
         private readonly SessionTracker sessionTracker = new SessionTracker();
+        private int betOptionIndex;
+        private Button decreaseBetButton;
+        private Button increaseBetButton;
+        private GameObject winOverlay;
+        private CanvasGroup winOverlayGroup;
+        private TMP_Text winOverlayText;
 
         public int CurrentRound => currentRound;
+        public int CurrentBetAmount => betAmount;
 
         private void OnEnable()
         {
@@ -54,6 +62,11 @@ namespace Dobak.App.Casino.SlotMachine
                 reel.Init(symbolDatabase);
 
             spinButton.onClick.AddListener(OnSpinButtonPressed);
+
+            betOptionIndex = FindClosestBetOption(betAmount);
+            betAmount = betOptions[betOptionIndex];
+            CreateBetControls();
+            CreateWinOverlay();
 
             UpdateUI(CoinManager.Instance.CasinoCash);
         }
@@ -91,6 +104,7 @@ namespace Dobak.App.Casino.SlotMachine
         {
             isSpinning = true;
             spinButton.interactable = false;
+            SetBetControlsInteractable(false);
             resultText.text = "";
 
             // 1. 순수 확률(가중치)로 결과를 뽑는다
@@ -186,12 +200,15 @@ namespace Dobak.App.Casino.SlotMachine
             if (allSame)
             {
                 payout = Mathf.RoundToInt(betAmount * results[0].payoutMultiplier);
-                resultText.text = $"당첨! {results[0].symbolName} x3 -> +{payout}";
+                resultText.text = $"당첨! +{payout}P";
+                resultText.color = new Color(1f, 0.78f, 0.12f);
                 CoinManager.Instance.AddCasinoCredit(payout);
+                StartCoroutine(ShowWinCelebration(payout));
             }
             else
             {
                 resultText.text = "꽝";
+                resultText.color = Color.black;
             }
 
             spinButton.interactable = true;
@@ -202,8 +219,169 @@ namespace Dobak.App.Casino.SlotMachine
 
         private void UpdateUI(int cash)
         {
-            creditText.text = $"Cash: ${cash}";
-            betText.text = $"BET: {betAmount} ({BetOddsModifier.GetBetTierLabel(betAmount)})";
+            creditText.text = $"사이트 포인트 {cash:N0}P";
+            betText.text = $"베팅 {betAmount:N0}P";
+            SetBetControlsInteractable(!isSpinning);
+        }
+
+        private int FindClosestBetOption(int amount)
+        {
+            int closest = 0;
+            int difference = int.MaxValue;
+            for (int i = 0; i < betOptions.Length; i++)
+            {
+                int candidateDifference = Mathf.Abs(betOptions[i] - amount);
+                if (candidateDifference < difference)
+                {
+                    closest = i;
+                    difference = candidateDifference;
+                }
+            }
+
+            return closest;
+        }
+
+        private void ChangeBet(int direction)
+        {
+            if (isSpinning || CoinManager.Instance == null)
+                return;
+
+            int next = Mathf.Clamp(betOptionIndex + direction, 0, betOptions.Length - 1);
+            if (betOptions[next] > CoinManager.Instance.CasinoCash)
+                return;
+
+            betOptionIndex = next;
+            betAmount = betOptions[betOptionIndex];
+            UpdateUI(CoinManager.Instance.CasinoCash);
+        }
+
+        private void SetBetControlsInteractable(bool enabled)
+        {
+            if (decreaseBetButton != null)
+                decreaseBetButton.interactable = enabled && betOptionIndex > 0;
+            if (increaseBetButton != null)
+            {
+                bool affordable = CoinManager.Instance != null && betOptionIndex + 1 < betOptions.Length &&
+                                  betOptions[betOptionIndex + 1] <= CoinManager.Instance.CasinoCash;
+                increaseBetButton.interactable = enabled && affordable;
+            }
+        }
+
+        private void CreateBetControls()
+        {
+            RectTransform spinRect = spinButton.GetComponent<RectTransform>();
+            decreaseBetButton = CreateControlButton("Decrease Bet", spinRect.parent, "-", spinRect, -210f);
+            increaseBetButton = CreateControlButton("Increase Bet", spinRect.parent, "+", spinRect, 210f);
+            decreaseBetButton.onClick.AddListener(() => ChangeBet(-1));
+            increaseBetButton.onClick.AddListener(() => ChangeBet(1));
+        }
+
+        private Button CreateControlButton(string objectName, Transform parent, string label, RectTransform reference, float xOffset)
+        {
+            var go = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button));
+            go.layer = gameObject.layer;
+            go.transform.SetParent(parent, false);
+
+            RectTransform rect = go.GetComponent<RectTransform>();
+            rect.anchorMin = reference.anchorMin;
+            rect.anchorMax = reference.anchorMax;
+            rect.pivot = reference.pivot;
+            rect.anchoredPosition = reference.anchoredPosition + new Vector2(xOffset, 0f);
+            rect.sizeDelta = new Vector2(120f, Mathf.Max(76f, reference.sizeDelta.y));
+
+            Image image = go.GetComponent<Image>();
+            image.color = new Color(0.12f, 0.16f, 0.22f, 1f);
+            Button button = go.GetComponent<Button>();
+            button.targetGraphic = image;
+
+            var textObject = new GameObject("Label", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+            textObject.layer = go.layer;
+            textObject.transform.SetParent(go.transform, false);
+            RectTransform textRect = textObject.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = Vector2.zero;
+            textRect.offsetMax = Vector2.zero;
+            TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+            text.font = betText.font;
+            text.fontSize = 46f;
+            text.fontStyle = FontStyles.Bold;
+            text.alignment = TextAlignmentOptions.Center;
+            text.color = Color.white;
+            text.text = label;
+            return button;
+        }
+
+        private void CreateWinOverlay()
+        {
+            winOverlay = new GameObject("Win Celebration", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(CanvasGroup));
+            winOverlay.layer = gameObject.layer;
+            winOverlay.transform.SetParent(transform, false);
+            RectTransform rect = winOverlay.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            Image flash = winOverlay.GetComponent<Image>();
+            flash.color = new Color(1f, 0.68f, 0.05f, 0.22f);
+            flash.raycastTarget = false;
+
+            winOverlayGroup = winOverlay.GetComponent<CanvasGroup>();
+            winOverlayGroup.blocksRaycasts = false;
+            winOverlayGroup.interactable = false;
+
+            var textObject = new GameObject("Win Text", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+            textObject.layer = gameObject.layer;
+            textObject.transform.SetParent(winOverlay.transform, false);
+            RectTransform textRect = textObject.GetComponent<RectTransform>();
+            textRect.anchorMin = new Vector2(0.15f, 0.34f);
+            textRect.anchorMax = new Vector2(0.85f, 0.68f);
+            textRect.offsetMin = Vector2.zero;
+            textRect.offsetMax = Vector2.zero;
+            winOverlayText = textObject.GetComponent<TextMeshProUGUI>();
+            winOverlayText.font = betText.font;
+            winOverlayText.fontSize = 76f;
+            winOverlayText.fontStyle = FontStyles.Bold;
+            winOverlayText.alignment = TextAlignmentOptions.Center;
+            winOverlayText.color = new Color(1f, 0.86f, 0.18f);
+            winOverlayText.raycastTarget = false;
+            winOverlay.SetActive(false);
+        }
+
+        private IEnumerator ShowWinCelebration(int payout)
+        {
+            winOverlayText.text = $"당첨!\n+{payout:N0}P";
+            winOverlay.SetActive(true);
+            winOverlay.transform.SetAsLastSibling();
+            winOverlayGroup.alpha = 1f;
+
+            float elapsed = 0f;
+            while (elapsed < 0.35f)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float scale = Mathf.Lerp(0.55f, 1.15f, elapsed / 0.35f);
+                winOverlayText.rectTransform.localScale = Vector3.one * scale;
+                yield return null;
+            }
+
+            elapsed = 0f;
+            while (elapsed < 0.18f)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                winOverlayText.rectTransform.localScale = Vector3.one * Mathf.Lerp(1.15f, 1f, elapsed / 0.18f);
+                yield return null;
+            }
+
+            yield return new WaitForSecondsRealtime(0.85f);
+            elapsed = 0f;
+            while (elapsed < 0.35f)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                winOverlayGroup.alpha = 1f - elapsed / 0.35f;
+                yield return null;
+            }
+
+            winOverlay.SetActive(false);
         }
     }
 }

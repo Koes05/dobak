@@ -13,7 +13,14 @@ public enum SpeakerType
     Stranger,    // 모르는 사람 / SNS 접근자
     Scammer,     // 전문 사기꾼 / 리딩방 업자
     Mom,         // 엄마    
-    Unknown      // 기타/알 수 없는 상대방
+    Unknown,     // 기타/알 수 없는 상대방
+    Teacher,
+    CafeManager,
+    Bank,
+    Site,
+    Counselor,
+    Joonho,
+    Seoyeon
 
 }
 
@@ -52,6 +59,8 @@ public class ChatChannel
     public int unreadCount;
     public List<string> receivedMessages = new List<string>();
     public int renderedReceivedCount;
+    public bool showDialogueChoices;
+    public List<Choice> eventChoices = new List<Choice>();
     public List<GameObject> spawnedBubbles = new List<GameObject>(); // 생성된 말풍선 오브젝트 저장 (화면 전환 시 복원용)
 }
 
@@ -85,6 +94,12 @@ public class DialogueManager : MonoBehaviour
     private Dictionary<SpeakerType, ChatChannel> channels = new Dictionary<SpeakerType, ChatChannel>();
     private SpeakerType currentSpeaker;
     private bool initialized;
+    private readonly Dictionary<SpeakerType, ProfileSlot> profileSlotsBySpeaker = new Dictionary<SpeakerType, ProfileSlot>();
+    private readonly Queue<ProfileSlot> availableProfileSlots = new Queue<ProfileSlot>();
+    private readonly List<SpeakerType> contactOrder = new List<SpeakerType>();
+    private ProfileSlot profileTemplate;
+    private Vector2 contactStartPosition;
+    private float contactSpacing = 120f;
 
     private void Awake()
     {
@@ -96,6 +111,7 @@ public class DialogueManager : MonoBehaviour
     private void Start()
     {
         EnsureInitialized();
+        ConfigureChatViewport();
 
         // 초기 프로필 UI 갱신
         UpdateAllProfileUI();
@@ -108,38 +124,155 @@ public class DialogueManager : MonoBehaviour
 
         LoadPrototypeData();
 
-        // 프로필용 채널을 먼저 생성
         InitializeChannels();
+        PrepareProfileSlots();
         initialized = true;
     }
 
     private void InitializeChannels()
     {
-        foreach (var speaker in allDialogues.Keys)
+        channels[SpeakerType.Friend] = CreateChannel(SpeakerType.Friend, "동창친구");
+        channels[SpeakerType.Mom] = CreateChannel(SpeakerType.Mom, "엄마");
+    }
+
+    private static ChatChannel CreateChannel(SpeakerType speaker, string speakerName)
+    {
+        return new ChatChannel
         {
-            if (channels.ContainsKey(speaker))
-                continue;
+            speakerType = speaker,
+            speakerName = speakerName,
+            lastMessage = "",
+            unreadCount = 0,
+            currentDialogueID = -1
+        };
+    }
 
-            if (!allDialogues[speaker].ContainsKey(1))
-                continue;
-
-            DialogueNode firstNode = allDialogues[speaker][1];
-
-            channels[speaker] = new ChatChannel
-            {
-                speakerType = speaker,
-                speakerName = firstNode.speakerName,    
-
-                // 처음부터 마지막 메시지를 표시
-                lastMessage = "",
-
-                // 처음에는 읽지 않은 메시지가 있다고 설정
-                unreadCount = 0,
-
-                // 첫 번째 대화부터 시작
-                currentDialogueID = 1
-            };
+    private void PrepareProfileSlots()
+    {
+        foreach (ProfileSlot discovered in FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (discovered.gameObject.scene.IsValid() && !profileSlots.Contains(discovered))
+                profileSlots.Add(discovered);
         }
+
+        profileSlots.RemoveAll(slot => slot == null);
+        profileSlots.Sort((left, right) =>
+            right.GetComponent<RectTransform>().anchoredPosition.y.CompareTo(left.GetComponent<RectTransform>().anchoredPosition.y));
+
+        if (profileSlots.Count == 0)
+            return;
+
+        profileTemplate = profileSlots[0];
+        contactStartPosition = profileTemplate.GetComponent<RectTransform>().anchoredPosition;
+        if (profileSlots.Count > 1)
+        {
+            float measuredSpacing = Mathf.Abs(profileSlots[0].GetComponent<RectTransform>().anchoredPosition.y -
+                                               profileSlots[1].GetComponent<RectTransform>().anchoredPosition.y);
+            if (measuredSpacing > 1f)
+                contactSpacing = measuredSpacing;
+        }
+
+        contactOrder.Clear();
+        contactOrder.Add(SpeakerType.Friend);
+        contactOrder.Add(SpeakerType.Mom);
+        for (int i = 0; i < profileSlots.Count; i++)
+        {
+            ProfileSlot slot = profileSlots[i];
+            if (i == 0)
+            {
+                RegisterProfileSlot(slot, SpeakerType.Friend, "동창친구", true);
+            }
+            else if (i == 1)
+            {
+                RegisterProfileSlot(slot, SpeakerType.Mom, "엄마", true);
+            }
+            else
+            {
+                slot.gameObject.SetActive(false);
+                availableProfileSlots.Enqueue(slot);
+            }
+        }
+
+        ReflowProfileSlots();
+    }
+
+    private void RegisterProfileSlot(ProfileSlot slot, SpeakerType speaker, string speakerName, bool visible)
+    {
+        slot.Configure(speaker, speakerName, () => OpenDialogue(speaker));
+        slot.SetLastMessage(channels.TryGetValue(speaker, out ChatChannel channel) ? channel.lastMessage : "");
+        slot.UpdateUnreadBadge(channels.TryGetValue(speaker, out channel) ? channel.unreadCount : 0);
+        slot.gameObject.SetActive(visible);
+        profileSlotsBySpeaker[speaker] = slot;
+    }
+
+    private ProfileSlot EnsureProfileSlot(SpeakerType speaker, string speakerName)
+    {
+        if (profileSlotsBySpeaker.TryGetValue(speaker, out ProfileSlot existing))
+            return existing;
+
+        ProfileSlot slot;
+        if (availableProfileSlots.Count > 0)
+        {
+            slot = availableProfileSlots.Dequeue();
+        }
+        else if (profileTemplate != null)
+        {
+            slot = Instantiate(profileTemplate, profileTemplate.transform.parent);
+            RectTransform templateRect = profileTemplate.GetComponent<RectTransform>();
+            RectTransform slotRect = slot.GetComponent<RectTransform>();
+            slotRect.anchoredPosition = templateRect.anchoredPosition + Vector2.down *
+                ((templateRect.rect.height + 20f) * profileSlots.Count);
+            profileSlots.Add(slot);
+        }
+        else
+        {
+            return null;
+        }
+
+        RegisterProfileSlot(slot, speaker, speakerName, true);
+        contactOrder.Add(speaker);
+        slot.transform.SetAsLastSibling();
+        ReflowProfileSlots();
+        return slot;
+    }
+
+    private void MoveContactToTop(SpeakerType speaker)
+    {
+        if (!contactOrder.Remove(speaker))
+            return;
+
+        contactOrder.Insert(0, speaker);
+        ReflowProfileSlots();
+    }
+
+    private void ReflowProfileSlots()
+    {
+        for (int i = 0; i < contactOrder.Count; i++)
+        {
+            if (!profileSlotsBySpeaker.TryGetValue(contactOrder[i], out ProfileSlot slot))
+                continue;
+
+            RectTransform rect = slot.GetComponent<RectTransform>();
+            rect.anchoredPosition = new Vector2(contactStartPosition.x, contactStartPosition.y - contactSpacing * i);
+            slot.transform.SetSiblingIndex(i);
+        }
+    }
+
+    private void ConfigureChatViewport()
+    {
+        if (scrollRect == null || scrollRect.viewport == null)
+            return;
+
+        RectTransform viewport = scrollRect.viewport;
+        Vector2 offsetMin = viewport.offsetMin;
+        Vector2 offsetMax = viewport.offsetMax;
+        offsetMin.y = 225f;
+        offsetMax.y = -80f;
+        viewport.offsetMin = offsetMin;
+        viewport.offsetMax = offsetMax;
+
+        if (chatContent.TryGetComponent(out VerticalLayoutGroup layout))
+            layout.padding.bottom = Mathf.Max(layout.padding.bottom, 24);
     }
 
     // -------------------------------------------------------------
@@ -148,6 +281,7 @@ public class DialogueManager : MonoBehaviour
     public void OpenDialogue(SpeakerType speaker)
     {
         EnsureInitialized();
+        ConfigureChatViewport();
         currentSpeaker = speaker;
         if (dialoguePanel != null) dialoguePanel.SetActive(true);
 
@@ -155,14 +289,7 @@ public class DialogueManager : MonoBehaviour
 
         if (isNewChannel)
         {
-            channels[speaker] = new ChatChannel
-            {
-                speakerType = speaker,
-                speakerName = allDialogues[speaker][1].speakerName,
-                currentDialogueID = 1,
-                lastMessage = "",
-                unreadCount = 0
-            };
+            channels[speaker] = CreateChannel(speaker, speaker.ToString());
         }
 
         // 대화 상대 이름 표시
@@ -186,7 +313,11 @@ public class DialogueManager : MonoBehaviour
             return;
         }
 
-        if (currentChannel.currentDialogueID >= 0 &&
+        if (currentChannel.eventChoices.Count > 0)
+        {
+            CreateChoiceButtons(currentChannel.eventChoices);
+        }
+        else if (currentChannel.showDialogueChoices && currentChannel.currentDialogueID >= 0 &&
             allDialogues.ContainsKey(speaker) &&
             allDialogues[speaker].ContainsKey(currentChannel.currentDialogueID))
         {
@@ -336,6 +467,18 @@ public class DialogueManager : MonoBehaviour
                 case ChoiceAction.RequestHelp:
                     GameFlowManager.Instance.RequestHelp();
                     break;
+                case ChoiceAction.AcceptMomLoan:
+                    GameFlowManager.Instance.ResolveMomLoan(true);
+                    break;
+                case ChoiceAction.DeclineMomLoan:
+                    GameFlowManager.Instance.ResolveMomLoan(false);
+                    break;
+                case ChoiceAction.AcceptFriendLoan:
+                    GameFlowManager.Instance.ResolveFriendLoan(true);
+                    break;
+                case ChoiceAction.DeclineFriendLoan:
+                    GameFlowManager.Instance.ResolveFriendLoan(false);
+                    break;
             }
         }
 
@@ -371,6 +514,8 @@ public class DialogueManager : MonoBehaviour
         else
         {
             channels[currentSpeaker].currentDialogueID = -1;
+            channels[currentSpeaker].showDialogueChoices = false;
+            channels[currentSpeaker].eventChoices.Clear();
             EndDialogue();
         }
     }
@@ -395,14 +540,14 @@ public class DialogueManager : MonoBehaviour
         string lastMsg = channels[speaker].lastMessage;
         int unread = channels[speaker].unreadCount;
 
-        foreach (var slot in profileSlots)
-        {
-            if (slot != null && slot.speakerType == speaker)
-            {
-                slot.SetLastMessage(lastMsg);
-                slot.UpdateUnreadBadge(unread); // 💡 안 읽은 메시지 배지 반영
-            }
-        }
+        ProfileSlot slot = EnsureProfileSlot(speaker, channels[speaker].speakerName);
+        if (slot == null)
+            return;
+
+        string contactLabel = speaker == SpeakerType.Friend ? "동창친구" : channels[speaker].speakerName;
+        slot.Configure(speaker, contactLabel, () => OpenDialogue(speaker));
+        slot.SetLastMessage(lastMsg);
+        slot.UpdateUnreadBadge(unread);
     }
 
     // 모든 프로필 UI 일괄 갱신
@@ -468,33 +613,13 @@ public class DialogueManager : MonoBehaviour
             { 2, new DialogueNode { id = 2, speakerType = SpeakerType.Friend, speakerName = "민재", message = "무료 포인트만 받아도 된대. 접속할지는 네가 정해.", choices = new List<Choice> { new Choice { choiceText = "접속한다", nextDialogueID = -1, action = ChoiceAction.AcceptGambling, openApp = true, targetApp = AppType.Browser }, new Choice { choiceText = "닫는다", nextDialogueID = -1, action = ChoiceAction.DeclineGambling } } }}
         };
 
-        var strangerNodes = new Dictionary<int, DialogueNode>
-        {
-            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Stranger, speakerName = "이웃", message = "안녕하세요! 재테크 관심 있으신가요? 100% 수익 보장합니다.", choices = new List<Choice> { new Choice { choiceText = "관심 있어요", nextDialogueID = -1, riskScoreChange = 15 }, new Choice { choiceText = "차단합니다", nextDialogueID = -1, riskScoreChange = -15 } } }}
-        };
-
-        var scammerNodes = new Dictionary<int, DialogueNode>
-        {
-            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Scammer, speakerName = "사기꾼", message = "회원님, 오늘 무료 추천주 보유중인데 입장하시겠습니까?", choices = new List<Choice> { new Choice { choiceText = "입장할게요", nextDialogueID = -1, riskScoreChange = 20 }, new Choice { choiceText = "신고할게요", nextDialogueID = -1, riskScoreChange = -20 } } }}
-        };
-
-        var momNodes = new Dictionary<int, DialogueNode>
-        {
-            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Mom, speakerName = "엄마", message = "밥 먹었어?", choices = new List<Choice> { new Choice { choiceText = "응, 먹었어", nextDialogueID = 2, riskScoreChange = 0 }, new Choice { choiceText = "아직 못 먹었어", nextDialogueID = 2, riskScoreChange = 0 } } } },
-            { 2, new DialogueNode { id = 2, speakerType = SpeakerType.Mom, speakerName = "엄마", message = "그래. 밥은 꼭 챙겨 먹어.", choices = new List<Choice> { new Choice { choiceText = "알겠어!", nextDialogueID = -1, riskScoreChange = 0 } } } }
-        };
-
-           
-
         allDialogues[SpeakerType.Friend] = friendNodes;
-        allDialogues[SpeakerType.Stranger] = strangerNodes;
-        allDialogues[SpeakerType.Scammer] = scammerNodes;
-        allDialogues[SpeakerType.Mom] = momNodes;
     }
 
     public void ReceiveNotificationMessage(SpeakerType speaker, string speakerName, string message)
     {
         EnsureInitialized();
+        bool contactAlreadyExisted = profileSlotsBySpeaker.ContainsKey(speaker);
         // 해당 화자의 채널이 없으면 생성
         if (!channels.ContainsKey(speaker))
         {
@@ -503,7 +628,7 @@ public class DialogueManager : MonoBehaviour
                 speakerType = speaker,
                 speakerName = speakerName,
                 unreadCount = 0,
-                currentDialogueID = 1
+                currentDialogueID = -1
             };
         }
 
@@ -513,6 +638,12 @@ public class DialogueManager : MonoBehaviour
         // 마지막 메시지 변경
         channels[speaker].lastMessage = message;
         channels[speaker].receivedMessages.Add(message);
+
+        if (speaker == SpeakerType.Friend && message.Contains("링크 보내줄까"))
+        {
+            channels[speaker].currentDialogueID = 1;
+            channels[speaker].showDialogueChoices = true;
+        }
 
         if (isActiveAndEnabled && dialoguePanel != null && dialoguePanel.activeInHierarchy && currentSpeaker == speaker)
         {
@@ -526,6 +657,19 @@ public class DialogueManager : MonoBehaviour
 
         // 프로필 UI 즉시 갱신
         UpdateProfileUI(speaker);
+        if (contactAlreadyExisted)
+            MoveContactToTop(speaker);
+    }
+
+    public void SetEventChoices(SpeakerType speaker, List<Choice> choices)
+    {
+        EnsureInitialized();
+        if (!channels.TryGetValue(speaker, out ChatChannel channel))
+            return;
+
+        channel.eventChoices = choices ?? new List<Choice>();
+        if (dialoguePanel != null && dialoguePanel.activeInHierarchy && currentSpeaker == speaker)
+            CreateChoiceButtons(channel.eventChoices);
     }
 }
 
@@ -534,5 +678,9 @@ public enum ChoiceAction
     None,
     AcceptGambling,
     DeclineGambling,
-    RequestHelp
+    RequestHelp,
+    AcceptMomLoan,
+    DeclineMomLoan,
+    AcceptFriendLoan,
+    DeclineFriendLoan
 }

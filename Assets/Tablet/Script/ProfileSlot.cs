@@ -1,5 +1,7 @@
 using UnityEngine;
 using TMPro;
+using UnityEngine.UI;
+using System;
 
 public class ProfileSlot : MonoBehaviour
 {
@@ -13,6 +15,40 @@ public class ProfileSlot : MonoBehaviour
 
     [Header("Text Limitation Settings")]
     public int maxCharacterLimit = 20;        // 최대 글자 수 제한 (기본값 20자)
+
+    private TMP_Text contactNameText;
+    private Button openButton;
+
+    public void Configure(SpeakerType type, string contactName, Action onOpen)
+    {
+        speakerType = type;
+        ResolveReferences();
+
+        if (contactNameText != null)
+            contactNameText.text = contactName;
+
+        if (openButton != null)
+        {
+            openButton.onClick.RemoveAllListeners();
+            openButton.onClick.AddListener(() => onOpen?.Invoke());
+        }
+    }
+
+    private void ResolveReferences()
+    {
+        openButton ??= GetComponent<Button>();
+        if (contactNameText != null)
+            return;
+
+        foreach (TMP_Text candidate in GetComponentsInChildren<TMP_Text>(true))
+        {
+            if (candidate != lastMessageText && candidate != unreadCountText)
+            {
+                contactNameText = candidate;
+                break;
+            }
+        }
+    }
 
     // 프로필의 마지막 메시지를 업데이트하는 함수
     public void SetLastMessage(string rawText)

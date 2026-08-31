@@ -57,13 +57,14 @@ namespace Dobak.Editor
                 string studyScreenshot = GetScreenshotPath("codex-study.png");
                 string casinoScreenshot = GetScreenshotPath("codex-casino.png");
                 string slotScreenshot = GetScreenshotPath("codex-slot.png");
+                string winScreenshot = GetScreenshotPath("codex-win.png");
                 string sleepFadeScreenshot = GetScreenshotPath("codex-sleep-fade.png");
                 string nextDayScreenshot = GetScreenshotPath("codex-next-day.png");
                 string endingScreenshot = GetScreenshotPath("codex-ending.png");
                 if (!qaFailed && File.Exists(screenshot) && File.Exists(messageScreenshot) && File.Exists(studyLockedScreenshot) &&
                     File.Exists(mapScreenshot) && File.Exists(fadeScreenshot) &&
                     File.Exists(travelScreenshot) && File.Exists(studyScreenshot) &&
-                    File.Exists(casinoScreenshot) && File.Exists(slotScreenshot) &&
+                    File.Exists(casinoScreenshot) && File.Exists(slotScreenshot) && File.Exists(winScreenshot) &&
                     File.Exists(sleepFadeScreenshot) && File.Exists(nextDayScreenshot) && File.Exists(endingScreenshot))
                 {
                     Debug.Log($"[PLAY QA] PASS - stored message, study lock, map art, travel, study, login-free casino, sleep, ending, and restart captured in {Path.GetDirectoryName(screenshot)}");
@@ -82,6 +83,17 @@ namespace Dobak.Editor
             double elapsed = EditorApplication.timeSinceStartup - enteredPlayAt;
             if (captureStep == 0 && elapsed >= 1.5)
             {
+                int activeContacts = 0;
+                foreach (ProfileSlot slot in UnityEngine.Object.FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                {
+                    if (slot.gameObject.activeSelf)
+                        activeContacts++;
+                }
+                if (activeContacts != 2)
+                {
+                    qaFailed = true;
+                    Debug.LogError($"[PLAY QA] Expected exactly two initial contacts, found {activeContacts}.");
+                }
                 if (GameObject.Find("BrowserApp") != null)
                 {
                     qaFailed = true;
@@ -106,7 +118,9 @@ namespace Dobak.Editor
             if (captureStep == 21 && elapsed >= 3.05)
             {
                 CaptureGameView(GetScreenshotPath("codex-message.png"));
-                UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include)?.CloseDialogue();
+                DialogueManager dialogueManager = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
+                dialogueManager?.CloseDialogue();
+                VerifyContactInsertionAndReordering(dialogueManager);
                 UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.CloseCurrentApp();
                 UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.OpenStudy();
                 captureStep = 3;
@@ -171,6 +185,13 @@ namespace Dobak.Editor
             if (captureStep == 9 && elapsed >= 7.75)
             {
                 var slot = UnityEngine.Object.FindAnyObjectByType<Dobak.App.Casino.SlotMachine.SlotMachineManager>();
+                GameObject increaseBet = GameObject.Find("Increase Bet");
+                increaseBet?.GetComponent<Button>()?.onClick.Invoke();
+                if (slot == null || slot.CurrentBetAmount != 500)
+                {
+                    qaFailed = true;
+                    Debug.LogError("[PLAY QA] Bet amount did not change from 100P to 500P.");
+                }
                 FieldInfo spinButtonField = typeof(Dobak.App.Casino.SlotMachine.SlotMachineManager).GetField("spinButton", BindingFlags.Instance | BindingFlags.NonPublic);
                 Button spinButton = spinButtonField?.GetValue(slot) as Button;
                 if (spinButton == null)
@@ -194,18 +215,27 @@ namespace Dobak.Editor
                     Debug.LogError("[PLAY QA] A complete slot spin did not resolve.");
                 }
                 CaptureGameView(GetScreenshotPath("codex-slot.png"));
+                MethodInfo celebration = typeof(Dobak.App.Casino.SlotMachine.SlotMachineManager)
+                    .GetMethod("ShowWinCelebration", BindingFlags.Instance | BindingFlags.NonPublic);
+                slot?.StartCoroutine((System.Collections.IEnumerator)celebration?.Invoke(slot, new object[] { 1500 }));
+                captureStep = 101;
+            }
+
+            if (captureStep == 101 && elapsed >= 10.25)
+            {
+                CaptureGameView(GetScreenshotPath("codex-win.png"));
                 UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.CloseCurrentApp();
                 GameObject.Find("Sleep Button")?.GetComponent<Button>()?.onClick.Invoke();
                 captureStep = 11;
             }
 
-            if (captureStep == 11 && elapsed >= 10.13)
+            if (captureStep == 11 && elapsed >= 10.43)
             {
                 CaptureGameView(GetScreenshotPath("codex-sleep-fade.png"));
                 captureStep = 12;
             }
 
-            if (captureStep == 12 && elapsed >= 11.35)
+            if (captureStep == 12 && elapsed >= 11.65)
             {
                 CaptureGameView(GetScreenshotPath("codex-next-day.png"));
                 MethodInfo endGame = typeof(GameFlowManager).GetMethod("EndGame", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -213,7 +243,7 @@ namespace Dobak.Editor
                 captureStep = 13;
             }
 
-            if (captureStep == 13 && elapsed >= 11.7)
+            if (captureStep == 13 && elapsed >= 12.0)
             {
                 CaptureGameView(GetScreenshotPath("codex-ending.png"));
                 if (GameObject.Find("Restart Button") == null)
@@ -224,8 +254,52 @@ namespace Dobak.Editor
                 captureStep = 14;
             }
 
-            if (captureStep == 14 && elapsed >= 12.05)
+            if (captureStep == 14 && elapsed >= 12.35)
                 EditorApplication.ExitPlaymode();
+        }
+
+        private static void VerifyContactInsertionAndReordering(DialogueManager dialogueManager)
+        {
+            if (dialogueManager == null)
+            {
+                qaFailed = true;
+                Debug.LogError("[PLAY QA] Dialogue manager was not available for contact ordering QA.");
+                return;
+            }
+
+            dialogueManager.ReceiveNotificationMessage(SpeakerType.Teacher, "담임 선생님", "오늘 안내 사항을 확인해 주세요.");
+            ProfileSlot teacherSlot = FindProfileSlot(SpeakerType.Teacher);
+            ProfileSlot friendSlot = FindProfileSlot(SpeakerType.Friend);
+            ProfileSlot momSlot = FindProfileSlot(SpeakerType.Mom);
+            if (teacherSlot == null || friendSlot == null || momSlot == null ||
+                teacherSlot.GetComponent<RectTransform>().anchoredPosition.y >=
+                Mathf.Min(friendSlot.GetComponent<RectTransform>().anchoredPosition.y,
+                    momSlot.GetComponent<RectTransform>().anchoredPosition.y))
+            {
+                qaFailed = true;
+                Debug.LogError("[PLAY QA] A new contact was not appended below the existing contacts.");
+                return;
+            }
+
+            dialogueManager.ReceiveNotificationMessage(SpeakerType.Teacher, "담임 선생님", "새 안내가 도착했습니다.");
+            if (teacherSlot.GetComponent<RectTransform>().anchoredPosition.y <=
+                Mathf.Max(friendSlot.GetComponent<RectTransform>().anchoredPosition.y,
+                    momSlot.GetComponent<RectTransform>().anchoredPosition.y))
+            {
+                qaFailed = true;
+                Debug.LogError("[PLAY QA] A contact with a new alert did not move to the top.");
+            }
+        }
+
+        private static ProfileSlot FindProfileSlot(SpeakerType speaker)
+        {
+            foreach (ProfileSlot slot in UnityEngine.Object.FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (slot.gameObject.activeSelf && slot.speakerType == speaker)
+                    return slot;
+            }
+
+            return null;
         }
 
         private static string GetScreenshotPath(string filename)
