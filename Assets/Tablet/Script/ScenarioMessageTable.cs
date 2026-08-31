@@ -131,6 +131,12 @@ public sealed class ScenarioMessageTable
 
     public int EventCount => eventsById.Count;
     public IEnumerable<string> Triggers => eventsByTrigger.Keys;
+    public IEnumerable<ScenarioEventDefinition> Events => eventsById.Values;
+
+    public bool HasTrigger(string trigger)
+    {
+        return !string.IsNullOrWhiteSpace(trigger) && eventsByTrigger.ContainsKey(trigger);
+    }
 
     private static string Read(List<string> row, Dictionary<string, int> columns, string key)
     {

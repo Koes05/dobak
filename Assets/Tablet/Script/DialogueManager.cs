@@ -38,6 +38,8 @@ public class Choice
 
     [Header("게임 흐름 선택")]
     public ChoiceAction action;
+
+    public string scenarioAction;
 }
 
 public class ChatChannel
@@ -49,6 +51,7 @@ public class ChatChannel
     public List<string> receivedMessages = new List<string>();
     public int renderedReceivedCount;
     public List<Choice> eventChoices = new List<Choice>();
+    public Queue<List<Choice>> pendingChoiceSets = new Queue<List<Choice>>();
     public List<GameObject> spawnedBubbles = new List<GameObject>(); // 생성된 말풍선 오브젝트 저장 (화면 전환 시 복원용)
 }
 
@@ -594,9 +597,14 @@ public class DialogueManager : MonoBehaviour
         }
 
         ClearChoices();
+        if (channels.TryGetValue(currentSpeaker, out ChatChannel selectedChannel))
+            selectedChannel.eventChoices.Clear();
 
         if (GameFlowManager.Instance != null)
         {
+            if (!string.IsNullOrWhiteSpace(selectedChoice.scenarioAction))
+                GameFlowManager.Instance.ExecuteScenarioAction(selectedChoice.scenarioAction);
+
             switch (selectedChoice.action)
             {
                 case ChoiceAction.AcceptGambling:
@@ -654,8 +662,7 @@ public class DialogueManager : MonoBehaviour
         // 다음 대화가 있는 경우
         // ==========================================
 
-        channels[currentSpeaker].eventChoices.Clear();
-        EndDialogue();
+        PromoteNextChoiceSet(currentSpeaker);
     }
 
     // -------------------------------------------------------------
@@ -778,8 +785,30 @@ public class DialogueManager : MonoBehaviour
         if (!channels.TryGetValue(speaker, out ChatChannel channel))
             return;
 
-        channel.eventChoices = choices ?? new List<Choice>();
-        if (dialoguePanel != null && dialoguePanel.activeInHierarchy && currentSpeaker == speaker)
+        List<Choice> incoming = choices ?? new List<Choice>();
+        if (incoming.Count == 0)
+            return;
+
+        if (channel.eventChoices.Count == 0)
+            channel.eventChoices = incoming;
+        else
+            channel.pendingChoiceSets.Enqueue(incoming);
+
+        if (dialoguePanel != null && dialoguePanel.activeInHierarchy && currentSpeaker == speaker &&
+            channel.pendingChoiceSets.Count == 0)
+            CreateChoiceButtons(channel.eventChoices);
+    }
+
+    private void PromoteNextChoiceSet(SpeakerType speaker)
+    {
+        if (!channels.TryGetValue(speaker, out ChatChannel channel))
+            return;
+
+        if (channel.eventChoices.Count == 0 && channel.pendingChoiceSets.Count > 0)
+            channel.eventChoices = channel.pendingChoiceSets.Dequeue();
+
+        if (dialoguePanel != null && dialoguePanel.activeInHierarchy && currentSpeaker == speaker &&
+            channel.eventChoices.Count > 0)
             CreateChoiceButtons(channel.eventChoices);
     }
 

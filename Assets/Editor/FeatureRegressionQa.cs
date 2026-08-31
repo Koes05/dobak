@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using Dobak.App.Bank;
@@ -265,7 +266,14 @@ namespace Dobak.Editor
                     Expect(firstContact != null && firstContact.anchorMin.y >= 0.99f && firstContact.anchoredPosition.y > -100f,
                         $"First contact is not anchored near the top: anchor {firstContact?.anchorMin}, position {firstContact?.anchoredPosition}.");
                     Capture("feature-09-message-contacts.png");
-                    dialogue?.OpenDialogue(SpeakerType.Friend);
+                    ScenarioMessageTable table = GetPrivate<ScenarioMessageTable>(flow, "scenarioMessages");
+                    ScenarioEventDefinition seoyeonEvent = null;
+                    if (table != null)
+                        foreach (ScenarioEventDefinition definition in table.Events)
+                            if (definition.id == "seoyeon_homework")
+                                seoyeonEvent = definition;
+                    InvokePrivate(flow, "FireScenario", seoyeonEvent, null);
+                    dialogue?.OpenDialogue(SpeakerType.Seoyeon);
                     Next(11, 0.8d);
                     break;
 
@@ -283,15 +291,28 @@ namespace Dobak.Editor
                     Expect(GameObject.Find("Chat Window Header") != null && GameObject.Find("Chat Window Middle") != null &&
                            GameObject.Find("Chat Window Footer") != null,
                         "The supplied three-part message window art was not created.");
+                    Expect(VisibleTextContains("오늘 숙제 문제 봤어?"),
+                        "Seoyeon's CSV event was not rendered in her chat room.");
+                    Expect(ClickVisibleChoice("같이 확인하자고 한다"),
+                        "Seoyeon's reply choice was not available.");
                     Capture("feature-10-message-chat-safe-area.png");
+                    Next(12, 0.7d);
+                    break;
+
+                case 12:
+                    DialogueManager repliedDialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
+                    Expect(ChannelContains(repliedDialogue, SpeakerType.Seoyeon, "사진으로 보내자"),
+                        "Selecting a CSV reply did not trigger Seoyeon's follow-up message.");
+                    Expect(VisibleTextContains("사진으로 보내자"),
+                        "Seoyeon's follow-up was stored but not rendered as a chat bubble.");
                     apps?.CloseCurrentApp();
                     SetPrivate(flow, "currentLocation", "학교");
                     SetPrivate(flow, "currentHour", 19);
                     flow?.SpendTime(1, "학교에 남아 있기");
-                    Next(12, 0.6d);
+                    Next(13, 0.6d);
                     break;
 
-                case 12:
+                case 13:
                     Expect(flow != null && flow.CurrentHour == 20 && flow.CurrentLocation == "집",
                         $"School closing did not send the player home: {flow?.CurrentHour}:00 at {flow?.CurrentLocation}.");
                     Capture("feature-11-school-closing.png");
@@ -369,6 +390,27 @@ namespace Dobak.Editor
                 if (text != null && text.gameObject.scene.IsValid() && text.gameObject.activeInHierarchy && text.text?.Contains(expected) == true)
                     return true;
             return false;
+        }
+
+        private static bool ClickVisibleChoice(string expected)
+        {
+            foreach (Button button in UnityEngine.Object.FindObjectsByType<Button>(FindObjectsInactive.Exclude))
+            {
+                TMP_Text label = button.GetComponentInChildren<TMP_Text>();
+                if (label != null && label.text.Contains(expected))
+                {
+                    button.onClick.Invoke();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool ChannelContains(DialogueManager dialogue, SpeakerType speaker, string expected)
+        {
+            Dictionary<SpeakerType, ChatChannel> channels = GetPrivate<Dictionary<SpeakerType, ChatChannel>>(dialogue, "channels");
+            return channels != null && channels.TryGetValue(speaker, out ChatChannel channel) &&
+                   channel.receivedMessages.Exists(message => message.Contains(expected));
         }
 
         private static bool HasKoreanFont(Transform root)
