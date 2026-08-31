@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
+using System;
 using TMPro;
 using Dobak.Manager;
 
@@ -8,6 +9,8 @@ namespace Dobak.App.Casino.SlotMachine
 {
     public class SlotMachineManager : MonoBehaviour
     {
+        public static event Action<bool, int> SpinResolved;
+
         [Header("참조")]
         [SerializeField] private SymbolDatabase symbolDatabase;
         [SerializeField] private ReelUI[] reels;          // 3개 등록 (좌 -> 우 순서)
@@ -57,6 +60,18 @@ namespace Dobak.App.Casino.SlotMachine
         {
             if (isSpinning) return;
 
+            if (GameFlowManager.Instance != null && !GameFlowManager.Instance.IsGamblingUnlocked)
+            {
+                resultText.text = "메시지의 초대를 먼저 확인하세요";
+                return;
+            }
+
+            if (GameFlowManager.Instance != null && !GameFlowManager.Instance.CanSpendTime(1))
+            {
+                resultText.text = "지금은 진행할 수 없습니다";
+                return;
+            }
+
             bool canSpin = CoinManager.Instance.TryBetCasino(betAmount);
 
             if (!canSpin)
@@ -64,6 +79,8 @@ namespace Dobak.App.Casino.SlotMachine
                 resultText.text = "크레딧이 부족합니다";
                 return;
             }
+
+            GameFlowManager.Instance?.SpendTime(1, "도박 한 판");
 
             StartCoroutine(SpinAllReels());
         }
@@ -86,7 +103,7 @@ namespace Dobak.App.Casino.SlotMachine
             if (wasNaturalWin)
             {
                 float suppressionChance = BetOddsModifier.GetSuppressionChance(betAmount);
-                if (Random.value < suppressionChance)
+                if (UnityEngine.Random.value < suppressionChance)
                 {
                     wasSuppressed = true;
                     BreakWinningResult(finalResults);
@@ -146,10 +163,11 @@ namespace Dobak.App.Casino.SlotMachine
         private void EvaluateResult(SlotSymbol[] results)
         {
             bool allSame = IsAllSame(results);
+            int payout = 0;
 
             if (allSame)
             {
-                int payout = Mathf.RoundToInt(betAmount * results[0].payoutMultiplier);
+                payout = Mathf.RoundToInt(betAmount * results[0].payoutMultiplier);
                 resultText.text = $"당첨! {results[0].symbolName} x3 -> +{payout}";
                 CoinManager.Instance.AddCasinoCredit(payout);
             }
@@ -161,6 +179,7 @@ namespace Dobak.App.Casino.SlotMachine
             spinButton.interactable = true;
 
             UpdateUI(CoinManager.Instance.CasinoCash);
+            SpinResolved?.Invoke(allSame, payout);
         }
 
         private void UpdateUI(int cash)

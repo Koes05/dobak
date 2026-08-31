@@ -42,12 +42,26 @@ namespace Dobak.App.Map
             marker.gameObject.SetActive(true);
             marker.anchoredPosition = loc.point.anchoredPosition;
 
-            // 현재 위치 표시
-            currentLocationText.text = $"현재 위치 : {loc.locationName}";
+            string displayName = GetDisplayName(loc.locationName);
+            currentLocationText.text = $"이동할 장소 : {displayName}";
 
-            Debug.Log($"{loc.locationName} 위치 선택됨");
+            Debug.Log($"{displayName} 위치 선택됨");
 
-            appWindow.CloseCurrentApp();
+            if (GameFlowManager.Instance != null)
+                GameFlowManager.Instance.TravelTo(displayName);
+            else
+                appWindow.CloseCurrentApp();
+        }
+
+        private static string GetDisplayName(string value)
+        {
+            switch (value)
+            {
+                case "1": return "학교";
+                case "2": return "카페";
+                case "3": return "집";
+                default: return value;
+            }
         }
     }
 }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -32,6 +33,8 @@ public class AppData
 
 public class AppWindow : MonoBehaviour
 {
+    public event Action<AppType?> AppChanged;
+
     //=========================
     // Inspector
     //=========================
@@ -150,6 +153,7 @@ public class AppWindow : MonoBehaviour
         {
             currentApp = app;
             currentApp.SetActive(true);
+            AppChanged?.Invoke(type);
         }
 
         //-------------------
@@ -177,6 +181,7 @@ public class AppWindow : MonoBehaviour
         {
             currentApp.SetActive(false);
             currentApp = null;
+            AppChanged?.Invoke(null);
         }
     }
 

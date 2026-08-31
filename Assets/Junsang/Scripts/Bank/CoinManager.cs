@@ -9,7 +9,8 @@ namespace Dobak.Manager
     {
         BankToCasinoCharge, // 뱅크 -> 카지노 충전 (뱅크 캐시 감소)
         CasinoBet,          // 카지노 내 베팅 (카지노 캐시 감소)
-        CasinoWin           // 카지노 내 당첨 (카지노 캐시 증가)
+        CasinoWin,          // 카지노 내 당첨 (카지노 캐시 증가)
+        ExternalIncome      // 알바비, 가상 대출 등 뱅크 캐시 증가
     }
 
     public enum ChargeToCasinoFailureReason
@@ -111,6 +112,15 @@ namespace Dobak.Manager
 
             CasinoCash += amount;
             OnCasinoCashChanged?.Invoke(CasinoCash);
+        }
+
+        public void AddBankCash(int amount, string description = "Bank deposit")
+        {
+            if (amount <= 0) return;
+
+            BankCash += amount;
+            OnBankCashChanged?.Invoke(BankCash);
+            AddRecord(description, amount, TransactionScope.ExternalIncome);
         }
 
         private void AddRecord(string description, int amount, TransactionScope scope)

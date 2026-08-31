@@ -28,6 +28,9 @@ public class Choice
     public bool openApp;
 
     public AppType targetApp;
+
+    [Header("게임 흐름 선택")]
+    public ChoiceAction action;
 }
 
 [System.Serializable]
@@ -298,6 +301,22 @@ public class DialogueManager : MonoBehaviour
 
         ClearChoices();
 
+        if (GameFlowManager.Instance != null)
+        {
+            switch (selectedChoice.action)
+            {
+                case ChoiceAction.AcceptGambling:
+                    GameFlowManager.Instance.ResolveInvitation(true);
+                    break;
+                case ChoiceAction.DeclineGambling:
+                    GameFlowManager.Instance.ResolveInvitation(false);
+                    break;
+                case ChoiceAction.RequestHelp:
+                    GameFlowManager.Instance.RequestHelp();
+                    break;
+            }
+        }
+
         // ==========================================
         // 선택지를 통해 특정 앱을 실행하는 경우
         // ==========================================
@@ -423,8 +442,8 @@ public class DialogueManager : MonoBehaviour
 
         var friendNodes = new Dictionary<int, DialogueNode>
         {
-            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Friend, speakerName = "동창 친구", message = "야 오랜만이다! 대박 사이트 찾음 10분만에 3배 넘게 벌수있음 너도 한번 해봐 안전하게 돈복사라니까?!", choices = new List<Choice> { new Choice { choiceText = "링크 줘봐", nextDialogueID = 2, riskScoreChange = 10 }, new Choice { choiceText = "안 해", nextDialogueID = -1, riskScoreChange = -10 } } }},
-            { 2, new DialogueNode { id = 2, speakerType = SpeakerType.Friend, speakerName = "동창 친구", message = "여기 링크 보낸다! [링크]", choices = new List<Choice> { new Choice { choiceText = "(링크들어가기)", nextDialogueID = -1, riskScoreChange = 20,  openApp = true, targetApp = AppType.Browser }, new Choice { choiceText = "생각해봤는데 그냥 안할래", nextDialogueID = -1, riskScoreChange = -20 } } }}
+            { 1, new DialogueNode { id = 1, speakerType = SpeakerType.Friend, speakerName = "민재", message = "야, 가입하면 무료 포인트를 준다는 곳을 찾았어. 링크 보내줄까?", choices = new List<Choice> { new Choice { choiceText = "예", nextDialogueID = 2 }, new Choice { choiceText = "아니오", nextDialogueID = -1, action = ChoiceAction.DeclineGambling } } }},
+            { 2, new DialogueNode { id = 2, speakerType = SpeakerType.Friend, speakerName = "민재", message = "무료 포인트만 받아도 된대. 접속할지는 네가 정해.", choices = new List<Choice> { new Choice { choiceText = "접속한다", nextDialogueID = -1, action = ChoiceAction.AcceptGambling, openApp = true, targetApp = AppType.Browser }, new Choice { choiceText = "닫는다", nextDialogueID = -1, action = ChoiceAction.DeclineGambling } } }}
         };
 
         var strangerNodes = new Dictionary<int, DialogueNode>
@@ -473,4 +492,12 @@ public class DialogueManager : MonoBehaviour
         // 프로필 UI 즉시 갱신
         UpdateProfileUI(speaker);
     }
+}
+
+public enum ChoiceAction
+{
+    None,
+    AcceptGambling,
+    DeclineGambling,
+    RequestHelp
 }

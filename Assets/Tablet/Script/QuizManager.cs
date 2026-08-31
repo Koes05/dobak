@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -5,6 +6,8 @@ using TMPro;
 
 public class QuizManager : MonoBehaviour
 {
+    public event Action<int, int> DailyQuizCompleted;
+
     [Header("문제 표시")]
     [SerializeField] private TMP_Text questionText;
 
@@ -46,6 +49,11 @@ public class QuizManager : MonoBehaviour
 
     // 오늘 문제를 모두 풀었는지
     private bool isDailyQuizFinished = false;
+    private int correctAnswerCount;
+    private int configuredDay = -1;
+    private bool isWeekday = true;
+    private bool listenersBound;
+    private bool completionReported;
 
 
     //==================================================
@@ -54,16 +62,7 @@ public class QuizManager : MonoBehaviour
 
     private void Start()
     {
-        // 선택 버튼 연결
-        for (int i = 0; i < answerButtons.Length; i++)
-        {
-            int index = i;
-
-            answerButtons[i].onClick.AddListener(() =>
-            {
-                CheckAnswer(index);
-            });
-        }
+        BindButtonListeners();
 
         // 테스트용 초기화 버튼
         if (resetButton != null)
@@ -71,7 +70,38 @@ public class QuizManager : MonoBehaviour
             resetButton.onClick.AddListener(ResetDailyQuiz);
         }
 
-        // 처음 시작할 때 오늘의 문제 5개 뽑기
+        if (configuredDay < 0)
+            ConfigureForDay(1, true);
+    }
+
+    private void BindButtonListeners()
+    {
+        if (listenersBound)
+            return;
+
+        listenersBound = true;
+        for (int i = 0; i < answerButtons.Length; i++)
+        {
+            int index = i;
+            answerButtons[i].onClick.AddListener(() => CheckAnswer(index));
+        }
+    }
+
+    public void ConfigureForDay(int day, bool weekday)
+    {
+        if (configuredDay == day && isWeekday == weekday)
+            return;
+
+        CancelInvoke(nameof(NextQuestion));
+        configuredDay = day;
+        isWeekday = weekday;
+
+        if (!isWeekday)
+        {
+            ShowWeekendState();
+            return;
+        }
+
         CreateDailyQuiz();
     }
 
@@ -87,6 +117,8 @@ public class QuizManager : MonoBehaviour
         currentIndex = 0;
         isDailyQuizFinished = false;
         isAnswerLocked = false;
+        correctAnswerCount = 0;
+        completionReported = false;
 
         // 전체 문제의 번호를 임시 리스트에 넣기
         List<int> availableIndices = new List<int>();
@@ -96,10 +128,11 @@ public class QuizManager : MonoBehaviour
             availableIndices.Add(i);
         }
 
-        // 랜덤하게 섞기
+        // 날짜마다 다른 순서지만 같은 날 다시 열면 순서가 유지된다.
+        System.Random random = new System.Random(configuredDay * 7919 + quizzes.Length * 31);
         for (int i = 0; i < availableIndices.Count; i++)
         {
-            int randomIndex = Random.Range(i, availableIndices.Count);
+            int randomIndex = random.Next(i, availableIndices.Count);
 
             int temp = availableIndices[i];
             availableIndices[i] = availableIndices[randomIndex];
@@ -117,7 +150,12 @@ public class QuizManager : MonoBehaviour
             dailyQuestionIndices.Add(availableIndices[i]);
         }
 
-        // 첫 문제 불러오기
+        if (dailyQuestionIndices.Count == 0)
+        {
+            ShowEmptyState();
+            return;
+        }
+
         LoadQuestion();
     }
 
@@ -147,7 +185,8 @@ public class QuizManager : MonoBehaviour
         questionText.text = quiz.question;
         
         // 진행도 표시
-        progressText.text = $"남은 문제: {currentIndex + 1} / {dailyQuestionIndices.Count}";
+        if (progressText != null)
+            progressText.text = $"오늘의 숙제  {currentIndex + 1} / {dailyQuestionIndices.Count}";
 
 
         // 선택지 표시
@@ -172,8 +211,10 @@ public class QuizManager : MonoBehaviour
         }
 
         // 결과 텍스트 초기화
-        resultText.text = "";
-        resultBox.color = Color.white;
+        if (resultText != null)
+            resultText.text = "";
+        if (resultBox != null)
+            resultBox.color = Color.white;
     }
 
 
@@ -202,13 +243,18 @@ public class QuizManager : MonoBehaviour
         // 정답 확인
         if (selectedIndex == quiz.answerIndex)
         {
-            resultText.text = "정답입니다!";
-            resultBox.color = new Color(0.7f, 1f, 0.7f);
+            correctAnswerCount++;
+            if (resultText != null)
+                resultText.text = "정답입니다!";
+            if (resultBox != null)
+                resultBox.color = new Color(0.7f, 1f, 0.7f);
         }
         else
         {
-            resultText.text = "오답입니다!";
-            resultBox.color = new Color(1f, 0.7f, 0.7f);
+            if (resultText != null)
+                resultText.text = $"오답입니다. 정답: {quiz.choices[quiz.answerIndex]}";
+            if (resultBox != null)
+                resultBox.color = new Color(1f, 0.7f, 0.7f);
         }
 
         // 모든 버튼 잠그기
@@ -252,11 +298,15 @@ public class QuizManager : MonoBehaviour
         isAnswerLocked = true;
 
         // 문제 영역에 완료 메시지
-        questionText.text = "오늘의 문제는 모두 풀었습니다!";
+        questionText.text = $"오늘의 숙제를 끝냈습니다!\n정답 {correctAnswerCount} / {dailyQuestionIndices.Count}";
 
         // 결과 텍스트 제거
-        resultText.text = "";
-        resultBox.color = Color.white;
+        if (progressText != null)
+            progressText.text = "오늘 숙제 완료";
+        if (resultText != null)
+            resultText.text = "공부에 2시간을 사용했습니다.";
+        if (resultBox != null)
+            resultBox.color = Color.white;
 
         // 선택 버튼 전부 잠금
         for (int i = 0; i < answerButtons.Length; i++)
@@ -264,7 +314,41 @@ public class QuizManager : MonoBehaviour
             answerButtons[i].interactable = false;
         }
 
-        Debug.Log("오늘의 퀴즈 완료!");
+        if (!completionReported)
+        {
+            completionReported = true;
+            DailyQuizCompleted?.Invoke(correctAnswerCount, dailyQuestionIndices.Count);
+        }
+
+        Debug.Log($"{configuredDay}일차 퀴즈 완료: {correctAnswerCount}/{dailyQuestionIndices.Count}");
+    }
+
+    private void ShowWeekendState()
+    {
+        isDailyQuizFinished = true;
+        isAnswerLocked = true;
+        dailyQuestionIndices.Clear();
+        questionText.text = "주말에는 새로운 숙제가 없습니다.\n오늘은 알바 일정을 확인하세요.";
+        if (progressText != null)
+            progressText.text = "주말";
+        if (resultText != null)
+            resultText.text = "";
+        if (resultBox != null)
+            resultBox.color = Color.white;
+
+        foreach (Button button in answerButtons)
+            button.gameObject.SetActive(false);
+    }
+
+    private void ShowEmptyState()
+    {
+        isDailyQuizFinished = true;
+        isAnswerLocked = true;
+        questionText.text = "등록된 문제가 없습니다.";
+        if (progressText != null)
+            progressText.text = "0 / 0";
+        foreach (Button button in answerButtons)
+            button.gameObject.SetActive(false);
     }
 
 
@@ -278,7 +362,10 @@ public class QuizManager : MonoBehaviour
         CancelInvoke(nameof(NextQuestion));
 
         // 새로운 랜덤 5문제 생성
-        CreateDailyQuiz();
+        if (isWeekday)
+            CreateDailyQuiz();
+        else
+            ShowWeekendState();
 
         Debug.Log("오늘의 퀴즈를 초기화했습니다.");
     }
