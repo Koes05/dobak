@@ -198,6 +198,11 @@ public class QuizManager : MonoBehaviour
         // 답 선택 가능
         isAnswerLocked = false;
 
+        if (answerPanelObject != null)
+            answerPanelObject.SetActive(true);
+        if (answerHeaderObject != null)
+            answerHeaderObject.SetActive(true);
+
         // 문제 표시
         questionText.text = quiz.question;
         

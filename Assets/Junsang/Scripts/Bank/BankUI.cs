@@ -76,14 +76,19 @@ namespace Dobak.App.Bank
         private void CreateEntry(TransactionRecord record)
         {
             var entry = Instantiate(entryPrefab, entryContainer);
+            foreach (TMP_Text text in entry.GetComponentsInChildren<TMP_Text>(true))
+                text.font = cashText.font;
             entry.Set(record);
             entry.transform.SetAsFirstSibling();
         }
 
         private void ApplyKoreanStyle()
         {
+            TMP_FontAsset koreanFont = FindKoreanFont();
             foreach (TMP_Text text in GetComponentsInChildren<TMP_Text>(true))
             {
+                if (koreanFont != null)
+                    text.font = koreanFont;
                 if (text.text == "Transaction History")
                     text.text = "거래 내역";
             }
@@ -96,6 +101,21 @@ namespace Dobak.App.Bank
                     background.color = new Color(0.96f, 0.97f, 0.99f, 1f);
                 current = current.parent;
             }
+        }
+
+        private static TMP_FontAsset FindKoreanFont()
+        {
+            TMP_FontAsset fallback = null;
+            foreach (TMP_FontAsset font in Resources.FindObjectsOfTypeAll<TMP_FontAsset>())
+            {
+                if (font == null)
+                    continue;
+                fallback ??= font;
+                if (font.name.Contains("NotoSansKR-Regular"))
+                    return font;
+            }
+
+            return fallback;
         }
 
         private void CreateEmptyState()

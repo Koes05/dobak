@@ -68,6 +68,9 @@ namespace Dobak.App.Casino.SlotMachine
             CreateBetControls();
             CreateWinOverlay();
 
+            if (resultText != null)
+                resultText.text = "결과를 기다리는 중";
+
             UpdateUI(CoinManager.Instance.CasinoCash);
         }
 
@@ -160,6 +163,7 @@ namespace Dobak.App.Casino.SlotMachine
             EvaluateResult(finalResults);
 
             isSpinning = false;
+            UpdateUI(CoinManager.Instance.CasinoCash);
         }
 
         private bool IsAllSame(SlotSymbol[] results)

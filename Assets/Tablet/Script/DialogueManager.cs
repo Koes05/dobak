@@ -102,6 +102,7 @@ public class DialogueManager : MonoBehaviour
     private float contactSpacing = 120f;
     private RectTransform contactContent;
     private ScrollRect contactScroll;
+    private Scrollbar contactScrollbar;
 
     private void Awake()
     {
@@ -303,7 +304,7 @@ public class DialogueManager : MonoBehaviour
         contactContent.anchorMax = new Vector2(1f, 1f);
         contactContent.pivot = new Vector2(0.5f, 1f);
         contactContent.anchoredPosition = Vector2.zero;
-        contactContent.sizeDelta = new Vector2(0f, 650f);
+        contactContent.sizeDelta = new Vector2(-24f, 650f);
 
         foreach (ProfileSlot slot in profileSlots)
             slot.transform.SetParent(contactContent, false);
@@ -316,7 +317,53 @@ public class DialogueManager : MonoBehaviour
         contactScroll.vertical = true;
         contactScroll.movementType = ScrollRect.MovementType.Clamped;
         contactScroll.scrollSensitivity = 45f;
+        contactScroll.inertia = true;
+        contactScroll.decelerationRate = 0.12f;
+        contactScrollbar = CreateContactScrollbar(viewport);
+        contactScroll.verticalScrollbar = contactScrollbar;
+        contactScroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
         contactScroll.verticalNormalizedPosition = 0f;
+    }
+
+    private Scrollbar CreateContactScrollbar(RectTransform viewport)
+    {
+        GameObject trackObject = new GameObject("Contact Scrollbar", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Scrollbar));
+        trackObject.layer = profileTemplate.gameObject.layer;
+        trackObject.transform.SetParent(viewport, false);
+        RectTransform track = trackObject.GetComponent<RectTransform>();
+        track.anchorMin = new Vector2(1f, 0f);
+        track.anchorMax = new Vector2(1f, 1f);
+        track.pivot = new Vector2(1f, 0.5f);
+        track.anchoredPosition = new Vector2(-4f, 0f);
+        track.sizeDelta = new Vector2(5f, -20f);
+        trackObject.GetComponent<Image>().color = new Color(0.72f, 0.74f, 0.79f, 0.38f);
+
+        GameObject slidingObject = new GameObject("Sliding Area", typeof(RectTransform));
+        slidingObject.layer = trackObject.layer;
+        slidingObject.transform.SetParent(track, false);
+        RectTransform sliding = slidingObject.GetComponent<RectTransform>();
+        sliding.anchorMin = Vector2.zero;
+        sliding.anchorMax = Vector2.one;
+        sliding.offsetMin = new Vector2(0f, 5f);
+        sliding.offsetMax = new Vector2(0f, -5f);
+
+        GameObject handleObject = new GameObject("Handle", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        handleObject.layer = trackObject.layer;
+        handleObject.transform.SetParent(sliding, false);
+        RectTransform handle = handleObject.GetComponent<RectTransform>();
+        handle.anchorMin = Vector2.zero;
+        handle.anchorMax = Vector2.one;
+        handle.offsetMin = Vector2.zero;
+        handle.offsetMax = Vector2.zero;
+        Image handleImage = handleObject.GetComponent<Image>();
+        handleImage.color = new Color(0.23f, 0.46f, 0.82f, 0.8f);
+
+        Scrollbar scrollbar = trackObject.GetComponent<Scrollbar>();
+        scrollbar.targetGraphic = handleImage;
+        scrollbar.handleRect = handle;
+        scrollbar.direction = Scrollbar.Direction.TopToBottom;
+        scrollbar.size = 0.25f;
+        return scrollbar;
     }
 
     private void ConfigureChatViewport()
@@ -327,13 +374,13 @@ public class DialogueManager : MonoBehaviour
         RectTransform viewport = scrollRect.viewport;
         Vector2 offsetMin = viewport.offsetMin;
         Vector2 offsetMax = viewport.offsetMax;
-        offsetMin.y = 225f;
+        offsetMin.y = 315f;
         offsetMax.y = -80f;
         viewport.offsetMin = offsetMin;
         viewport.offsetMax = offsetMax;
 
         if (chatContent.TryGetComponent(out VerticalLayoutGroup layout))
-            layout.padding.bottom = Mathf.Max(layout.padding.bottom, 24);
+            layout.padding.bottom = Mathf.Max(layout.padding.bottom, 48);
     }
 
     // -------------------------------------------------------------

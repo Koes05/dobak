@@ -14,9 +14,12 @@ public sealed class GameFlowManager : MonoBehaviour
     private const int FinalDay = 14;
     private const int DayStartHour = 7;
     private const int CollapseFailureLimit = 3;
-    private const int DebtEndingThreshold = 15000;
+    private const int DebtEndingThreshold = 150000;
     private const int SchoolOpeningHour = 8;
     private const int SchoolArrivalDeadline = 10;
+    private const int JobStartHour = 8;
+    private const int JobEndHour = 16;
+    private const int JobDailyWage = 80000;
     private const int MinimumSleepHours = 5;
     private const int ShortSleepEndingLimit = 3;
     private const int CashOutMinimumBalance = 3000;
@@ -57,6 +60,8 @@ public sealed class GameFlowManager : MonoBehaviour
     private GameObject borrowChoicePanel;
     private Button momBorrowButton;
     private Button friendBorrowButton;
+    private TMP_Text snsStatusText;
+    private RawImage snsFeedImage;
     private readonly List<TMP_Text> dateTexts = new List<TMP_Text>();
     private readonly List<TMP_Text> clockTexts = new List<TMP_Text>();
     private readonly List<TMP_Text> locationTexts = new List<TMP_Text>();
@@ -69,6 +74,8 @@ public sealed class GameFlowManager : MonoBehaviour
     private int debt;
     private int gambleRounds;
     private int gambleLosses;
+    private int casinoChargesToday;
+    private int snsHoursToday;
     private string currentLocation = "집";
     private string activeStoryEvent = "";
     private readonly Dictionary<string, int> lastStoryDay = new Dictionary<string, int>();
@@ -157,6 +164,7 @@ public sealed class GameFlowManager : MonoBehaviour
         {
             coinManager.OnBankCashChanged += OnBankCashChanged;
             coinManager.OnCasinoCashChanged += OnCasinoCashChanged;
+            coinManager.OnCasinoChargeCompleted += OnCasinoChargeCompleted;
         }
 
         StartNewDay(false);
@@ -175,6 +183,7 @@ public sealed class GameFlowManager : MonoBehaviour
         {
             coinManager.OnBankCashChanged -= OnBankCashChanged;
             coinManager.OnCasinoCashChanged -= OnCasinoCashChanged;
+            coinManager.OnCasinoChargeCompleted -= OnCasinoChargeCompleted;
         }
 
         if (appWindow != null)
@@ -223,6 +232,23 @@ public sealed class GameFlowManager : MonoBehaviour
             }
         }
 
+        else if (location == "카페" && IsWeekend && !jobDone)
+        {
+            int arrivalHour = currentHour + travelHours;
+            if (arrivalHour < JobStartHour)
+            {
+                ShowFeedback("알바는 오전 8시에 시작합니다.");
+                return;
+            }
+
+            if (arrivalHour > JobStartHour)
+            {
+                ShowFeedback("오전 8시 출근 시간을 지나 오늘은 근무할 수 없습니다.");
+                SendOnce($"job_late_{currentDay}", "카페 매니저", "오전 8시 출근 시간을 넘겼어. 오늘 근무 일정은 결근으로 처리할게.", SpeakerType.CafeManager);
+                return;
+            }
+        }
+
         if (location == currentLocation)
         {
             ShowFeedback($"현재 {location}에 있습니다.");
@@ -247,9 +273,9 @@ public sealed class GameFlowManager : MonoBehaviour
             else if (location == "카페" && IsWeekend && !jobDone)
             {
                 jobDone = true;
-                AdvanceHours(6);
-                coinManager?.AddBankCash(60, "카페 아르바이트 급여");
-                SendOnce($"job_{currentDay}", "은행 알림", "카페 아르바이트 급여 60원이 입금되었습니다.", SpeakerType.Unknown);
+                AdvanceHours(JobEndHour - JobStartHour);
+                coinManager?.AddBankCash(JobDailyWage, "카페 아르바이트 일당");
+                SendOnce($"job_{currentDay}", "은행 알림", $"카페 아르바이트 일당 {JobDailyWage:N0}원이 입금되었습니다.", SpeakerType.Bank);
             }
 
             appWindow?.CloseCurrentApp();
@@ -405,6 +431,8 @@ public sealed class GameFlowManager : MonoBehaviour
         homeworkDone = false;
         jobDone = false;
         sleepDone = false;
+        casinoChargesToday = 0;
+        snsHoursToday = 0;
 
         quizManager?.ConfigureForDay(currentDay, !IsWeekend);
 
@@ -474,8 +502,6 @@ public sealed class GameFlowManager : MonoBehaviour
         if (gambleRounds == 1)
             SendStoryStep("gambling_arc", "gambling_arc_1", 0);
 
-        if (gambleRounds == 3)
-            SendStoryStep("bank_arc", "bank_arc_1", 0);
         if (gambleRounds == 5)
             SendStoryStep("gambling_arc", "gambling_arc_5", 1);
         if (gambleRounds == 10)
@@ -527,8 +553,8 @@ public sealed class GameFlowManager : MonoBehaviour
     {
         if (accepted)
         {
-            coinManager?.AddBankCash(1500, "엄마에게 빌린 돈");
-            debt += 1500;
+            coinManager?.AddBankCash(15000, "엄마에게 빌린 돈");
+            debt += 15000;
             SendStoryStep("borrow_mom", "borrow_mom_accept", 1);
             UnlockHelpStory();
         }
@@ -544,8 +570,8 @@ public sealed class GameFlowManager : MonoBehaviour
     {
         if (accepted)
         {
-            coinManager?.AddBankCash(2500, "민재에게 빌린 돈");
-            debt += 2500;
+            coinManager?.AddBankCash(25000, "민재에게 빌린 돈");
+            debt += 25000;
             SendStoryStep("borrow_friend", "borrow_friend_accept", 1);
             UnlockHelpStory();
         }
@@ -583,8 +609,16 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private void OnBankCashChanged(int value)
     {
-        if (value <= 20)
-            SendStoryStep("bank_arc", "low_balance", 1);
+        RefreshUI();
+    }
+
+    private void OnCasinoChargeCompleted(int won, int points)
+    {
+        casinoChargesToday++;
+        if (casinoChargesToday == 3)
+            SendStoryStep("bank_arc", $"charge_repeat_{currentDay}", 0);
+        else if (casinoChargesToday == 5)
+            SendStoryStep("bank_arc", $"charge_excessive_{currentDay}", 1);
 
         RefreshUI();
     }
@@ -612,6 +646,11 @@ public sealed class GameFlowManager : MonoBehaviour
         {
             ShowTutorialStep(4);
             ShowTutorialStep(5);
+        }
+        else if (openedApp == AppType.SNS && shownTutorialSteps.Add("sns_intro"))
+        {
+            ShowNarrationStep("sns_intro", 0);
+            ShowNarrationStep("sns_intro", 1);
         }
     }
 
@@ -704,7 +743,7 @@ public sealed class GameFlowManager : MonoBehaviour
         ShowNarrationStep("tutorial_day1", step, 0);
     }
 
-    private void ShowNarrationStep(string eventId, int step, int hours)
+    private void ShowNarrationStep(string eventId, int step, int hours = 0)
     {
         if (scenarioMessages == null || !scenarioMessages.TryGet(eventId, step, out ScenarioMessage entry))
         {
@@ -903,7 +942,7 @@ public sealed class GameFlowManager : MonoBehaviour
         string[] lines = IsWeekend
             ? new[]
             {
-                $"{Mark(jobDone)} 알바 가기  (지도 · 카페)",
+                $"{Mark(jobDone)} 알바 가기  (08:00~16:00 · 카페)",
                 $"{Mark(sleepDone)} 잠자기  (최소 5시간)",
                 CanRequestHelp ? "[  ] 도움 요청  (빚이 생긴 지금 선택 가능)" : "",
                 ""
@@ -928,6 +967,8 @@ public sealed class GameFlowManager : MonoBehaviour
 
         TMP_FontAsset font = FindPreferredFont();
 
+        CreateSnsApp(canvas, font);
+        CreateSnsHomeIcon(font);
         CreateSettingsApp(canvas, font);
 
         GameObject panel = CreatePanel("Daily Action Bar", canvas.transform, new Color(0.035f, 0.075f, 0.13f, 0.92f));
@@ -1130,6 +1171,159 @@ public sealed class GameFlowManager : MonoBehaviour
         {
             settingButton.onClick.RemoveAllListeners();
             settingButton.onClick.AddListener(appWindow.OpenSetting);
+        }
+    }
+
+    private void CreateSnsApp(Canvas canvas, TMP_FontAsset font)
+    {
+        GameObject sns = CreatePanel("Runtime SNS App", canvas.transform, new Color(0.965f, 0.97f, 0.98f, 1f));
+        Stretch(sns.GetComponent<RectTransform>());
+
+        GameObject header = CreatePanel("SNS Header", sns.transform, new Color(0.1f, 0.14f, 0.2f, 1f));
+        RectTransform headerRect = header.GetComponent<RectTransform>();
+        headerRect.anchorMin = new Vector2(0f, 1f);
+        headerRect.anchorMax = new Vector2(1f, 1f);
+        headerRect.pivot = new Vector2(0.5f, 1f);
+        headerRect.anchoredPosition = Vector2.zero;
+        headerRect.sizeDelta = new Vector2(0f, 130f);
+
+        TMP_Text title = CreateText("SNS Title", header.transform, font, 44, FontStyles.Bold, Color.white);
+        title.text = "SNS";
+        title.alignment = TextAlignmentOptions.Left;
+        SetRect(title.rectTransform, new Vector2(70f, -38f), new Vector2(400f, 62f));
+
+        TMP_Text feedTitle = CreateText("SNS Feed Title", sns.transform, font, 38, FontStyles.Bold, new Color(0.08f, 0.12f, 0.18f));
+        feedTitle.text = "추천 영상";
+        SetRect(feedTitle.rectTransform, new Vector2(100f, -200f), new Vector2(500f, 64f));
+
+        GameObject video = CreatePanel("SNS Video Preview", sns.transform, new Color(0.13f, 0.18f, 0.25f, 1f));
+        RectTransform videoRect = video.GetComponent<RectTransform>();
+        videoRect.anchorMin = new Vector2(0.29f, 0.4f);
+        videoRect.anchorMax = new Vector2(0.71f, 0.84f);
+        videoRect.offsetMin = videoRect.offsetMax = Vector2.zero;
+
+        GameObject feedArt = new GameObject("SNS Feed Art", typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+        feedArt.layer = 5;
+        feedArt.transform.SetParent(video.transform, false);
+        snsFeedImage = feedArt.GetComponent<RawImage>();
+        snsFeedImage.texture = Resources.Load<Texture2D>("TestAssets/Gemini_Generated_Image_39o0xn39o0xn39o0");
+        snsFeedImage.color = Color.white;
+        snsFeedImage.raycastTarget = false;
+        Stretch(snsFeedImage.rectTransform);
+
+        TMP_Text videoText = CreateText("SNS Video Text", video.transform, font, 34, FontStyles.Bold, Color.white);
+        videoText.text = "오늘 올라온 영상과 짧은 게시물";
+        videoText.alignment = TextAlignmentOptions.Center;
+        Stretch(videoText.rectTransform);
+
+        TMP_Text prompt = CreateText("SNS Time Prompt", sns.transform, font, 30, FontStyles.Normal, new Color(0.2f, 0.24f, 0.3f));
+        prompt.text = "얼마나 시청할까?";
+        prompt.alignment = TextAlignmentOptions.Center;
+        RectTransform promptRect = prompt.rectTransform;
+        promptRect.anchorMin = new Vector2(0.2f, 0.33f);
+        promptRect.anchorMax = new Vector2(0.8f, 0.39f);
+        promptRect.offsetMin = promptRect.offsetMax = Vector2.zero;
+
+        int[] hours = { 1, 2, 3, 5 };
+        for (int i = 0; i < hours.Length; i++)
+        {
+            int selectedHours = hours[i];
+            Button button = CreateButton($"SNS {selectedHours} Hour Button", sns.transform, font, $"{selectedHours}시간", new Color(0.2f, 0.52f, 0.34f));
+            RectTransform rect = button.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.24f);
+            rect.anchorMax = new Vector2(0.5f, 0.24f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = new Vector2((i - 1.5f) * 230f, 0f);
+            rect.sizeDelta = new Vector2(190f, 76f);
+            button.onClick.AddListener(() => WatchSns(selectedHours));
+        }
+
+        snsStatusText = CreateText("SNS Status", sns.transform, font, 25, FontStyles.Normal, new Color(0.3f, 0.34f, 0.4f));
+        snsStatusText.text = "시청 시간은 되돌릴 수 없습니다.";
+        snsStatusText.alignment = TextAlignmentOptions.Center;
+        RectTransform statusRect = snsStatusText.rectTransform;
+        statusRect.anchorMin = new Vector2(0.15f, 0.11f);
+        statusRect.anchorMax = new Vector2(0.85f, 0.18f);
+        statusRect.offsetMin = statusRect.offsetMax = Vector2.zero;
+
+        sns.SetActive(false);
+        appWindow?.RegisterRuntimeApp(AppType.SNS, sns);
+    }
+
+    private void CreateSnsHomeIcon(TMP_FontAsset font)
+    {
+        GameObject appManager = FindSceneObject("AppManager");
+        if (appManager == null || appWindow == null)
+            return;
+
+        GameObject icon = new GameObject("SNSApp", typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage), typeof(Button));
+        icon.layer = 5;
+        icon.transform.SetParent(appManager.transform, false);
+        RectTransform rect = icon.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = new Vector2(1f, 0.5f);
+        rect.pivot = new Vector2(1f, 0.5f);
+        rect.anchoredPosition = new Vector2(-280f, -100f);
+        rect.sizeDelta = new Vector2(150f, 150f);
+
+        RawImage image = icon.GetComponent<RawImage>();
+        image.texture = Resources.Load<Texture2D>("SNS/sns_icon");
+        image.uvRect = new Rect(0.18f, 0.18f, 0.64f, 0.64f);
+        image.color = Color.white;
+        Button button = icon.GetComponent<Button>();
+        button.targetGraphic = image;
+        button.onClick.AddListener(appWindow.OpenSNS);
+
+        TMP_Text label = CreateText("SNS Icon Label", icon.transform, font, 24, FontStyles.Normal, Color.white);
+        label.text = "SNS";
+        label.alignment = TextAlignmentOptions.Center;
+        RectTransform labelRect = label.rectTransform;
+        labelRect.anchorMin = new Vector2(0f, 0f);
+        labelRect.anchorMax = new Vector2(1f, 0f);
+        labelRect.pivot = new Vector2(0.5f, 1f);
+        labelRect.anchoredPosition = new Vector2(0f, -8f);
+        labelRect.sizeDelta = new Vector2(0f, 38f);
+    }
+
+    public void WatchSns(int hours)
+    {
+        if (!CanSpendTime(hours) || (hours != 1 && hours != 2 && hours != 3 && hours != 5))
+            return;
+
+        snsHoursToday += hours;
+        AdvanceHours(hours);
+        if (gameEnded)
+            return;
+
+        int index = hours == 1 ? 0 : hours == 2 ? 1 : hours == 3 ? 2 : 3;
+        ShowNarrationStep("sns_watch", index);
+        string[] feedImages =
+        {
+            "TestAssets/Gemini_Generated_Image_39o0xn39o0xn39o0",
+            "TestAssets/Gemini_Generated_Image_4e11dw4e11dw4e11",
+            "TestAssets/Gemini_Generated_Image_k9p8g0k9p8g0k9p8"
+        };
+        if (snsFeedImage != null)
+            snsFeedImage.texture = Resources.Load<Texture2D>(feedImages[(snsHoursToday + index) % feedImages.Length]);
+        if (snsStatusText != null)
+            snsStatusText.text = $"오늘 SNS를 본 시간  {snsHoursToday}시간";
+
+        if (currentHour >= 22 || currentHour < DayStartHour)
+            ShowNarrationStep("sns_late_night", 0);
+
+        if (hours >= 3)
+        {
+            if (!IsWeekend && !homeworkDone)
+                SendStoryStep("sns_daily_event", $"sns_homework_{currentDay}", 1);
+            else if (IsWeekend && !jobDone)
+                SendStoryStep("sns_daily_event", $"sns_job_{currentDay}", 2);
+            else
+                ShowNarrationStep("sns_daily_event", 3);
+        }
+
+        if (gamblingUnlocked && snsHoursToday >= 2 && sentMessages.Add($"sns_gambling_feed_{currentDay}"))
+        {
+            ShowNarrationStep("sns_gambling_feed", 0);
+            ShowNarrationStep("sns_gambling_feed", 1);
         }
     }
 

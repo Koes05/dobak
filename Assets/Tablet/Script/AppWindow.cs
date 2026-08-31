@@ -14,7 +14,8 @@ public enum AppType
     Bank,
     Message,
     Map,
-    Setting
+    Setting,
+    SNS
 }
 
 /// <summary>
@@ -232,5 +233,10 @@ public class AppWindow : MonoBehaviour
     public void OpenMap()
     {
         OpenApp(AppType.Map);
+    }
+
+    public void OpenSNS()
+    {
+        OpenApp(AppType.SNS);
     }
 }

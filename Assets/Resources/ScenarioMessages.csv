@@ -34,7 +34,7 @@ cashout_small,Bank,은행 알림,"사이트에서 소액이 입금되었지만 �
 borrow_mom,Mom,엄마,"무슨 일인데 돈이 필요해? 필요한 이유를 솔직하게 말해 줘."
 borrow_mom,Mom,엄마,"이번에는 빌려줄게. 대신 혼자 감당하지 말고 같이 정리하자."
 borrow_mom,Mom,엄마,"알겠어. 돈보다 먼저 무슨 일이 있었는지 이야기해 줬으면 좋겠어."
-borrow_friend,Friend,민재,"급한 거면 내가 2,500원 정도는 빌려줄 수 있어. 정말 필요해?"
+borrow_friend,Friend,민재,"급한 거면 내가 25,000원 정도는 빌려줄 수 있어. 정말 필요해?"
 borrow_friend,Friend,민재,"보냈어. 나중에 꼭 갚아 줘."
 borrow_friend,Friend,민재,"그래. 더 필요해지기 전에 일단 멈추는 게 좋겠다."
 help_story,Counselor,상담 선생님,"빚이 생겼다면 혼자 해결하려 하지 않아도 됩니다. 지금 상황부터 같이 정리할 수 있어요."

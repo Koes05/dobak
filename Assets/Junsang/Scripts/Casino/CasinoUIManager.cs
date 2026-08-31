@@ -34,6 +34,12 @@ namespace Dobak.App.Casino
 
         private NotificationManager notificationManager;
         private TMP_Text homePromotionText;
+        private TMP_Text rechargeStatusText;
+        private RawImage siteBackgroundImage;
+        private RawImage siteBannerImage;
+        private RawImage rechargeArtImage;
+        private readonly Button[] chargeButtons = new Button[4];
+        private static readonly int[] ChargeWonOptions = { 5000, 10000, 50000, 100000 };
 
         private void OnEnable()
         {
@@ -58,6 +64,7 @@ namespace Dobak.App.Casino
 
             Init();
             EnsureHomeContent();
+            ConfigureChargeOptions();
         }
 
         private void OnDisable()
@@ -82,6 +89,13 @@ namespace Dobak.App.Casino
             casinoCashText.text = $"사이트 포인트  {casinoCash:N0}P";
             if (home_cashText != null)
                 home_cashText.text = $"보유 포인트  {casinoCash:N0}P";
+
+            foreach (TMP_Text text in GetComponentsInChildren<TMP_Text>(true))
+            {
+                if (text != null && !ReferenceEquals(text, casinoCashText) && !ReferenceEquals(text, home_cashText) &&
+                    (text.text?.Contains("Cash:") == true || text.text?.Contains('$') == true))
+                    text.text = $"사이트 포인트  {casinoCash:N0}P";
+            }
         }
 
         private void Init()
@@ -115,9 +129,44 @@ namespace Dobak.App.Casino
             homePromotionText.text = "첫 이용 보너스 지급 완료\n\n지금 시작하면 추가 포인트를 받을 수 있습니다";
 
             RectTransform rect = homePromotionText.rectTransform;
-            rect.anchorMin = new Vector2(0.12f, 0.2f);
-            rect.anchorMax = new Vector2(0.88f, 0.8f);
+            rect.anchorMin = new Vector2(0.12f, 0.18f);
+            rect.anchorMax = new Vector2(0.88f, 0.55f);
             rect.offsetMin = rect.offsetMax = Vector2.zero;
+
+            siteBackgroundImage = CreateArt("Site Pattern", homePanel.transform,
+                "TestAssets/Gemini_Generated_Image_iob66iiob66iiob6", Vector2.zero, Vector2.one);
+            if (siteBackgroundImage != null)
+            {
+                siteBackgroundImage.transform.SetAsFirstSibling();
+                siteBackgroundImage.color = new Color(1f, 1f, 1f, 0.7f);
+            }
+
+            siteBannerImage = CreateArt("Site Banner", homePanel.transform,
+                "TestAssets/Gemini_Generated_Image_hfrgu0hfrgu0hfrg", new Vector2(0.11f, 0.62f), new Vector2(0.89f, 0.84f));
+            if (siteBannerImage != null)
+                siteBannerImage.transform.SetAsLastSibling();
+
+            rechargeArtImage = CreateArt("Recharge Promotion", rechargePanel.transform,
+                "TestAssets/Gemini_Generated_Image_rh9r09rh9r09rh9r", new Vector2(0.08f, 0.6f), new Vector2(0.92f, 0.87f));
+        }
+
+        private static RawImage CreateArt(string name, Transform parent, string resourcePath, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            Texture2D texture = Resources.Load<Texture2D>(resourcePath);
+            if (texture == null || parent == null)
+                return null;
+
+            GameObject art = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+            art.layer = parent.gameObject.layer;
+            art.transform.SetParent(parent, false);
+            RectTransform rect = art.GetComponent<RectTransform>();
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+            RawImage image = art.GetComponent<RawImage>();
+            image.texture = texture;
+            image.raycastTarget = false;
+            return image;
         }
 
         private void OnHomeButtonClicked()
@@ -153,7 +202,7 @@ namespace Dobak.App.Casino
             profilePanel.SetActive(true);
         }
 
-        private void OnCashButtonClicked(int cash)
+        private void OnCashButtonClicked(int won)
         {
             if (CoinManager.Instance == null)
             {
@@ -161,19 +210,82 @@ namespace Dobak.App.Casino
                 return;
             }
 
-            if (CoinManager.Instance.TryChargeToCasino(cash, out ChargeToCasinoFailureReason failureReason))
+            if (CoinManager.Instance.TryChargeToCasino(won, out ChargeToCasinoFailureReason failureReason))
             {
-                ShowPopup("출금 완료", $"${cash}가 카지노 캐시로 이동했습니다.");
+                int points = CoinManager.ConvertWonToPoints(won);
+                ShowRechargeStatus($"{won:N0}원 충전 완료  +{points:N0}P", false);
                 return;
             }
 
             if (failureReason == ChargeToCasinoFailureReason.InsufficientBankCash)
             {
-                ShowPopup("출금 오류", "은행 잔액이 부족합니다.");
+                ShowRechargeStatus("통장 잔액이 부족합니다.", true);
                 return;
             }
 
-            ShowPopup("출금 오류", "잘못된 출금 금액입니다.");
+            ShowRechargeStatus("선택할 수 없는 충전 금액입니다.", true);
+        }
+
+        private void ConfigureChargeOptions()
+        {
+            chargeButtons[0] = _1DollorButton;
+            chargeButtons[1] = _10DollorButton;
+            chargeButtons[2] = _100DollorButton;
+            chargeButtons[3] = _1000DollorButton;
+
+            for (int i = 0; i < chargeButtons.Length; i++)
+            {
+                Button button = chargeButtons[i];
+                if (button == null)
+                    continue;
+
+                int won = ChargeWonOptions[i];
+                TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+                if (label != null)
+                    label.text = $"{won:N0}원\n{CoinManager.ConvertWonToPoints(won):N0}P";
+
+                RectTransform buttonRect = button.GetComponent<RectTransform>();
+                if (buttonRect != null)
+                {
+                    float x = i % 2 == 0 ? 0.36f : 0.68f;
+                    float y = i < 2 ? 0.35f : 0.2f;
+                    buttonRect.anchorMin = buttonRect.anchorMax = new Vector2(x, y);
+                    buttonRect.pivot = new Vector2(0.5f, 0.5f);
+                    buttonRect.anchoredPosition = Vector2.zero;
+                    buttonRect.sizeDelta = new Vector2(360f, 104f);
+                }
+            }
+
+            if (_10000DollorButton != null)
+                _10000DollorButton.gameObject.SetActive(false);
+            if (_100000DollorButton != null)
+                _100000DollorButton.gameObject.SetActive(false);
+
+            if (rechargeStatusText == null && rechargePanel != null)
+            {
+                GameObject status = new GameObject("Recharge Status", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+                status.transform.SetParent(rechargePanel.transform, false);
+                rechargeStatusText = status.GetComponent<TextMeshProUGUI>();
+                rechargeStatusText.font = casinoCashText.font;
+                rechargeStatusText.fontSize = 30f;
+                rechargeStatusText.alignment = TextAlignmentOptions.Center;
+                rechargeStatusText.color = new Color(0.12f, 0.18f, 0.28f);
+                RectTransform rect = rechargeStatusText.rectTransform;
+                rect.anchorMin = new Vector2(0.15f, 0.08f);
+                rect.anchorMax = new Vector2(0.85f, 0.18f);
+                rect.offsetMin = rect.offsetMax = Vector2.zero;
+            }
+        }
+
+        private void ShowRechargeStatus(string message, bool error)
+        {
+            if (rechargeStatusText == null)
+                ConfigureChargeOptions();
+            if (rechargeStatusText == null)
+                return;
+
+            rechargeStatusText.text = message;
+            rechargeStatusText.color = error ? new Color(0.72f, 0.18f, 0.2f) : new Color(0.08f, 0.48f, 0.3f);
         }
 
         private void ShowPopup(string title, string message)
@@ -199,13 +311,13 @@ namespace Dobak.App.Casino
             Debug.LogWarning($"{nameof(CasinoUIManager)} could not find a NotificationManager.");
         }
 
-        private void On1DollarButtonClicked() => OnCashButtonClicked(1);
+        private void On1DollarButtonClicked() => OnCashButtonClicked(5000);
 
-        private void On10DollarButtonClicked() => OnCashButtonClicked(10);
+        private void On10DollarButtonClicked() => OnCashButtonClicked(10000);
 
-        private void On100DollarButtonClicked() => OnCashButtonClicked(100);
+        private void On100DollarButtonClicked() => OnCashButtonClicked(50000);
 
-        private void On1000DollarButtonClicked() => OnCashButtonClicked(1000);
+        private void On1000DollarButtonClicked() => OnCashButtonClicked(100000);
 
         private void On10000DollarButtonClicked() => OnCashButtonClicked(10000);
 

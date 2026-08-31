@@ -29,6 +29,9 @@ namespace Dobak.App.Casino.SlotMachine
         public void Init(SymbolDatabase db)
         {
             database = db;
+            SetSlot(topSlot, database.GetVisualRandomSymbol());
+            SetSlot(middleSlot, database.GetVisualRandomSymbol());
+            SetSlot(bottomSlot, database.GetVisualRandomSymbol());
         }
 
         // duration 동안 심볼을 빠르게 바꾸다가 finalSymbol로 정지

@@ -25,7 +25,9 @@ namespace Dobak.Editor
                 scenario.Count("family_dinner") < 3 || scenario.Count("gambling_arc") < 3 ||
                 scenario.Count("borrow_mom") < 3 || scenario.Count("borrow_friend") < 3 ||
                 scenario.Count("tutorial_day1") < 6 || scenario.Count("day_transition") < 2 ||
-                scenario.Count("spam_retempt") < 3 || scenario.Count("cashout_small") < 1)
+                scenario.Count("spam_retempt") < 3 || scenario.Count("cashout_small") < 1 ||
+                scenario.Count("sns_intro") < 3 || scenario.Count("sns_watch") < 4 ||
+                scenario.Count("sns_daily_event") < 4 || scenario.Count("sns_late_night") < 3)
             {
                 failures.Add("ScenarioMessages.csv does not contain enough playable event messages.");
             }
@@ -53,6 +55,14 @@ namespace Dobak.Editor
                 GameFlowManager.GetHoursUntilDayBoundary(7) != 24)
             {
                 failures.Add("A game day must advance only when the clock reaches 7 AM.");
+            }
+
+            if (CoinManager.ConvertWonToPoints(5000) != 500 ||
+                CoinManager.ConvertWonToPoints(10000) != 1000 ||
+                CoinManager.ConvertWonToPoints(50000) != 5000 ||
+                CoinManager.ConvertWonToPoints(100000) != 10000)
+            {
+                failures.Add("Casino charge conversion must use 10,000 won = 1,000P.");
             }
 
             if (!File.Exists(MainScene))
@@ -99,6 +109,9 @@ namespace Dobak.Editor
                 "Assets/Tablet/Img/galaxy_message_screen_clean.png",
                 "Assets/Resources/Map/2288553.png",
                 "Assets/Resources/Map/Code_Generated_Image (1).png"
+                ,"Assets/Resources/SNS/sns_icon.png"
+                ,"Assets/Resources/TestAssets/Gemini_Generated_Image_39o0xn39o0xn39o0.png"
+                ,"Assets/Resources/TestAssets/Gemini_Generated_Image_iob66iiob66iiob6.png"
             };
 
             foreach (string assetPath in requiredArt)

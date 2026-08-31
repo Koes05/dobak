@@ -56,6 +56,23 @@ namespace Dobak.App.Map
 
         private void ApplyVisualAssets()
         {
+            Texture2D mapTexture = Resources.Load<Texture2D>("TestAssets/Gemini_Generated_Image_8j98948j98948j98");
+            if (mapTexture != null && transform.Find("Imported Map Background") == null)
+            {
+                GameObject backgroundObject = new GameObject("Imported Map Background", typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+                backgroundObject.layer = gameObject.layer;
+                backgroundObject.transform.SetParent(transform, false);
+                RectTransform backgroundRect = backgroundObject.GetComponent<RectTransform>();
+                backgroundRect.anchorMin = Vector2.zero;
+                backgroundRect.anchorMax = Vector2.one;
+                backgroundRect.offsetMin = backgroundRect.offsetMax = Vector2.zero;
+                RawImage background = backgroundObject.GetComponent<RawImage>();
+                background.texture = mapTexture;
+                background.color = new Color(1f, 1f, 1f, 0.88f);
+                background.raycastTarget = false;
+                backgroundObject.transform.SetAsFirstSibling();
+            }
+
             Sprite markerSprite = Resources.LoadAll<Sprite>("Map/2288553").FirstOrDefault();
             if (markerSprite != null && marker != null)
             {

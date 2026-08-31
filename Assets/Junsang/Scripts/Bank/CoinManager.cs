@@ -36,9 +36,10 @@ namespace Dobak.Manager
     // CoinManager.Instance로 접근해서 잔액을 읽거나 변경한다.
     public class CoinManager : MonoBehaviour
     {
+        public const int WonPerPoint = 10;
         public static CoinManager Instance { get; private set; }
 
-        [SerializeField] private int startingBankCash = 1000;
+        [SerializeField] private int startingBankCash = 100000;
 
         public int BankCash { get; private set; }
         public int CasinoCash { get; private set; } // 시작은 항상 0
@@ -46,6 +47,7 @@ namespace Dobak.Manager
         public event Action<int> OnBankCashChanged;
         public event Action<int> OnCasinoCashChanged;
         public event Action<TransactionRecord> OnTransactionAdded;
+        public event Action<int, int> OnCasinoChargeCompleted;
 
         private readonly List<TransactionRecord> history = new List<TransactionRecord>();
         public IReadOnlyList<TransactionRecord> History => history;
@@ -83,15 +85,28 @@ namespace Dobak.Manager
                 return false;
             }
 
+            int points = ConvertWonToPoints(amount);
+            if (points <= 0)
+            {
+                failureReason = ChargeToCasinoFailureReason.InvalidAmount;
+                return false;
+            }
+
             BankCash -= amount;
-            CasinoCash += amount;
+            CasinoCash += points;
             failureReason = ChargeToCasinoFailureReason.None;
 
             OnBankCashChanged?.Invoke(BankCash);
             OnCasinoCashChanged?.Invoke(CasinoCash);
             AddRecord("사이트 포인트 충전", -amount, TransactionScope.BankToCasinoCharge);
+            OnCasinoChargeCompleted?.Invoke(amount, points);
 
             return true;
+        }
+
+        public static int ConvertWonToPoints(int won)
+        {
+            return won > 0 && won % WonPerPoint == 0 ? won / WonPerPoint : 0;
         }
 
         // 카지노 내 베팅: 오직 카지노 캐시만 사용, 뱅크 캐시는 건드리지 않음

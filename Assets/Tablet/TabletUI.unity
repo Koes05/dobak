@@ -5843,7 +5843,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: df3f22ec3baf70e4d8239a478cc3a183, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CoinManager
-  startingBankCash: 1000
+  startingBankCash: 100000
 --- !u!114 &1187083493
 MonoBehaviour:
   m_ObjectHideFlags: 0
