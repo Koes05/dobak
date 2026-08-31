@@ -33,7 +33,7 @@ namespace Dobak.Editor
             var replyRequiredEvents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "initial_invitation", "invitation_detail", "family_dinner_start", "weekend_shift_start",
-                "joonho_casual", "seoyeon_homework", "mom_checkin", "short_sleep", "job_late", "miss_job",
+                "joonho_casual", "seoyeon_homework", "seoyeon_reply_together", "mom_checkin", "short_sleep", "job_late", "miss_job",
                 "gamble_round_1", "gamble_round_5", "gamble_round_10", "borrow_mom_request",
                 "borrow_friend_request", "help_available", "sns_mom_homework", "sns_job_warning", "sns_late_mom"
             };
@@ -77,6 +77,12 @@ namespace Dobak.Editor
             TextAsset scenarioAsset = Resources.Load<TextAsset>("ScenarioMessages");
             if (scenarioAsset != null && scenarioAsset.text.Contains("학원"))
                 failures.Add("ScenarioMessages.csv still contains an academy event, but the game only uses school, home, and cafe work.");
+            if (scenarioAsset != null && (scenarioAsset.text.Contains(",Stranger,") ||
+                                          scenarioAsset.text.Contains("사진으로 보내자")))
+                failures.Add("ScenarioMessages.csv still contains an unexplained stranger contact or an unsupported photo-sharing promise.");
+            if (scenario.Count("loan_spam") > 0 || scenario.Count("debt_followup") > 0 ||
+                scenario.Count("gamble_win") > 0 || scenario.Count("gamble_loss") > 0)
+                failures.Add("ScenarioMessages.csv still contains high-frequency site or spam-contact events.");
 
             if (SlotMachineManager.GetSessionWinBoost(4) != 0f ||
                 SlotMachineManager.GetSessionWinBoost(5) <= 0f ||

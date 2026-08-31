@@ -30,6 +30,7 @@ namespace Dobak.App.Casino.SlotMachine
         [SerializeField] private float perReelDelay = 0.4f;
 
         private bool isSpinning = false;
+        private bool stakeCommitted;
         private int currentRound = 0;
         private readonly SessionTracker sessionTracker = new SessionTracker();
         private int betOptionIndex;
@@ -52,13 +53,16 @@ namespace Dobak.App.Casino.SlotMachine
             if (CoinManager.Instance == null) return;
 
             CoinManager.Instance.OnCasinoCashChanged += UpdateUI;
+            if (spinButton != null)
+                spinButton.interactable = true;
+            UpdateUI(CoinManager.Instance.CasinoCash);
         }
 
         private void OnDisable()
         {
-            if (CoinManager.Instance == null) return;
-
-            CoinManager.Instance.OnCasinoCashChanged -= UpdateUI;
+            if (CoinManager.Instance != null)
+                CoinManager.Instance.OnCasinoCashChanged -= UpdateUI;
+            ResetInterruptedSpin();
         }
 
         private void Start()
@@ -103,7 +107,15 @@ namespace Dobak.App.Casino.SlotMachine
                 return;
             }
 
+            stakeCommitted = true;
             GameFlowManager.Instance?.SpendTime(1, "도박 한 판");
+
+            if (GameFlowManager.Instance != null && GameFlowManager.Instance.IsGameEnded)
+            {
+                ResetInterruptedSpin();
+                resultText.text = "하루가 끝나 이번 판은 취소되었습니다";
+                return;
+            }
 
             StartCoroutine(SpinAllReels());
         }
@@ -143,17 +155,7 @@ namespace Dobak.App.Casino.SlotMachine
                 }
             }
 
-            // 3. 세션 로그에 기록 (원래 결과의 심볼 이름은 로그용으로 조작 전 심볼을 남긴다)
-            currentRound++;
-            sessionTracker.LogSpin(
-                currentRound,
-                betAmount,
-                wasNaturalWin,
-                wasSuppressed,
-                finalResults[0] != null ? finalResults[0].symbolName : "-"
-            );
-
-            // 4. 릴 스핀 연출 (조작이 반영된 최종 결과를 그대로 보여줌 - 시각적으로도 '꽝'으로 보임)
+            // 3. 릴 스핀 연출 (조작이 반영된 최종 결과를 그대로 보여줌 - 시각적으로도 '꽝'으로 보임)
             int reelsFinished = 0;
             for (int i = 0; i < reels.Length; i++)
             {
@@ -164,6 +166,16 @@ namespace Dobak.App.Casino.SlotMachine
 
             float totalWait = baseSpinDuration + perReelDelay * (reels.Length - 1);
             yield return new WaitForSeconds(totalWait + 0.1f);
+
+            // 앱을 닫아 중단된 판은 코루틴이 여기까지 오지 않으므로 회차에 포함하지 않는다.
+            currentRound++;
+            sessionTracker.LogSpin(
+                currentRound,
+                betAmount,
+                wasNaturalWin,
+                wasSuppressed,
+                finalResults[0] != null ? finalResults[0].symbolName : "-"
+            );
 
             EvaluateResult(finalResults);
 
@@ -205,6 +217,7 @@ namespace Dobak.App.Casino.SlotMachine
         {
             bool allSame = IsAllSame(results);
             int payout = 0;
+            stakeCommitted = false;
 
             if (allSame)
             {
@@ -226,6 +239,24 @@ namespace Dobak.App.Casino.SlotMachine
 
             UpdateUI(CoinManager.Instance.CasinoCash);
             SpinResolved?.Invoke(allSame, payout);
+        }
+
+        private void ResetInterruptedSpin()
+        {
+            if (!isSpinning && !stakeCommitted)
+                return;
+
+            StopAllCoroutines();
+            if (stakeCommitted && CoinManager.Instance != null)
+                CoinManager.Instance.AddCasinoCredit(betAmount);
+
+            stakeCommitted = false;
+            isSpinning = false;
+            if (spinButton != null)
+                spinButton.interactable = true;
+            SetBetControlsInteractable(true);
+            if (winOverlay != null)
+                winOverlay.SetActive(false);
         }
 
         private void UpdateUI(int cash)
