@@ -35,6 +35,14 @@ namespace Dobak.App.Map
                 var target = loc;
                 loc.button.onClick.AddListener(() => ShowMarker(target));
             }
+
+            Init();
+        }
+
+        private void Init()
+        {
+            marker.gameObject.SetActive(true);
+            marker.anchoredPosition = locations[0].point.anchoredPosition;
         }
 
         private void ShowMarker(LocationPoint loc)

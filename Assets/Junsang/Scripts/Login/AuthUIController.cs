@@ -6,13 +6,6 @@ namespace Dobak.App.Casino.Auth
 {
     public class AuthUIController : MonoBehaviour
     {
-        [Header("Login Panel")]
-        [SerializeField] private GameObject loginPanel;
-        [SerializeField] private TMP_InputField loginIdInput;
-        [SerializeField] private TMP_InputField loginPwInput;
-        [SerializeField] private TMP_Text loginErrorText;
-        [SerializeField] private Button loginButton;
-        [SerializeField] private Button gotoSignupButton;
 
         [Header("Signup Panel")]
         [SerializeField] private GameObject signupPanel;
@@ -20,68 +13,64 @@ namespace Dobak.App.Casino.Auth
         [SerializeField] private TMP_InputField signupPwInput;
         [SerializeField] private TMP_Text signupErrorText;
         [SerializeField] private Button signupButton;
-        [SerializeField] private Button backtoLoginButton;
 
-        private void Awake()
+        private UserData userData;
+
+        private void OnEnable()
         {
-            loginButton.onClick.AddListener(OnClickLogin);
-            gotoSignupButton.onClick.AddListener(ShowSignupPanel);
             signupButton.onClick.AddListener(OnClickSignup);
-            backtoLoginButton.onClick.AddListener(ShowLoginPanel);
-        }
+            userData = FindAnyObjectByType<UserData>();
 
-        public void OnClickLogin()
-        {
-            bool success = LocalAccountManager.Instance.Login(
-                loginIdInput.text, loginPwInput.text, out string error);
-
-            if (success)
+            if (userData.IsCasinoLoggined)
             {
-                loginErrorText.gameObject.SetActive(false);
-                Debug.Log($"로그인 성공: {LocalAccountManager.Instance.CurrentUser.id}");
-                CloseAuth();
-                // 이후
+                this.signupPanel.SetActive(false);
             }
             else
             {
-                loginErrorText.text = error;
-                loginErrorText.gameObject.SetActive(true);
+                this.signupPanel.SetActive(true);
             }
         }
 
         public void OnClickSignup()
         {
-            bool success = LocalAccountManager.Instance.SignUp(
-                signupIdInput.text, signupPwInput.text, out string error);
+            string userId = signupIdInput.text.Trim();
+            string userPw = signupPwInput.text.Trim();
 
-            if (success)
+            // 간단한 입력값 검증
+            if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(userPw))
             {
-                signupErrorText.gameObject.SetActive(false);
-                Debug.Log("회원가입 성공, 로그인 화면으로 전환");
-                ShowLoginPanel();
+                signupErrorText.text = "아이디와 비밀번호를 입력해주세요.";
+                return;
+            }
+
+            // TODO: 실제 서버와 통신하여 회원가입/로그인 처리
+            // 여기서는 예시로 로컬에서 성공 처리
+            bool signupSuccess = MockSignup(userId, userPw);
+
+            if (signupSuccess)
+            {
+                // 로그인 성공 처리
+                Debug.Log($"로그인 성공: {userId}");
+                signupErrorText.text = "";
+                CloseAuth();
+
+                userData.SaveData(userId, userPw);
             }
             else
             {
-                signupErrorText.text = error;
-                signupErrorText.gameObject.SetActive(true);
+                signupErrorText.text = "회원가입/로그인 실패. 다시 시도해주세요.";
             }
         }
 
-        public void ShowLoginPanel()
+        private bool MockSignup(string id, string pw)
         {
-            loginPanel.SetActive(true);
-            signupPanel.SetActive(false);
-        }
-
-        public void ShowSignupPanel()
-        {
-            loginPanel.SetActive(false);
-            signupPanel.SetActive(true);
+            // 실제로는 서버 API 호출 필요
+            // 여기서는 단순히 비밀번호 길이로 성공 여부 판정
+            return pw.Length >= 4;
         }
 
         public void CloseAuth()
         {
-            loginPanel.SetActive(false);
             signupPanel.SetActive(false);
         }
     }

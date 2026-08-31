@@ -38,7 +38,7 @@ namespace Dobak.App.Bank
 
         private void UpdateCash(int bankCash)
         {
-            cashText.text = $"Cash: ${bankCash}";
+            cashText.text = $"잔액: {bankCash} 원";
         }
 
         private void RefreshFullList()

@@ -1935,9 +1935,9 @@ GameObject:
   m_Component:
   - component: {fileID: 2081885281}
   - component: {fileID: 2081885280}
-  - component: {fileID: 2081885282}
   - component: {fileID: 2081885283}
   - component: {fileID: 2081885284}
+  - component: {fileID: 2081885285}
   m_Layer: 0
   m_Name: Managers
   m_TagString: Untagged
@@ -1973,18 +1973,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &2081885282
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2081885279}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 739afe4eaa3c13e499a5d12b586fc846, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::LocalAccountManager
 --- !u!114 &2081885283
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2012,6 +2000,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Tablet
   homeButton: {fileID: 1209973232}
   openedAppParent: {fileID: 1522448851}
+--- !u!114 &2081885285
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2081885279}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c933e01d88487734792c6d9892548dca, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UserData
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

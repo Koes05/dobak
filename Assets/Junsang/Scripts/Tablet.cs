@@ -7,16 +7,19 @@ namespace Dobak.Tablet
     public class Tablet : MonoBehaviour
     {
         [SerializeField] private Button homeButton;
+        [SerializeField] private Button backButton;
         [SerializeField] private Transform openedAppParent;
 
         private void Awake()
         {
             homeButton.onClick.AddListener(OnHomeButtonClicked);
+            backButton.onClick.AddListener(OnHomeButtonClicked);
         }
 
         private void OnDestroy()
         {
             homeButton.onClick.RemoveListener(OnHomeButtonClicked);
+            backButton.onClick.RemoveListener(OnHomeButtonClicked);
         }
 
         private void OnHomeButtonClicked()
