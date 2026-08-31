@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
@@ -16,6 +17,8 @@ public class NotificationPopup : MonoBehaviour
 
     private Vector2 hidePos;
     private Vector2 showPos;
+    private readonly Queue<NotificationData> pending = new Queue<NotificationData>();
+    private Coroutine queueRoutine;
 
     private void Awake()
     {
@@ -28,19 +31,36 @@ public class NotificationPopup : MonoBehaviour
 
     public void Show(NotificationData data)
     {
-        StopAllCoroutines();
+        if (data == null)
+            return;
 
-        ConfigurePreviewText();
-        title.text = data.title;
-        message.text = data.message;
-
-        StartCoroutine(PopupRoutine());
+        pending.Enqueue(data);
+        rect.SetAsLastSibling();
+        if (queueRoutine == null)
+            queueRoutine = StartCoroutine(ShowQueuedNotifications());
     }
 
     public void HideImmediately()
     {
         StopAllCoroutines();
+        pending.Clear();
+        queueRoutine = null;
         rect.anchoredPosition = hidePos;
+    }
+
+    private IEnumerator ShowQueuedNotifications()
+    {
+        while (pending.Count > 0)
+        {
+            NotificationData data = pending.Dequeue();
+            ConfigurePreviewText();
+            title.text = data.title;
+            message.text = data.message;
+            rect.SetAsLastSibling();
+            yield return PopupRoutine();
+        }
+
+        queueRoutine = null;
     }
 
     private void ConfigurePreviewText()
@@ -55,7 +75,7 @@ public class NotificationPopup : MonoBehaviour
         message.maxVisibleLines = 1;
     }
 
-    IEnumerator PopupRoutine()
+    private IEnumerator PopupRoutine()
     {
         float t = 0;
 

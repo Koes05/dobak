@@ -22,9 +22,17 @@ public class NotificationManager : MonoBehaviour
     // 저장된 알림
     private List<NotificationData> notifications = new List<NotificationData>();
 
+    private void Awake()
+    {
+        if (dialogueManager == null)
+            dialogueManager = FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
+        if (appWindow == null)
+            appWindow = FindAnyObjectByType<AppWindow>(FindObjectsInactive.Include);
+    }
+
     public void OpenNotification(NotificationData data)
     {
-        appWindow.OpenApp(data.appType);
+        appWindow?.OpenApp(data.appType);
     }
 
     /// <summary>
@@ -46,9 +54,12 @@ public class NotificationManager : MonoBehaviour
         }
 
         // 팝업 표시
-        popup.Show(data);
+        popup?.Show(data);
 
         // 패널에도 추가
+        if (itemPrefab == null || content == null)
+            return;
+
         NotificationItem item = Instantiate(itemPrefab, content);
         
         if (content.childCount >= maxNotificationCount)
@@ -69,7 +80,10 @@ public class NotificationManager : MonoBehaviour
     public void Clear()
     {
         notifications.Clear();
-        popup.HideImmediately();
+        popup?.HideImmediately();
+
+        if (content == null)
+            return;
 
         foreach (Transform child in content)
         {

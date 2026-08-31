@@ -54,7 +54,7 @@ public sealed class ScenarioMessageTable
         List<string> headers = ParseCsvLine(lines[0]);
         var columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < headers.Count; i++)
-            columns[headers[i].Trim()] = i;
+            columns[headers[i].Trim().TrimStart('\uFEFF')] = i;
 
         for (int lineIndex = 1; lineIndex < lines.Length; lineIndex++)
         {
@@ -131,6 +131,12 @@ public sealed class ScenarioMessageTable
 
     public int EventCount => eventsById.Count;
     public IEnumerable<string> Triggers => eventsByTrigger.Keys;
+    public IEnumerable<ScenarioEventDefinition> Events => eventsById.Values;
+
+    public bool HasTrigger(string trigger)
+    {
+        return !string.IsNullOrWhiteSpace(trigger) && eventsByTrigger.ContainsKey(trigger);
+    }
 
     private static string Read(List<string> row, Dictionary<string, int> columns, string key)
     {

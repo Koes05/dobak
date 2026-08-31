@@ -141,7 +141,7 @@ public sealed class GameFlowManager : MonoBehaviour
         yield return null;
 
         quizManager = FindAnyObjectByType<QuizManager>(FindObjectsInactive.Include);
-        notificationManager = FindAnyObjectByType<NotificationManager>();
+        notificationManager = FindAnyObjectByType<NotificationManager>(FindObjectsInactive.Include);
         dialogueManager = FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
         appWindow = FindAnyObjectByType<AppWindow>();
         coinManager = CoinManager.Instance ?? FindAnyObjectByType<CoinManager>();
@@ -518,6 +518,8 @@ public sealed class GameFlowManager : MonoBehaviour
         RefreshUI();
         if (wasEjectedFromSchool && !gameEnded)
             TriggerScenario("school_closed");
+        if (!gameEnded)
+            TriggerScenario("time_changed");
     }
 
     public static int GetHoursUntilDayBoundary(int hour)
@@ -714,6 +716,18 @@ public sealed class GameFlowManager : MonoBehaviour
             TriggerScenario("invitation_detail");
     }
 
+    public void ExecuteScenarioAction(string action)
+    {
+        const string triggerPrefix = "trigger:";
+        if (string.IsNullOrWhiteSpace(action) ||
+            !action.StartsWith(triggerPrefix, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        string trigger = action.Substring(triggerPrefix.Length).Trim();
+        if (trigger.Length > 0)
+            TriggerScenario(trigger);
+    }
+
     private void ShowNextNarration()
     {
         if (narrationPanel == null || isTransitioning || narrationPanel.activeSelf || narrationQueue.Count == 0)
@@ -737,16 +751,21 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private void SendOnce(string key, string title, string message, SpeakerType speaker)
     {
-        if (!sentMessages.Add(key) || notificationManager == null)
+        if (!sentMessages.Add(key))
             return;
 
-        notificationManager.SendNotification(new NotificationData
+        var data = new NotificationData
         {
             title = title,
             message = message,
             appType = AppType.Message,
             speakerType = speaker
-        });
+        };
+
+        if (notificationManager != null)
+            notificationManager.SendNotification(data);
+        else
+            dialogueManager?.ReceiveNotificationMessage(speaker, title, message);
     }
 
     private IEnumerator FadeTransition(string caption, Action midpoint, float hold = 0.3f)
@@ -1249,13 +1268,20 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private static void AddScenarioChoice(List<Choice> choices, string text, string actionName)
     {
-        if (string.IsNullOrWhiteSpace(text) || !Enum.TryParse(actionName, true, out ChoiceAction action))
+        if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(actionName))
             return;
+
+        bool isScenarioTrigger = actionName.StartsWith("trigger:", StringComparison.OrdinalIgnoreCase);
+        ChoiceAction action = ChoiceAction.None;
+        if (!isScenarioTrigger && !Enum.TryParse(actionName, true, out action))
+            return;
+
         choices.Add(new Choice
         {
             choiceText = text,
             nextDialogueID = -1,
             action = action,
+            scenarioAction = isScenarioTrigger ? actionName : string.Empty,
             openApp = action == ChoiceAction.AcceptGambling,
             targetApp = AppType.Browser
         });

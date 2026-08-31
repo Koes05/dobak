@@ -29,11 +29,49 @@ namespace Dobak.Editor
                 failures.Add("ScenarioMessages.csv does not contain enough playable event messages.");
             }
 
+            var csvActionTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var replyRequiredEvents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "initial_invitation", "invitation_detail", "family_dinner_start", "weekend_shift_start",
+                "joonho_casual", "seoyeon_homework", "mom_checkin", "short_sleep", "job_late", "miss_job",
+                "gamble_round_1", "gamble_round_5", "gamble_round_10", "borrow_mom_request",
+                "borrow_friend_request", "help_available", "sns_mom_homework", "sns_job_warning", "sns_late_mom"
+            };
+            foreach (ScenarioEventDefinition definition in scenario.Events)
+            {
+                if (replyRequiredEvents.Contains(definition.id))
+                {
+                    bool hasReply = definition.steps.Exists(step =>
+                        !string.IsNullOrWhiteSpace(step.choiceA) && !string.IsNullOrWhiteSpace(step.actionA));
+                    if (!hasReply)
+                        failures.Add($"Conversational CSV event has no player reply: {definition.id}");
+                    replyRequiredEvents.Remove(definition.id);
+                }
+
+                foreach (ScenarioMessage step in definition.steps)
+                {
+                    AddScenarioActionTarget(csvActionTargets, step.actionA);
+                    AddScenarioActionTarget(csvActionTargets, step.actionB);
+                }
+            }
+            foreach (string missingReplyEvent in replyRequiredEvents)
+                failures.Add($"Required conversational CSV event is missing: {missingReplyEvent}");
+
             string flowSource = File.ReadAllText("Assets/Tablet/Script/GameFlowManager.cs");
             foreach (string trigger in scenario.Triggers)
             {
-                if (!flowSource.Contains($"TriggerScenario(\"{trigger}\"", StringComparison.Ordinal))
+                if (!flowSource.Contains($"TriggerScenario(\"{trigger}\"", StringComparison.Ordinal) &&
+                    !csvActionTargets.Contains(trigger))
                     failures.Add($"CSV trigger is not connected to the game flow: {trigger}");
+            }
+
+            foreach (ScenarioEventDefinition definition in scenario.Events)
+            {
+                foreach (ScenarioMessage step in definition.steps)
+                {
+                    ValidateScenarioAction(failures, scenario, definition.id, step.actionA);
+                    ValidateScenarioAction(failures, scenario, definition.id, step.actionB);
+                }
             }
 
             TextAsset scenarioAsset = Resources.Load<TextAsset>("ScenarioMessages");
@@ -147,6 +185,25 @@ namespace Dobak.Editor
             T[] found = UnityEngine.Object.FindObjectsByType<T>(FindObjectsInactive.Include);
             if (found.Length != 1)
                 failures.Add($"Expected exactly one {typeof(T).Name}, found {found.Length}.");
+        }
+
+        private static void ValidateScenarioAction(List<string> failures, ScenarioMessageTable scenario,
+            string eventId, string action)
+        {
+            const string prefix = "trigger:";
+            if (string.IsNullOrWhiteSpace(action) || !action.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            string target = action.Substring(prefix.Length).Trim();
+            if (!scenario.HasTrigger(target))
+                failures.Add($"CSV event {eventId} points to missing reply trigger: {target}");
+        }
+
+        private static void AddScenarioActionTarget(HashSet<string> targets, string action)
+        {
+            const string prefix = "trigger:";
+            if (!string.IsNullOrWhiteSpace(action) && action.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                targets.Add(action.Substring(prefix.Length).Trim());
         }
     }
 }

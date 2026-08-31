@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using Dobak.App.Map;
@@ -95,7 +96,7 @@ namespace Dobak.Editor
                 case 0:
                     Expect(flow != null && flow.CurrentDay == 1 && flow.CurrentHour == 7, "Game did not start on day 1 at 7 AM.");
                     Expect(GameObject.Find("BrowserApp") == null, "Gambling app was visible before an invitation was accepted.");
-                    Expect(TextContains("Narration Body", "아침이다"), "Opening tutorial narration was not shown.");
+                    Expect(NarrationContains(flow, "아침이다"), "Opening tutorial narration was not shown.");
                     Capture("scenario-01-tutorial-start.png");
                     ClickNamedButton("Narration Continue Button");
                     apps?.OpenMap();
@@ -103,7 +104,7 @@ namespace Dobak.Editor
                     break;
 
                 case 1:
-                    Expect(TextContains("Narration Body", "지도 앱"), "Map tutorial narration was not shown.");
+                    Expect(NarrationContains(flow, "지도 앱"), "Map tutorial narration was not shown.");
                     Capture("scenario-02-map-tutorial.png");
                     ClickNamedButton("Narration Continue Button");
                     ClickMapLocation("학교");
@@ -151,7 +152,7 @@ namespace Dobak.Editor
                     break;
 
                 case 9:
-                    Expect(TextContains("Narration Body", "메시지 앱"), "Message tutorial narration was not shown.");
+                    Expect(NarrationContains(flow, "메시지 앱"), "Message tutorial narration was not shown.");
                     Capture("scenario-05-message-tutorial.png");
                     DismissNarration();
                     AddScrollTestContacts();
@@ -190,7 +191,7 @@ namespace Dobak.Editor
                 case 13:
                     Expect(flow != null && flow.CurrentDay == 2 && flow.CurrentHour == 7,
                         $"Sleeping did not start day 2 at 7 AM: day {flow?.CurrentDay}, hour {flow?.CurrentHour}.");
-                    Expect(TextContains("Narration Body", "8시간"), "Wake narration did not report the actual eight-hour sleep.");
+                    Expect(NarrationContains(flow, "8시간"), "Wake narration did not report the actual eight-hour sleep.");
                     Expect(GameObject.Find("BrowserApp") == null, "Gambling app appeared before day 2 school was completed.");
                     Capture("scenario-09-day2-wake.png");
                     DismissNarration();
@@ -212,12 +213,17 @@ namespace Dobak.Editor
                     break;
 
                 case 16:
+                    DialogueManager dialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
+                    Expect(ChannelContains(dialogue, SpeakerType.Friend, "무료 포인트"),
+                        "The CSV invitation event did not reach Minjae's stored chat messages.");
                     Capture("scenario-10-minjae-after-school.png");
                     OpenContact(SpeakerType.Friend);
                     Next(17, 0.45d);
                     break;
 
                 case 17:
+                    Expect(ActiveTextContains("무료 포인트"),
+                        "The stored CSV invitation was not rendered as a visible chat bubble.");
                     Capture("scenario-11-minjae-invitation.png");
                     ClickChoice("내용을 확인한다");
                     Next(18, 0.7d);
@@ -268,9 +274,9 @@ namespace Dobak.Editor
                 case 21:
                     Expect(flow != null && flow.CurrentDay == 3 && flow.CurrentHour == 7,
                         "Crossing 7 AM while awake did not advance exactly one day.");
-                    Expect(flow != null && !string.IsNullOrEmpty(flow.ActiveStoryEvent),
-                        "A daily story event was not activated after the day transition.");
-                    Expect(TextContains("Narration Body", "밤을 새어버렸다"), "All-nighter narration was not shown over the active app.");
+                    Expect(flow != null && string.IsNullOrEmpty(flow.ActiveStoryEvent),
+                        "An after-school or evening story was activated at 7 AM.");
+                    Expect(NarrationContains(flow, "밤을 새웠다"), "All-nighter narration was not shown over the active app.");
                     Capture("scenario-14-all-nighter.png");
                     DismissNarration();
                     apps?.CloseCurrentApp();
@@ -475,10 +481,39 @@ namespace Dobak.Editor
         {
             foreach (TMP_Text text in Resources.FindObjectsOfTypeAll<TMP_Text>())
             {
-                if (text.gameObject.scene.IsValid() && text.gameObject.name == objectName && text.gameObject.activeInHierarchy)
-                    return text.text.Contains(expected);
+                if (text.gameObject.scene.IsValid() && text.gameObject.name == objectName &&
+                    text.gameObject.activeInHierarchy && text.text.Contains(expected))
+                    return true;
             }
             return false;
+        }
+
+        private static bool NarrationContains(GameFlowManager flow, string expected)
+        {
+            TMP_Text body = GetPrivate<TMP_Text>(flow, "narrationBodyText");
+            GameObject panel = GetPrivate<GameObject>(flow, "narrationPanel");
+            bool matched = body != null && panel != null && panel.activeInHierarchy && body.text.Contains(expected);
+            if (!matched)
+                Debug.LogWarning($"[SCENARIO QA] Expected narration '{expected}', actual '{body?.text}', active={panel?.activeInHierarchy}.");
+            return matched;
+        }
+
+        private static bool ActiveTextContains(string expected)
+        {
+            foreach (TMP_Text text in Resources.FindObjectsOfTypeAll<TMP_Text>())
+            {
+                if (text.gameObject.scene.IsValid() && text.gameObject.activeInHierarchy && text.text.Contains(expected))
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool ChannelContains(DialogueManager dialogue, SpeakerType speaker, string expected)
+        {
+            Dictionary<SpeakerType, ChatChannel> channels =
+                GetPrivate<Dictionary<SpeakerType, ChatChannel>>(dialogue, "channels");
+            return channels != null && channels.TryGetValue(speaker, out ChatChannel channel) &&
+                   channel.receivedMessages.Exists(message => message.Contains(expected));
         }
 
         private static void SetPrivate(object target, string fieldName, object value)
