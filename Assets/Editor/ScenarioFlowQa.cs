@@ -252,15 +252,16 @@ namespace Dobak.Editor
                     Capture("scenario-14-all-nighter.png");
                     DismissNarration();
                     apps?.CloseCurrentApp();
-                    SetPrivate(flow, "gambleRounds", 5);
+                    SetPrivate(flow, "gambleRounds", 10);
                     InvokePrivate(flow, "RefreshUI");
-                    ClickNamedButton("Cashout Button");
+                    flow?.AttemptCashOut();
                     Next(22, 0.45d);
                     break;
 
                 case 22:
-                    Expect(flow != null && flow.IsGameEnded, "Small cashout did not reach the scenario ending.");
-                    Capture("scenario-15-small-cashout-ending.png");
+                    Expect(flow != null && flow.IsGameEnded, "Ten-round cashout did not reach the scenario ending.");
+                    Expect(TextContains("Ending Title", "먹튀"), "Ten-round cashout reached the wrong ending.");
+                    Capture("scenario-15-repeat-cashout-ending.png");
                     ClickNamedButton("Restart Button");
                     Next(23, 1.8d);
                     break;
@@ -294,7 +295,7 @@ namespace Dobak.Editor
                     flow.ResolveInvitation(true);
                     CoinManager.Instance?.AddCasinoCredit(20000);
                     SetPrivate(flow, "gambleRounds", 10);
-                    InvokePrivate(flow, "AttemptCashOut");
+                    flow.AttemptCashOut();
                     Next(26, 0.5d);
                     break;
 
