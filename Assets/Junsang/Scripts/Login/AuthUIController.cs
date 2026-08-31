@@ -24,59 +24,28 @@ namespace Dobak.App.Casino.Auth
 
         private void Awake()
         {
-            loginButton.onClick.AddListener(OnClickLogin);
-            gotoSignupButton.onClick.AddListener(ShowSignupPanel);
-            signupButton.onClick.AddListener(OnClickSignup);
-            backtoLoginButton.onClick.AddListener(ShowLoginPanel);
+            // 기존 씬 직렬화 호환용 컴포넌트다. 로그인 UI는 예방 게임에서 사용하지 않는다.
+            gameObject.SetActive(false);
         }
 
         public void OnClickLogin()
         {
-            bool success = LocalAccountManager.Instance.Login(
-                loginIdInput.text, loginPwInput.text, out string error);
-
-            if (success)
-            {
-                loginErrorText.gameObject.SetActive(false);
-                Debug.Log($"로그인 성공: {LocalAccountManager.Instance.CurrentUser.id}");
-                CloseAuth();
-                // 이후
-            }
-            else
-            {
-                loginErrorText.text = error;
-                loginErrorText.gameObject.SetActive(true);
-            }
+            CloseAuth();
         }
 
         public void OnClickSignup()
         {
-            bool success = LocalAccountManager.Instance.SignUp(
-                signupIdInput.text, signupPwInput.text, out string error);
-
-            if (success)
-            {
-                signupErrorText.gameObject.SetActive(false);
-                Debug.Log("회원가입 성공, 로그인 화면으로 전환");
-                ShowLoginPanel();
-            }
-            else
-            {
-                signupErrorText.text = error;
-                signupErrorText.gameObject.SetActive(true);
-            }
+            CloseAuth();
         }
 
         public void ShowLoginPanel()
         {
-            loginPanel.SetActive(true);
-            signupPanel.SetActive(false);
+            CloseAuth();
         }
 
         public void ShowSignupPanel()
         {
-            loginPanel.SetActive(false);
-            signupPanel.SetActive(true);
+            CloseAuth();
         }
 
         public void CloseAuth()

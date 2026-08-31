@@ -3,8 +3,6 @@ using UnityEngine.UI;
 using TMPro;
 
 using Dobak.Manager;
-using Dobak.App.Casino.Auth;
-
 namespace Dobak.App.Casino
 {
     public class CasinoUIManager : MonoBehaviour
@@ -35,9 +33,6 @@ namespace Dobak.App.Casino
         [SerializeField] private GameObject profilePanel;
 
         private NotificationManager notificationManager;
-
-        [Header("참조")]
-        [SerializeField] private AuthUIController auth;
 
         private void OnEnable()
         {
@@ -87,12 +82,18 @@ namespace Dobak.App.Casino
 
         private void Init()
         {
+            Transform legacyAuth = transform.Find("Auth");
+            if (legacyAuth != null)
+                legacyAuth.gameObject.SetActive(false);
+
             homePanel.SetActive(true);
             slotMachinePanel.SetActive(false);
             rechargePanel.SetActive(false);
             profilePanel.SetActive(false);
 
-            auth.ShowLoginPanel();
+            // 예방 시뮬레이션은 계정을 만들지 않고 허구 사이트 홈으로 바로 진입한다.
+            if (menu_myPageButton != null)
+                menu_myPageButton.gameObject.SetActive(false);
         }
 
         private void OnHomeButtonClicked()

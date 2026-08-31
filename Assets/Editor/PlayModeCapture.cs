@@ -46,16 +46,21 @@ namespace Dobak.Editor
                 SessionState.EraseBool(SessionKey);
 
                 string screenshot = GetScreenshotPath("codex-play.png");
+                string studyLockedScreenshot = GetScreenshotPath("codex-study-locked.png");
+                string mapScreenshot = GetScreenshotPath("codex-map.png");
                 string fadeScreenshot = GetScreenshotPath("codex-fade.png");
                 string travelScreenshot = GetScreenshotPath("codex-after-travel.png");
                 string studyScreenshot = GetScreenshotPath("codex-study.png");
+                string casinoScreenshot = GetScreenshotPath("codex-casino.png");
                 string sleepFadeScreenshot = GetScreenshotPath("codex-sleep-fade.png");
                 string nextDayScreenshot = GetScreenshotPath("codex-next-day.png");
-                if (File.Exists(screenshot) && File.Exists(fadeScreenshot) &&
+                if (File.Exists(screenshot) && File.Exists(studyLockedScreenshot) &&
+                    File.Exists(mapScreenshot) && File.Exists(fadeScreenshot) &&
                     File.Exists(travelScreenshot) && File.Exists(studyScreenshot) &&
+                    File.Exists(casinoScreenshot) &&
                     File.Exists(sleepFadeScreenshot) && File.Exists(nextDayScreenshot))
                 {
-                    Debug.Log($"[PLAY QA] PASS - Startup, travel, study, sleep fade, and next-day screenshots saved to {Path.GetDirectoryName(screenshot)}");
+                    Debug.Log($"[PLAY QA] PASS - notification, study lock, map art, travel, study, login-free casino, sleep, and next day captured in {Path.GetDirectoryName(screenshot)}");
                     EditorApplication.Exit(0);
                 }
                 else
@@ -77,49 +82,68 @@ namespace Dobak.Editor
 
             if (captureStep == 1 && elapsed >= 2.0)
             {
-                GameFlowManager.Instance?.TravelTo("학교");
+                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.OpenStudy();
                 captureStep = 2;
             }
 
-            if (captureStep == 2 && elapsed >= 2.18)
+            if (captureStep == 2 && elapsed >= 2.35)
             {
-                CaptureGameView(GetScreenshotPath("codex-fade.png"));
+                CaptureGameView(GetScreenshotPath("codex-study-locked.png"));
+                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.OpenMap();
                 captureStep = 3;
             }
 
             if (captureStep == 3 && elapsed >= 3.2)
             {
-                CaptureGameView(GetScreenshotPath("codex-after-travel.png"));
-                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.OpenStudy();
+                CaptureGameView(GetScreenshotPath("codex-map.png"));
+                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.CloseCurrentApp();
+                GameFlowManager.Instance?.TravelTo("학교");
                 captureStep = 4;
             }
 
-            if (captureStep == 4 && elapsed >= 4.2)
+            if (captureStep == 4 && elapsed >= 3.38)
             {
-                CaptureGameView(GetScreenshotPath("codex-study.png"));
+                CaptureGameView(GetScreenshotPath("codex-fade.png"));
                 captureStep = 5;
             }
 
-            if (captureStep == 5 && elapsed >= 5.0)
+            if (captureStep == 5 && elapsed >= 4.45)
             {
-                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.CloseCurrentApp();
-                GameObject.Find("Sleep Button")?.GetComponent<Button>()?.onClick.Invoke();
+                CaptureGameView(GetScreenshotPath("codex-after-travel.png"));
+                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.OpenStudy();
                 captureStep = 6;
             }
 
-            if (captureStep == 6 && elapsed >= 5.18)
+            if (captureStep == 6 && elapsed >= 5.35)
             {
-                CaptureGameView(GetScreenshotPath("codex-sleep-fade.png"));
+                CaptureGameView(GetScreenshotPath("codex-study.png"));
+                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.CloseCurrentApp();
+                GameFlowManager.Instance?.ResolveInvitation(true);
+                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.OpenBrowser();
                 captureStep = 7;
             }
 
-            if (captureStep == 7 && elapsed >= 6.4)
+            if (captureStep == 7 && elapsed >= 6.3)
             {
-                CaptureGameView(GetScreenshotPath("codex-next-day.png"));
+                CaptureGameView(GetScreenshotPath("codex-casino.png"));
+                UnityEngine.Object.FindAnyObjectByType<AppWindow>()?.CloseCurrentApp();
+                GameObject.Find("Sleep Button")?.GetComponent<Button>()?.onClick.Invoke();
                 captureStep = 8;
             }
 
-            if (captureStep == 8 && elapsed >= 6.8)
+            if (captureStep == 8 && elapsed >= 6.48)
+            {
+                CaptureGameView(GetScreenshotPath("codex-sleep-fade.png"));
+                captureStep = 9;
+            }
+
+            if (captureStep == 9 && elapsed >= 7.7)
+            {
+                CaptureGameView(GetScreenshotPath("codex-next-day.png"));
+                captureStep = 10;
+            }
+
+            if (captureStep == 10 && elapsed >= 8.1)
                 EditorApplication.ExitPlaymode();
         }
 

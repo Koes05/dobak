@@ -15,6 +15,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private const int DayStartHour = 7;
     private const int CollapseFailureLimit = 3;
     private const int DebtEndingThreshold = 15000;
+    private const int SchoolArrivalDeadline = 10;
 
     private readonly HashSet<string> sentMessages = new HashSet<string>();
 
@@ -62,7 +63,10 @@ public sealed class GameFlowManager : MonoBehaviour
     public bool IsWeekend => GetWeekdayIndex(currentDay) >= 5;
     public bool IsGameEnded => gameEnded;
     public bool IsGamblingUnlocked => gamblingUnlocked;
+    public bool CanRequestHelp => gamblingUnlocked && debt > 0 && !gameEnded;
     public int CurrentDay => currentDay;
+    public int CurrentHour => currentHour;
+    public string CurrentLocation => currentLocation;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Bootstrap()
@@ -96,6 +100,7 @@ public sealed class GameFlowManager : MonoBehaviour
         appWindow = FindAnyObjectByType<AppWindow>();
         coinManager = CoinManager.Instance ?? FindAnyObjectByType<CoinManager>();
 
+        ApplyKoreanFont();
         BindExistingStatusText();
         CreateRuntimeUI();
 
@@ -161,10 +166,26 @@ public sealed class GameFlowManager : MonoBehaviour
             return;
 
         string location = NormalizeLocation(rawLocation);
+        int travelHours = GetTravelHours(location);
+
+        if (location == currentLocation)
+        {
+            ShowFeedback($"현재 {location}에 있습니다.");
+            appWindow?.CloseCurrentApp();
+            return;
+        }
+
+        if (location == "학교" && !IsWeekend && !schoolDone && currentHour + travelHours > SchoolArrivalDeadline)
+        {
+            ShowFeedback("오전 10시까지 도착할 수 없어 오늘은 등교할 수 없습니다.");
+            SendOnce($"school_late_{currentDay}", "담임 선생님", "등교 시간이 지났습니다. 오늘 일정과 숙제를 다시 확인해 주세요.", SpeakerType.Unknown);
+            return;
+        }
+
         StartCoroutine(FadeTransition($"{location}(으)로 이동 중", () =>
         {
             currentLocation = location;
-            AdvanceHours(1);
+            AdvanceHours(travelHours);
 
             if (location == "학교" && !IsWeekend && !schoolDone)
             {
@@ -205,7 +226,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
     public void RequestHelp()
     {
-        if (gameEnded)
+        if (!CanRequestHelp)
             return;
 
         SendOnce("help", "상담 선생님", "혼자 해결하지 않아도 괜찮아. 지금 상황부터 같이 정리해 보자.", SpeakerType.Unknown);
@@ -221,6 +242,27 @@ public sealed class GameFlowManager : MonoBehaviour
         AdvanceHours(2);
         ShowFeedback($"숙제 완료: {totalQuestions}문제 중 {correctAnswers}문제 정답");
         SendOnce($"homework_{currentDay}", "과제 제출", "오늘의 숙제가 제출되었습니다.", SpeakerType.Unknown);
+    }
+
+    public bool CanOpenStudy()
+    {
+        if (gameEnded)
+            return false;
+
+        if (!IsWeekend && !schoolDone)
+        {
+            ShowFeedback("학교 수업을 마친 뒤 오늘의 숙제를 풀 수 있습니다.");
+            SendOnce($"study_locked_{currentDay}", "공부 앱", "오늘 수업을 마친 뒤 숙제가 열립니다.", SpeakerType.Unknown);
+            return false;
+        }
+
+        return true;
+    }
+
+    public int GetTravelHours(string rawLocation)
+    {
+        string location = NormalizeLocation(rawLocation);
+        return location == currentLocation ? 0 : 1;
     }
 
     private void Sleep()
@@ -385,6 +427,7 @@ public sealed class GameFlowManager : MonoBehaviour
         coinManager.AddBankCash(3000, "Fictional emergency loan");
         debt += 4500;
         SendOnce($"loan_{debt}", "대출 알림", "3,000원이 입금되었습니다. 갚아야 할 금액은 4,500원입니다.", SpeakerType.Scammer);
+        SendOnce("help_available", "상담 안내", "빚이 생겼다면 혼자 감당하지 말고 도움을 요청할 수 있습니다.", SpeakerType.Unknown);
         RefreshUI();
 
         if (debt >= DebtEndingThreshold)
@@ -532,7 +575,10 @@ public sealed class GameFlowManager : MonoBehaviour
         if (sleepButton != null)
             sleepButton.interactable = !gameEnded && !isTransitioning;
         if (helpButton != null)
-            helpButton.interactable = !gameEnded;
+        {
+            helpButton.gameObject.SetActive(CanRequestHelp);
+            helpButton.interactable = CanRequestHelp;
+        }
         if (loanButton != null)
         {
             loanButton.gameObject.SetActive(!gameEnded && coinManager != null && coinManager.BankCash <= 0);
@@ -580,15 +626,15 @@ public sealed class GameFlowManager : MonoBehaviour
             {
                 $"{Mark(jobDone)} 알바 가기  (지도 · 카페)",
                 $"{Mark(sleepDone)} 잠자기",
-                "",
+                CanRequestHelp ? "[  ] 도움 요청  (빚이 생긴 지금 선택 가능)" : "",
                 ""
             }
             : new[]
             {
-                $"{Mark(schoolDone)} 학교 가기  (지도 · 학교)",
+                $"{Mark(schoolDone)} 학교 가기  (오전 10시 도착 마감)",
                 $"{Mark(homeworkDone)} 숙제하기  (공부 · 5문제)",
                 $"{Mark(sleepDone)} 잠자기",
-                ""
+                CanRequestHelp ? "[  ] 도움 요청  (빚이 생긴 지금 선택 가능)" : ""
             };
 
         for (int i = 0; i < homeChecklistLines.Count; i++)
@@ -750,11 +796,24 @@ public sealed class GameFlowManager : MonoBehaviour
                 continue;
 
             fallback ??= font;
-            if (font.name.Contains("서울사이버대학체"))
+            if (font.name.Contains("NotoSansKR-Regular"))
                 return font;
         }
 
         return fallback ?? FindAnyObjectByType<TMP_Text>()?.font;
+    }
+
+    private static void ApplyKoreanFont()
+    {
+        TMP_FontAsset font = FindPreferredFont();
+        if (font == null)
+            return;
+
+        foreach (TMP_Text text in Resources.FindObjectsOfTypeAll<TMP_Text>())
+        {
+            if (text != null && text.gameObject.scene.IsValid())
+                text.font = font;
+        }
     }
 
     private static TMP_Text CreateText(string name, Transform parent, TMP_FontAsset font, float size, FontStyles style, Color color)

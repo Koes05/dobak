@@ -45,6 +45,10 @@ public class NotificationItem : MonoBehaviour,
     {
         rect = GetComponent<RectTransform>();
 
+        message.textWrappingMode = TextWrappingModes.NoWrap;
+        message.overflowMode = TextOverflowModes.Ellipsis;
+        message.maxVisibleLines = 1;
+
         startPos = rect.anchoredPosition;
     }
 

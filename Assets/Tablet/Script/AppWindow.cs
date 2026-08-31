@@ -101,6 +101,9 @@ public class AppWindow : MonoBehaviour
 
     public void OpenApp(AppType type)
     {
+        if (type == AppType.Study && GameFlowManager.Instance != null && !GameFlowManager.Instance.CanOpenStudy())
+            return;
+
         // 애니메이션 중이면 무시
         if (isOpening)
             return;

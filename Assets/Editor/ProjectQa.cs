@@ -7,6 +7,7 @@ using Dobak.Manager;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using TMPro;
 
 namespace Dobak.Editor
 {
@@ -59,7 +60,9 @@ namespace Dobak.Editor
                 "Assets/Tablet/Img/UnityQuizUIAssets/Backgrounds/BG_main.png",
                 "Assets/Tablet/Img/UnityQuizUIAssets/Buttons/Answer_normal.png",
                 "Assets/Tablet/Img/UnityQuizUIAssets/Icons/Icon_book.png",
-                "Assets/Tablet/Img/galaxy_message_screen_clean.png"
+                "Assets/Tablet/Img/galaxy_message_screen_clean.png",
+                "Assets/Resources/Map/2288553.png",
+                "Assets/Resources/Map/Code_Generated_Image (1).png"
             };
 
             foreach (string assetPath in requiredArt)
@@ -67,6 +70,13 @@ namespace Dobak.Editor
                 if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath) == null)
                     failures.Add($"Required visual asset is missing: {assetPath}");
             }
+
+            TMP_FontAsset koreanFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(
+                "Assets/Tablet/Front/NotoSansKR-Regular SDF.asset");
+            if (koreanFont == null)
+                failures.Add("Noto Sans KR font asset is missing.");
+            else if (koreanFont.atlasPopulationMode != AtlasPopulationMode.Dynamic)
+                failures.Add("Noto Sans KR must use a dynamic atlas to prevent missing Korean glyphs.");
 
             if (failures.Count > 0)
             {
