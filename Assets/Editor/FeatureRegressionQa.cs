@@ -322,9 +322,9 @@ namespace Dobak.Editor
                     Expect(GameObject.Find("Chat Window Header") != null && GameObject.Find("Chat Window Middle") != null &&
                            GameObject.Find("Chat Window Footer") != null,
                         "The supplied three-part message window art was not created.");
-                    Expect(VisibleTextContains("오늘 숙제 시작했어?"),
+                    Expect(VisibleTextContains("오늘 숙제 3번 조건"),
                         "Seoyeon's CSV event was not rendered in her chat room.");
-                    Expect(ClickVisibleChoice("나도 헷갈린다고 답한다"),
+                    Expect(ClickVisibleChoice("나도 조건이 헷갈렸다고 답한다"),
                         "Seoyeon's reply choice was not available.");
                     Capture("feature-10-message-chat-safe-area.png");
                     Next(15, 0.7d);
@@ -332,11 +332,11 @@ namespace Dobak.Editor
 
                 case 15:
                     DialogueManager repliedDialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
-                    Expect(ChannelContains(repliedDialogue, SpeakerType.Seoyeon, "조건부터 다시 읽어 봤어"),
+                    Expect(ChannelContains(repliedDialogue, SpeakerType.Seoyeon, "잠깐 같이 정리해 볼래"),
                         "Selecting a CSV reply did not trigger Seoyeon's follow-up message.");
-                    Expect(VisibleTextContains("조건부터 다시 읽어 봤어"),
+                    Expect(VisibleTextContains("잠깐 같이 정리해 볼래"),
                         "Seoyeon's follow-up was stored but not rendered as a chat bubble.");
-                    Expect(ClickVisibleChoice("조건부터 다시 봤다고 답한다"),
+                    Expect(ClickVisibleChoice("같이 조건을 정리한다"),
                         "Seoyeon's second reply choice was not available.");
                     Next(16, 0.7d);
                     break;
@@ -353,18 +353,18 @@ namespace Dobak.Editor
                     break;
 
                 case 17:
-                    Expect(VisibleTextContains("오늘 하루 어땠어?"),
+                    Expect(VisibleTextContains("주말 일정 확인했어?"),
                         "Joonho's CSV event was not rendered in his chat room.");
-                    Expect(ClickVisibleChoice("괜찮았다고 답한다"),
+                    Expect(ClickVisibleChoice("알바 일정을 확인했다고 답한다"),
                         "Joonho's reply choice was not available.");
                     Next(18, 0.7d);
                     break;
 
                 case 18:
                     DialogueManager joonhoDialogue = UnityEngine.Object.FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
-                    Expect(ChannelContains(joonhoDialogue, SpeakerType.Joonho, "다행이네"),
+                    Expect(ChannelContains(joonhoDialogue, SpeakerType.Joonho, "오전 8시 출근"),
                         "Selecting a CSV reply did not trigger Joonho's follow-up message.");
-                    Expect(VisibleTextContains("다행이네"),
+                    Expect(VisibleTextContains("오전 8시 출근"),
                         "Joonho's follow-up was stored but not rendered as a chat bubble.");
                     apps?.CloseCurrentApp();
                     SetPrivate(flow, "currentLocation", "학교");

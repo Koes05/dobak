@@ -330,6 +330,29 @@ namespace Dobak.Editor
                     Expect(flow != null && flow.IsGameEnded, "High cashout did not reach an ending.");
                     Expect(TextContains("Ending Title", "먹튀"), "High cashout reached the wrong ending.");
                     Capture("scenario-17-high-cashout-ending.png");
+                    ClickNamedButton("Restart Button");
+                    Next(27, 1.8d);
+                    break;
+
+                case 27:
+                    flow = GameFlowManager.Instance;
+                    DismissNarration();
+                    SetPrivate(flow, "currentDay", 5);
+                    SetPrivate(flow, "currentHour", 23);
+                    SetPrivate(flow, "schoolDone", true);
+                    SetPrivate(flow, "homeworkDone", true);
+                    SetPrivate(flow, "gambleRounds", 1);
+                    SetPrivate(flow, "daysWithoutGambling", 2);
+                    SetPrivate(flow, "gambledToday", false);
+                    InvokePrivate(flow, "CompleteDayAtSeven", true, 8);
+                    Next(28, 0.5d);
+                    break;
+
+                case 28:
+                    Expect(flow != null && flow.IsGameEnded, "Three gambling-free days did not reach an ending.");
+                    Expect(TextContains("Ending Title", "일상으로 돌아오기"),
+                        "Gambling abstinence reached the wrong ending.");
+                    Capture("scenario-18-abstinence-ending.png");
                     EditorApplication.ExitPlaymode();
                     break;
             }
