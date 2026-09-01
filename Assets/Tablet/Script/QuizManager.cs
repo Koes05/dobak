@@ -56,6 +56,9 @@ public class QuizManager : MonoBehaviour
     private bool completionReported;
     private GameObject answerHeaderObject;
     private GameObject answerPanelObject;
+    private AudioSource feedbackAudioSource;
+    private AudioClip correctClip;
+    private AudioClip wrongClip;
 
 
     //==================================================
@@ -64,6 +67,11 @@ public class QuizManager : MonoBehaviour
 
     private void Start()
     {
+        feedbackAudioSource = gameObject.AddComponent<AudioSource>();
+        feedbackAudioSource.playOnAwake = false;
+        correctClip = Resources.Load<AudioClip>("Audio/SFX/quiz_correct");
+        wrongClip = Resources.Load<AudioClip>("Audio/SFX/quiz_wrong");
+
         ResolveSceneLabels();
         BindButtonListeners();
 
@@ -276,6 +284,8 @@ public class QuizManager : MonoBehaviour
         if (selectedIndex == quiz.answerIndex)
         {
             correctAnswerCount++;
+            if (correctClip != null)
+                feedbackAudioSource.PlayOneShot(correctClip, 0.48f);
             if (resultText != null)
                 resultText.text = "정답입니다!";
             if (resultBox != null)
@@ -283,6 +293,8 @@ public class QuizManager : MonoBehaviour
         }
         else
         {
+            if (wrongClip != null)
+                feedbackAudioSource.PlayOneShot(wrongClip, 0.44f);
             if (resultText != null)
                 resultText.text = $"오답입니다. 정답: {quiz.choices[quiz.answerIndex]}";
             if (resultBox != null)

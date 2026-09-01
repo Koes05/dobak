@@ -166,6 +166,32 @@ namespace Dobak.Manager
             AddRecord(description, amount, TransactionScope.ExternalIncome);
         }
 
+        public void SetBankCash(int amount, string description = "시나리오 잔액 설정")
+        {
+            int nextValue = Mathf.Max(0, amount);
+            int delta = nextValue - BankCash;
+            if (delta == 0)
+                return;
+
+            BankCash = nextValue;
+            OnBankCashChanged?.Invoke(BankCash);
+            AddRecord(description, delta, TransactionScope.ExternalIncome);
+        }
+
+        public void AdjustBankCash(int amount, string description = "시나리오 거래")
+        {
+            SetBankCash(BankCash + amount, description);
+        }
+
+        public void ResetScenarioBalances(int bankCash)
+        {
+            history.Clear();
+            BankCash = Mathf.Max(0, bankCash);
+            CasinoCash = 0;
+            OnBankCashChanged?.Invoke(BankCash);
+            OnCasinoCashChanged?.Invoke(CasinoCash);
+        }
+
         private void AddRecord(string description, int amount, TransactionScope scope)
         {
             var record = new TransactionRecord

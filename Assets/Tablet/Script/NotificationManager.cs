@@ -90,4 +90,9 @@ public class NotificationManager : MonoBehaviour
             Destroy(child.gameObject);
         }
     }
+
+    public void HidePopup()
+    {
+        popup?.HideImmediately();
+    }
 }

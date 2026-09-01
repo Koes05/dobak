@@ -72,6 +72,8 @@ public class AppWindow : MonoBehaviour
 
     // 애니메이션 중복 실행 방지
     private bool isOpening;
+    private AudioSource uiAudioSource;
+    private AudioClip appOpenClip;
 
     //=========================
     // 시작
@@ -79,6 +81,10 @@ public class AppWindow : MonoBehaviour
 
     private void Start()
     {
+        uiAudioSource = gameObject.AddComponent<AudioSource>();
+        uiAudioSource.playOnAwake = false;
+        appOpenClip = Resources.Load<AudioClip>("Audio/SFX/app_open");
+
         // Splash 숨김
         splash.SetActive(false);
 
@@ -122,6 +128,8 @@ public class AppWindow : MonoBehaviour
     IEnumerator OpenRoutine(AppType type)
     {
         isOpening = true;
+        if (appOpenClip != null)
+            uiAudioSource.PlayOneShot(appOpenClip, 0.35f);
 
         // 이전 앱이 켜져있으면 종료
         if (currentApp != null)

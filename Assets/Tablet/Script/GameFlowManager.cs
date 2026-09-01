@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using Dobak.App.Casino;
 using Dobak.Manager;
 using TMPro;
@@ -37,6 +38,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private CoinManager coinManager;
     private DialogueManager dialogueManager;
     private ScenarioMessageTable scenarioMessages;
+    private ScenarioV3Director scenarioV3;
 
     private TMP_Text moneyText;
     private TMP_Text feedbackText;
@@ -110,6 +112,8 @@ public sealed class GameFlowManager : MonoBehaviour
     public int ConsecutiveShortSleepDays => consecutiveShortSleepDays;
     public int DaysWithoutGambling => daysWithoutGambling;
     public string ActiveStoryEvent => activeStoryEvent;
+    public int V3BankCash => coinManager != null ? coinManager.BankCash : 0;
+    public string V3ClockText => $"{currentHour:00}:00";
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void RegisterSceneBootstrap()
@@ -149,7 +153,7 @@ public sealed class GameFlowManager : MonoBehaviour
         dialogueManager = FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
         appWindow = FindAnyObjectByType<AppWindow>();
         coinManager = CoinManager.Instance ?? FindAnyObjectByType<CoinManager>();
-        scenarioMessages = ScenarioMessageTable.Load();
+        scenarioMessages = null;
 
         ApplyKoreanFont();
         BindExistingStatusText();
@@ -166,18 +170,16 @@ public sealed class GameFlowManager : MonoBehaviour
             quizManager.ConfigureForDay(currentDay, !IsWeekend);
         }
 
-        Dobak.App.Casino.SlotMachine.SlotMachineManager.SpinResolved += OnGambleResolved;
-
         if (coinManager != null)
         {
             coinManager.OnBankCashChanged += OnBankCashChanged;
-            coinManager.OnCasinoCashChanged += OnCasinoCashChanged;
-            coinManager.OnCasinoChargeCompleted += OnCasinoChargeCompleted;
         }
 
         StartNewDay(false);
+        scenarioV3 = gameObject.AddComponent<ScenarioV3Director>();
+        scenarioV3.Initialize(this);
         yield return new WaitForSeconds(0.8f);
-        TriggerScenario("game_start");
+        scenarioV3.BeginNewGame();
     }
 
     private void OnDestroy()
@@ -185,13 +187,9 @@ public sealed class GameFlowManager : MonoBehaviour
         if (quizManager != null)
             quizManager.DailyQuizCompleted -= CompleteHomework;
 
-        Dobak.App.Casino.SlotMachine.SlotMachineManager.SpinResolved -= OnGambleResolved;
-
         if (coinManager != null)
         {
             coinManager.OnBankCashChanged -= OnBankCashChanged;
-            coinManager.OnCasinoCashChanged -= OnCasinoCashChanged;
-            coinManager.OnCasinoChargeCompleted -= OnCasinoChargeCompleted;
         }
 
         if (appWindow != null)
@@ -273,7 +271,10 @@ public sealed class GameFlowManager : MonoBehaviour
             {
                 schoolDone = true;
                 AdvanceHours(7);
-                TriggerScenario("school_complete");
+                if (scenarioV3 != null)
+                    scenarioV3.HandleExternalAction("school_complete");
+                else
+                    TriggerScenario("school_complete");
             }
             else if (location == "카페" && IsWeekend && !jobDone)
             {
@@ -281,10 +282,13 @@ public sealed class GameFlowManager : MonoBehaviour
                 AdvanceHours(JobEndHour - JobStartHour);
                 coinManager?.AddBankCash(JobDailyWage, "카페 아르바이트 일당");
                 currentLocation = "집";
-                TriggerScenario("job_complete", new Dictionary<string, string>
-                {
-                    ["wage"] = JobDailyWage.ToString("N0")
-                });
+                if (scenarioV3 != null)
+                    scenarioV3.HandleExternalAction("job_complete");
+                else
+                    TriggerScenario("job_complete", new Dictionary<string, string>
+                    {
+                        ["wage"] = JobDailyWage.ToString("N0")
+                    });
             }
 
             appWindow?.CloseCurrentApp();
@@ -349,7 +353,10 @@ public sealed class GameFlowManager : MonoBehaviour
 
         homeworkDone = true;
         AdvanceHours(2);
-        TriggerScenario("homework_complete");
+        if (scenarioV3 != null)
+            scenarioV3.HandleExternalAction("homework_complete");
+        else
+            TriggerScenario("homework_complete");
     }
 
     public bool CanOpenStudy()
@@ -381,6 +388,16 @@ public sealed class GameFlowManager : MonoBehaviour
         int sleepHours = GetSleepHoursUntilSeven(currentHour);
         sleepDone = true;
         RefreshUI();
+
+        if (scenarioV3 != null)
+        {
+            StartCoroutine(FadeTransition("하루를 마무리하는 중", () =>
+            {
+                currentLocation = "집";
+                scenarioV3.CompleteDayFromSleep(sleepHours);
+            }, 0.55f));
+            return;
+        }
 
         StartCoroutine(FadeTransition("하루를 마무리하는 중", () =>
         {
@@ -737,6 +754,13 @@ public sealed class GameFlowManager : MonoBehaviour
         if (string.IsNullOrWhiteSpace(action))
             return;
 
+        const string v3ChoicePrefix = "v3-choice:";
+        if (action.StartsWith(v3ChoicePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            scenarioV3?.HandleChoice(action.Substring(v3ChoicePrefix.Length));
+            return;
+        }
+
         foreach (string rawDirective in action.Split('|'))
         {
             string directive = rawDirective.Trim();
@@ -865,11 +889,110 @@ public sealed class GameFlowManager : MonoBehaviour
 
     public void RestartGame()
     {
+        scenarioV3?.ClearSavedRun();
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    public void V3ResetRun(int startingCash)
+    {
+        currentDay = 1;
+        currentHour = DayStartHour;
+        currentLocation = "집";
+        debt = 0;
+        gameEnded = false;
+        isTransitioning = false;
+        scheduleFailureDays = 0;
+        consecutiveShortSleepDays = 0;
+        schoolDone = homeworkDone = jobDone = sleepDone = false;
+        gamblingUnlocked = false;
+        coinManager?.ResetScenarioBalances(startingCash);
+        SetGamblingAppVisibility(false);
+        quizManager?.ConfigureForDay(currentDay, true);
+        RefreshUI();
+    }
+
+    public void V3SetClock(string clock)
+    {
+        if (TimeSpan.TryParse(clock, CultureInfo.InvariantCulture, out TimeSpan parsed))
+            currentHour = Mathf.Clamp(parsed.Hours, 0, 23);
+        RefreshUI();
+    }
+
+    public void V3AddMinutes(int minutes)
+    {
+        int hours = Mathf.Max(0, Mathf.CeilToInt(minutes / 60f));
+        currentHour = (currentHour + hours) % 24;
+        RefreshUI();
+    }
+
+    public void V3SetCash(int amount)
+    {
+        coinManager?.SetBankCash(amount);
+        RefreshUI();
+    }
+
+    public void V3AddCash(int amount)
+    {
+        coinManager?.AdjustBankCash(amount, amount >= 0 ? "시나리오 입금" : "시나리오 지출");
+        RefreshUI();
+    }
+
+    public void V3SetDebt(int amount)
+    {
+        debt = Mathf.Max(0, amount);
+        RefreshUI();
+    }
+
+    public void V3AddDebt(int amount)
+    {
+        debt = Mathf.Max(0, debt + amount);
+        RefreshUI();
+    }
+
+    public void V3SetLocation(string location)
+    {
+        currentLocation = NormalizeLocation(location);
+        RefreshUI();
+    }
+
+    public void V3SetSchedule(string schedule, string value)
+    {
+        bool complete = string.Equals(value, "complete", StringComparison.OrdinalIgnoreCase);
+        switch (schedule)
+        {
+            case "school": schoolDone = complete; break;
+            case "homework": homeworkDone = complete; break;
+            case "job": jobDone = complete; break;
+            case "sleep": sleepDone = complete || value == "short"; break;
+        }
+        RefreshUI();
+    }
+
+    public void V3BeginNextDay()
+    {
+        currentDay = Mathf.Min(FinalDay, currentDay + 1);
+        currentHour = DayStartHour;
+        currentLocation = "집";
+        schoolDone = homeworkDone = jobDone = sleepDone = false;
+        quizManager?.ConfigureForDay(currentDay, !IsWeekend);
+        RefreshUI();
+    }
+
+    public void V3EndGame(string title, string body)
+    {
+        EndGame(title, body);
+    }
+
+    public void V3Refresh()
+    {
+        RefreshUI();
     }
 
     private void RefreshUI()
     {
+        if (actionBar != null)
+            actionBar.SetActive(scenarioV3 == null && !gameEnded);
+
         string weekday = GetWeekdayName(currentDay);
         string meridiem = currentHour < 12 ? "오전" : "오후";
         int displayHour = currentHour % 12;
@@ -891,18 +1014,18 @@ public sealed class GameFlowManager : MonoBehaviour
             sleepButton.interactable = !gameEnded && !isTransitioning;
         if (helpButton != null)
         {
-            helpButton.gameObject.SetActive(CanRequestHelp);
+            helpButton.gameObject.SetActive(scenarioV3 == null && CanRequestHelp);
             helpButton.interactable = CanRequestHelp;
         }
         if (loanButton != null)
         {
             bool canAskSomeone = !momBorrowRequested || !friendBorrowRequested;
-            loanButton.gameObject.SetActive(!gameEnded && coinManager != null && coinManager.BankCash <= 0 && canAskSomeone);
+            loanButton.gameObject.SetActive(scenarioV3 == null && !gameEnded && coinManager != null && coinManager.BankCash <= 0 && canAskSomeone);
             loanButton.interactable = debt < DebtEndingThreshold;
         }
         if (repayDebtButton != null)
         {
-            repayDebtButton.gameObject.SetActive(CanRepayDebt);
+            repayDebtButton.gameObject.SetActive(scenarioV3 == null && CanRepayDebt);
             repayDebtButton.interactable = CanRepayDebt;
         }
         if (cashOutButton != null)
@@ -973,8 +1096,6 @@ public sealed class GameFlowManager : MonoBehaviour
 
         TMP_FontAsset font = FindPreferredFont();
 
-        CreateSnsApp(canvas, font);
-        CreateSnsHomeIcon(font);
         CreateSettingsApp(canvas, font);
 
         GameObject panel = CreatePanel("Daily Action Bar", canvas.transform, new Color(0.035f, 0.075f, 0.13f, 0.92f));
