@@ -25,6 +25,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private const int ShortSleepEndingLimit = 3;
     private const int CashOutEndingBalance = 10000;
     private const int CashOutEndingAttempts = 3;
+    private const int AbstinenceEndingDays = 3;
 
     private readonly HashSet<string> sentMessages = new HashSet<string>();
     private readonly HashSet<string> firedScenarioEvents = new HashSet<string>();
@@ -79,6 +80,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private int cashOutAttempts;
     private int casinoChargesToday;
     private int snsHoursToday;
+    private int daysWithoutGambling;
     private string currentLocation = "집";
     private string activeStoryEvent = "";
     private readonly Queue<(string title, string body)> narrationQueue = new Queue<(string title, string body)>();
@@ -93,6 +95,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private bool gameEnded;
     private bool momBorrowRequested;
     private bool friendBorrowRequested;
+    private bool gambledToday;
 
     public bool IsWeekend => GetWeekdayIndex(currentDay) >= 5;
     public bool IsGameEnded => gameEnded;
@@ -105,6 +108,7 @@ public sealed class GameFlowManager : MonoBehaviour
     public string CurrentLocation => currentLocation;
     public bool IsHomeworkDone => homeworkDone;
     public int ConsecutiveShortSleepDays => consecutiveShortSleepDays;
+    public int DaysWithoutGambling => daysWithoutGambling;
     public string ActiveStoryEvent => activeStoryEvent;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -441,6 +445,15 @@ public sealed class GameFlowManager : MonoBehaviour
             return;
         }
 
+        if (gambleRounds > 0)
+            daysWithoutGambling = gambledToday ? 0 : daysWithoutGambling + 1;
+
+        if (gambleRounds > 0 && daysWithoutGambling >= AbstinenceEndingDays && debt == 0)
+        {
+            TriggerScenario("ending_abstinence");
+            return;
+        }
+
         currentDay++;
         if (currentDay > FinalDay)
         {
@@ -466,6 +479,7 @@ public sealed class GameFlowManager : MonoBehaviour
         sleepDone = false;
         casinoChargesToday = 0;
         snsHoursToday = 0;
+        gambledToday = false;
 
         quizManager?.ConfigureForDay(currentDay, !IsWeekend);
 
@@ -538,6 +552,8 @@ public sealed class GameFlowManager : MonoBehaviour
     private void OnGambleResolved(bool won, int payout)
     {
         gambleRounds++;
+        gambledToday = true;
+        daysWithoutGambling = 0;
         if (!won)
             gambleLosses++;
         TriggerScenario("gamble_resolved", new Dictionary<string, string>
@@ -718,14 +734,26 @@ public sealed class GameFlowManager : MonoBehaviour
 
     public void ExecuteScenarioAction(string action)
     {
-        const string triggerPrefix = "trigger:";
-        if (string.IsNullOrWhiteSpace(action) ||
-            !action.StartsWith(triggerPrefix, StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(action))
             return;
 
-        string trigger = action.Substring(triggerPrefix.Length).Trim();
-        if (trigger.Length > 0)
-            TriggerScenario(trigger);
+        foreach (string rawDirective in action.Split('|'))
+        {
+            string directive = rawDirective.Trim();
+            const string triggerPrefix = "trigger:";
+            const string timePrefix = "spend_time:";
+            if (directive.StartsWith(triggerPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                string trigger = directive.Substring(triggerPrefix.Length).Trim();
+                if (trigger.Length > 0)
+                    TriggerScenario(trigger);
+            }
+            else if (directive.StartsWith(timePrefix, StringComparison.OrdinalIgnoreCase) &&
+                     int.TryParse(directive.Substring(timePrefix.Length).Trim(), out int hours))
+            {
+                SpendTime(hours, "대화");
+            }
+        }
     }
 
     private void ShowNextNarration()
@@ -1339,6 +1367,8 @@ public sealed class GameFlowManager : MonoBehaviour
             "invitation_resolved" => invitationResolved.ToString().ToLowerInvariant(),
             "rounds" => gambleRounds.ToString(),
             "losses" => gambleLosses.ToString(),
+            "days_without_gambling" => daysWithoutGambling.ToString(),
+            "gambled_today" => gambledToday.ToString().ToLowerInvariant(),
             "charges" => casinoChargesToday.ToString(),
             "cashout_attempts" => cashOutAttempts.ToString(),
             "debt" => debt.ToString(),

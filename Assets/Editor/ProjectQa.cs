@@ -24,7 +24,8 @@ namespace Dobak.Editor
             if (scenario.EventCount < 75 || scenario.Count("initial_invitation") < 1 ||
                 scenario.Count("invitation_retempt") < 3 || scenario.Count("sns_intro") < 3 ||
                 scenario.Count("sns_gambling_feed") < 3 || scenario.Count("ending_cashout") < 1 ||
-                scenario.Count("debt_repay_complete") < 1 || scenario.Count("ending_recovery") < 1)
+                scenario.Count("debt_repay_complete") < 1 || scenario.Count("ending_recovery") < 1 ||
+                scenario.Count("ending_abstinence") < 1)
             {
                 failures.Add("ScenarioMessages.csv does not contain enough playable event messages.");
             }
@@ -83,6 +84,20 @@ namespace Dobak.Editor
             if (scenario.Count("loan_spam") > 0 || scenario.Count("debt_followup") > 0 ||
                 scenario.Count("gamble_win") > 0 || scenario.Count("gamble_loss") > 0)
                 failures.Add("ScenarioMessages.csv still contains high-frequency site or spam-contact events.");
+
+            ValidateFixedScenario(failures, scenario, "seoyeon_homework", "day=3");
+            ValidateFixedScenario(failures, scenario, "mom_checkin", "day=4");
+            ValidateFixedScenario(failures, scenario, "joonho_casual", "day=5");
+            ValidateFixedScenario(failures, scenario, "weekend_shift_start", "day=6");
+            ValidateFixedScenario(failures, scenario, "family_dinner_start", "day=7");
+            ValidateFixedScenario(failures, scenario, "school_project_start", "day=8");
+            ValidateFixedScenario(failures, scenario, "teacher_day10_steady", "day=10");
+            ValidateFixedScenario(failures, scenario, "weekend_shift_second", "day=12");
+
+            ScenarioEventDefinition retempt = FindScenario(scenario, "site_retempt");
+            if (retempt == null || !retempt.condition.Contains("days_without_gambling>=2", StringComparison.Ordinal) ||
+                retempt.chance < 1f || !string.Equals(retempt.once, "game", StringComparison.OrdinalIgnoreCase))
+                failures.Add("Site re-engagement must be a one-time event gated by actual gambling inactivity.");
 
             if (SlotMachineManager.GetSessionWinBoost(4) != 0f ||
                 SlotMachineManager.GetSessionWinBoost(5) <= 0f ||
@@ -200,7 +215,7 @@ namespace Dobak.Editor
             if (string.IsNullOrWhiteSpace(action) || !action.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 return;
 
-            string target = action.Substring(prefix.Length).Trim();
+            string target = ReadTriggerTarget(action);
             if (!scenario.HasTrigger(target))
                 failures.Add($"CSV event {eventId} points to missing reply trigger: {target}");
         }
@@ -209,7 +224,32 @@ namespace Dobak.Editor
         {
             const string prefix = "trigger:";
             if (!string.IsNullOrWhiteSpace(action) && action.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                targets.Add(action.Substring(prefix.Length).Trim());
+                targets.Add(ReadTriggerTarget(action));
+        }
+
+        private static string ReadTriggerTarget(string action)
+        {
+            const string prefix = "trigger:";
+            string target = action.Substring(prefix.Length).Trim();
+            int separator = target.IndexOf('|');
+            return separator >= 0 ? target.Substring(0, separator).Trim() : target;
+        }
+
+        private static void ValidateFixedScenario(List<string> failures, ScenarioMessageTable scenario,
+            string eventId, string requiredCondition)
+        {
+            ScenarioEventDefinition definition = FindScenario(scenario, eventId);
+            if (definition == null || !definition.condition.Contains(requiredCondition, StringComparison.Ordinal) ||
+                definition.chance < 1f || !string.Equals(definition.once, "game", StringComparison.OrdinalIgnoreCase))
+                failures.Add($"Fixed-day CSV event is not deterministic: {eventId}");
+        }
+
+        private static ScenarioEventDefinition FindScenario(ScenarioMessageTable scenario, string eventId)
+        {
+            foreach (ScenarioEventDefinition definition in scenario.Events)
+                if (string.Equals(definition.id, eventId, StringComparison.OrdinalIgnoreCase))
+                    return definition;
+            return null;
         }
     }
 }
