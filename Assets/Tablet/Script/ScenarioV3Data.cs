@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using UnityEngine;
 
@@ -9,6 +10,7 @@ public sealed class ScenarioV3Choice
 {
     public string id;
     public string text;
+    public string replyText;
     public string effects;
     public string nextSceneId;
 }
@@ -21,11 +23,13 @@ public sealed class ScenarioV3Line
     public string speaker;
     public string contact;
     public string delivery;
+    public string portrait;
     public string text;
     public string enterEffects;
     public string autoNext;
     public ScenarioV3Choice choiceA;
     public ScenarioV3Choice choiceB;
+    public ScenarioV3Choice choiceC;
 
     public IEnumerable<ScenarioV3Choice> Choices
     {
@@ -33,6 +37,7 @@ public sealed class ScenarioV3Line
         {
             if (choiceA != null && !string.IsNullOrWhiteSpace(choiceA.id)) yield return choiceA;
             if (choiceB != null && !string.IsNullOrWhiteSpace(choiceB.id)) yield return choiceB;
+            if (choiceC != null && !string.IsNullOrWhiteSpace(choiceC.id)) yield return choiceC;
         }
     }
 }
@@ -58,6 +63,10 @@ public sealed class ScenarioV3Database
         new Dictionary<string, ScenarioV3Scene>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<ScenarioV3Scene>> scenesByTrigger =
         new Dictionary<string, List<ScenarioV3Scene>>(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> returnToTabletScenes =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> checkpointLabels =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
     public int SceneCount => scenes.Count;
     public IEnumerable<ScenarioV3Scene> Scenes => scenes.Values;
@@ -120,11 +129,13 @@ public sealed class ScenarioV3Database
                 speaker = Read(row, columns, "speaker"),
                 contact = Read(row, columns, "contact"),
                 delivery = Read(row, columns, "delivery"),
+                portrait = Read(row, columns, "portrait"),
                 text = Read(row, columns, "text"),
                 enterEffects = Read(row, columns, "enter_effects"),
                 autoNext = Read(row, columns, "auto_next"),
                 choiceA = CreateChoice(row, columns, "a"),
-                choiceB = CreateChoice(row, columns, "b")
+                choiceB = CreateChoice(row, columns, "b"),
+                choiceC = CreateChoice(row, columns, "c")
             };
 
             foreach (ScenarioV3Choice choice in line.Choices)
@@ -146,11 +157,78 @@ public sealed class ScenarioV3Database
             }
         }
 
+        ApplyReplyTexts(database, choiceIds);
+        ApplyLineTextOverrides(database);
+        ApplyFlowBindings(database);
+        ApplyCheckpointDefinitions(database);
+
         foreach (List<ScenarioV3Scene> triggerScenes in database.scenesByTrigger.Values)
             triggerScenes.Sort((left, right) => right.priority.CompareTo(left.priority));
 
         Debug.Log($"[Scenario V3] {database.SceneCount}개 장면을 불러왔습니다.");
         return database;
+    }
+
+    private static void ApplyReplyTexts(ScenarioV3Database database, HashSet<string> choiceIds)
+    {
+        TextAsset replyAsset = Resources.Load<TextAsset>("ScenarioV3Replies");
+        if (replyAsset == null)
+            return;
+
+        List<List<string>> rows = ParseCsv(replyAsset.text);
+        if (rows.Count < 2)
+            return;
+
+        var columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < rows[0].Count; i++)
+            columns[rows[0][i].Trim().TrimStart('\uFEFF')] = i;
+
+        var choicesById = database.scenes.Values
+            .SelectMany(scene => scene.lines)
+            .SelectMany(line => line.Choices)
+            .ToDictionary(choice => choice.id, StringComparer.OrdinalIgnoreCase);
+
+        for (int rowIndex = 1; rowIndex < rows.Count; rowIndex++)
+        {
+            string choiceId = Read(rows[rowIndex], columns, "choice_id");
+            string replyText = Read(rows[rowIndex], columns, "reply_text");
+            if (string.IsNullOrWhiteSpace(choiceId) || string.IsNullOrWhiteSpace(replyText))
+                continue;
+            if (!choiceIds.Contains(choiceId) || !choicesById.TryGetValue(choiceId, out ScenarioV3Choice choice))
+                throw new InvalidOperationException($"ScenarioV3Replies.csv가 없는 선택지 {choiceId}을 참조합니다.");
+            choice.replyText = replyText;
+        }
+    }
+
+    private static void ApplyLineTextOverrides(ScenarioV3Database database)
+    {
+        TextAsset textAsset = Resources.Load<TextAsset>("ScenarioV3Narration");
+        if (textAsset == null)
+            return;
+
+        List<List<string>> rows = ParseCsv(textAsset.text);
+        if (rows.Count < 2)
+            return;
+
+        var columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < rows[0].Count; i++)
+            columns[rows[0][i].Trim().TrimStart('\uFEFF')] = i;
+
+        var linesById = database.scenes.Values
+            .SelectMany(scene => scene.lines)
+            .ToDictionary(line => line.id, StringComparer.OrdinalIgnoreCase);
+
+        for (int rowIndex = 1; rowIndex < rows.Count; rowIndex++)
+        {
+            string lineId = Read(rows[rowIndex], columns, "line_id");
+            string text = Read(rows[rowIndex], columns, "text");
+            if (string.IsNullOrWhiteSpace(lineId) || string.IsNullOrWhiteSpace(text))
+                continue;
+            if (!linesById.TryGetValue(lineId, out ScenarioV3Line line))
+                throw new InvalidOperationException($"ScenarioV3Narration.csv가 없는 대사 {lineId}을 참조합니다.");
+            if (string.IsNullOrWhiteSpace(line.text))
+                line.text = text;
+        }
     }
 
     public ScenarioV3Scene GetScene(string sceneId)
@@ -166,6 +244,90 @@ public sealed class ScenarioV3Database
             : Array.Empty<ScenarioV3Scene>();
     }
 
+    public bool ShouldReturnToTablet(string sceneId)
+    {
+        return returnToTabletScenes.Contains(sceneId ?? string.Empty);
+    }
+
+    public bool TryGetCheckpointLabel(ScenarioV3Line line, out string label)
+    {
+        foreach (ScenarioV3Choice choice in line.Choices)
+        {
+            if (checkpointLabels.TryGetValue(choice.id, out label))
+                return true;
+        }
+        label = string.Empty;
+        return false;
+    }
+
+    private static void ApplyCheckpointDefinitions(ScenarioV3Database database)
+    {
+        TextAsset asset = Resources.Load<TextAsset>("ScenarioV3Checkpoints");
+        if (asset == null)
+            return;
+
+        List<List<string>> rows = ParseCsv(asset.text);
+        if (rows.Count < 2)
+            return;
+
+        var columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < rows[0].Count; i++)
+            columns[rows[0][i].Trim().TrimStart('\uFEFF')] = i;
+
+        HashSet<string> knownChoices = database.scenes.Values
+            .SelectMany(scene => scene.lines)
+            .SelectMany(line => line.Choices)
+            .Select(choice => choice.id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        for (int rowIndex = 1; rowIndex < rows.Count; rowIndex++)
+        {
+            string choiceId = Read(rows[rowIndex], columns, "choice_id");
+            string label = Read(rows[rowIndex], columns, "label");
+            if (!knownChoices.Contains(choiceId))
+                throw new InvalidOperationException($"ScenarioV3Checkpoints.csv가 없는 선택지 {choiceId}을 참조합니다.");
+            database.checkpointLabels[choiceId] = label;
+        }
+    }
+
+    private static void ApplyFlowBindings(ScenarioV3Database database)
+    {
+        TextAsset flowAsset = Resources.Load<TextAsset>("ScenarioV3Flow");
+        if (flowAsset == null)
+            return;
+
+        List<List<string>> rows = ParseCsv(flowAsset.text);
+        if (rows.Count < 2)
+            return;
+
+        var columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < rows[0].Count; i++)
+            columns[rows[0][i].Trim().TrimStart('\uFEFF')] = i;
+
+        for (int rowIndex = 1; rowIndex < rows.Count; rowIndex++)
+        {
+            string sceneId = Read(rows[rowIndex], columns, "scene_id");
+            string extraTrigger = Read(rows[rowIndex], columns, "extra_trigger");
+            string returnToTablet = Read(rows[rowIndex], columns, "return_to_tablet");
+            ScenarioV3Scene scene = database.GetScene(sceneId);
+            if (scene == null)
+                throw new InvalidOperationException($"ScenarioV3Flow.csv가 없는 장면 {sceneId}을 참조합니다.");
+
+            if (string.Equals(returnToTablet, "true", StringComparison.OrdinalIgnoreCase))
+                database.returnToTabletScenes.Add(sceneId);
+
+            if (string.IsNullOrWhiteSpace(extraTrigger))
+                continue;
+            if (!database.scenesByTrigger.TryGetValue(extraTrigger, out List<ScenarioV3Scene> triggerScenes))
+            {
+                triggerScenes = new List<ScenarioV3Scene>();
+                database.scenesByTrigger.Add(extraTrigger, triggerScenes);
+            }
+            if (!triggerScenes.Contains(scene))
+                triggerScenes.Add(scene);
+        }
+    }
+
     private static ScenarioV3Choice CreateChoice(List<string> row,
         Dictionary<string, int> columns, string suffix)
     {
@@ -177,6 +339,7 @@ public sealed class ScenarioV3Database
         {
             id = id,
             text = Read(row, columns, $"choice_{suffix}_text"),
+            replyText = Read(row, columns, $"choice_{suffix}_reply"),
             effects = Read(row, columns, $"choice_{suffix}_effects"),
             nextSceneId = Read(row, columns, $"choice_{suffix}_next")
         };

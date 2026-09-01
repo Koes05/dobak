@@ -444,7 +444,7 @@ namespace Dobak.Editor
 
         private static void OpenContact(SpeakerType speaker)
         {
-            foreach (ProfileSlot slot in UnityEngine.Object.FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (ProfileSlot slot in UnityEngine.Object.FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include))
             {
                 if (slot.gameObject.activeInHierarchy && slot.speakerType == speaker)
                 {
@@ -457,7 +457,7 @@ namespace Dobak.Editor
 
         private static void ClickChoice(string text)
         {
-            foreach (Button button in UnityEngine.Object.FindObjectsByType<Button>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            foreach (Button button in UnityEngine.Object.FindObjectsByType<Button>(FindObjectsInactive.Exclude))
             {
                 TMP_Text label = button.GetComponentInChildren<TMP_Text>();
                 if (label != null && label.text.Contains(text))
@@ -605,7 +605,7 @@ namespace Dobak.Editor
         private static Canvas FindRootCanvas()
         {
             Canvas fallback = null;
-            foreach (Canvas canvas in UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (Canvas canvas in UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include))
             {
                 fallback ??= canvas;
                 if (canvas.transform.parent == null)

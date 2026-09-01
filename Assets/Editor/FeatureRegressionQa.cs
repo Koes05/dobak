@@ -565,7 +565,7 @@ namespace Dobak.Editor
         private static Canvas FindRootCanvas()
         {
             Canvas fallback = null;
-            foreach (Canvas canvas in UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (Canvas canvas in UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include))
             {
                 fallback ??= canvas;
                 if (canvas.transform.parent == null)

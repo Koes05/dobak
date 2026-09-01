@@ -1,0 +1,61 @@
+case_id,group,first_gamble_timing,gamble_sessions,stop_or_loan,debt_owner,job_attendance,project_result,manager_advice,help_requested,collapse,expected_cash,expected_route,expected_ending,required_context,risk,verdict
+META01,coverage,any,0..6,any,none|mom|seojun|minjae,0..4,good|bad,true|false,true|false,true|false,depends,branch_equivalence,all,"아래 행은 결과와 대사 조건이 달라지는 모든 분기 동치군을 포괄한다. 같은 상태에 도달하는 클릭 순서만 다른 조합은 한 행으로 묶는다.",low,COVERED
+META02,priority,any,any,any,any,any,any,any,any,true,any,collapse_check,collapse,"일정 실패 5회 이상 또는 결석 4회 이상 또는 알바 실패 3회 이상이면 다른 엔딩보다 붕괴를 우선한다.",high,RULE_REQUIRED
+N00,no_gamble,never,0,decline,none,4,good,false,false,false,250000,d14_prevented_goal,prevented,"도박 관련 과거형을 쓰지 않고 네 번의 근무와 수리비 달성을 보상한다.",low,PASS
+N01,no_gamble,never,0,decline,none,4,bad,false,false,false,250000,d14_prevented_goal,prevented,"수리비는 달성하지만 서연과의 과제 갈등은 별도 대사로 남긴다.",medium,PASS_WITH_VARIANT
+N02,no_gamble,never,0,decline,none,3,good,false,false,false,200000,d14_prevented_short,prevented,"도박은 피했지만 한 번의 결근 때문에 목표액이 부족하다는 점을 인정한다.",low,PASS
+N03,no_gamble,never,0,decline,none,3,bad,false,false,false,200000,d14_prevented_short,prevented,"예방 성공과 과제 실패를 동시에 보여 주고 둘 중 하나를 지우지 않는다.",medium,PASS_WITH_VARIANT
+N04,no_gamble,never,0,decline,none,0..2,good|bad,false,false,false,<200000,d14_prevented_short,prevented,"붕괴 기준 미만이라면 목표 미달 계획을 제시하고 도박 손실 표현은 금지한다.",medium,PASS_WITH_VARIANT
+N05,no_gamble,never,0,decline,none,0..4,good|bad,false,false,true,depends,collapse_check,collapse,"도박을 하지 않아도 일정 실패가 누적되면 생활 붕괴는 가능하다. 엔딩 문구에서 손실 복구 집착은 제외해야 한다.",high,NEEDS_COLLAPSE_VARIANT
+L10,limited_day1,day1,1,stop,none,4,good,false,false,false,270000,d14_prevented_goal,prevented,"무료 포인트 첫 승리는 인정하되 네 번의 임금만으로도 목표를 달성했다는 점을 중심에 둔다.",low,PASS
+L11,limited_late,day2..14,1,stop,none,4,good,false,false,false,270000,late_first_gamble_return_to_prevented,prevented,"1일차 저녁 장면으로 돌아가지 않고 실제 발생일의 남은 일정으로 복귀한다.",high,FIX_IN_DRAFT
+L12,limited_one,any,1,stop,none,3,good,false,false,false,220000,d14_prevented_short,prevented,"첫 승리가 있어도 근무 한 번을 빠지면 목표액은 부족하다.",low,PASS
+L13,limited_one,any,1,stop,none,0..2,good|bad,false,false,false,<=170000,d14_prevented_short,prevented,"목표 미달을 도박 재개 이유로 만들지 않고 남은 근무 계획으로 돌린다.",medium,PASS_WITH_VARIANT
+L14,limited_one,job_day,1,stop,none,0..3,good|bad,false,false,false,depends,late_first_gamble_return,prevented,"첫 도박 때문에 카페에 못 간 경우 점장 연락과 수리비 오만 원 공백을 모두 보여 준다.",high,SCENE_LINK_REQUIRED
+L20,limited_two,any,2,stop,none,4,good,false,false,false,310000,d14_prevented_goal,prevented,"초기 두 승리 뒤 멈췄더라도 안전한 수익으로 표현하지 않는다. 근무 네 번이 정상 목표를 채웠음을 강조한다.",medium,PASS_WITH_CAUTION
+L21,limited_two,any,2,stop,none,3,good,false,false,false,260000,d14_prevented_goal_mixed,prevented,"결근했는데도 승리금 때문에 목표액에 도달한다. 성실 근무 성공 대사를 사용하면 안 된다.",high,FIX_IN_DRAFT
+L22,limited_two,any,2,stop,none,0..2,good|bad,false,false,false,<=210000,d14_prevented_short,prevented,"두 번 이긴 뒤에도 일정 손실이 크면 목표 미달이다.",medium,PASS_WITH_VARIANT
+L23,limited_two,any,2,stop,none,0..4,bad,false,false,false,depends,d8_project_bad_then_prevented,prevented,"도박 조기 중단이 과제 실패와 서연 갈등을 자동 복구하지 않는다.",medium,PASS_WITH_VARIANT
+L24,limited_any,any,0..2,stop,none,0..4,good|bad,false,false,true,depends,collapse_check,collapse,"도박 횟수가 적어도 일정 실패 조건이 먼저 충족되면 붕괴 엔딩을 우선한다.",high,RULE_REQUIRED
+H30,loss_three,any,3,g3_stop,none,2..4,good,true,true,false,40000+50000*job_attendance,d14_recovery_no_debt,recovery,"첫 손실 뒤 멈추고 점장 조언을 받아 선생님께 사실대로 말한다.",low,PASS
+H31,loss_three,any,3,g3_stop,none,2..4,bad,true,true,false,40000+50000*job_attendance,d14_recovery_no_debt,recovery,"회복을 시작해도 서연과의 과제 갈등은 사과와 후속 정리가 필요하다.",medium,PASS_WITH_VARIANT
+H32,loss_three,any,3,g3_stop,none,2..4,good|bad,true,false,false,40000+50000*job_attendance,d14_no_help_no_debt,no_help,"점장 조언을 들었지만 상담에서 숨기면 무채무 배드엔딩으로 간다.",low,PASS
+H33,loss_three,any,3,g3_stop,none,0..1,good|bad,false,false,false,40000+50000*job_attendance,d13_no_help_school,no_help,"출근 기록 부족으로 점장 조언이 열리지 않는다. 선생님에게 다시 숨기는 대사가 필요하다.",medium,PASS
+H34,loss_three,any,3,g3_stop,none,0..4,good|bad,any,any,true,depends,collapse_check,collapse,"손실 회복 루트보다 누적 일정 붕괴 판정을 우선한다.",high,RULE_REQUIRED
+H40,chase_four,any,4,g4_stop,none,4,good,true,true,false,250000,d14_recovery_no_debt,recovery,"잔액이 정확히 목표액이어도 세 번 이상 도박했으므로 예방 성공으로 보내지 않는다.",critical,RULE_REQUIRED
+H41,chase_four,any,4,g4_stop,none,4,good,true,false,false,250000,d14_no_help_no_debt,no_help,"목표액 잔액이 남아 있어도 도움을 거절하고 복구 집착을 유지하면 배드엔딩이다.",critical,RULE_REQUIRED
+H42,chase_four,any,4,g4_stop,none,2..3,good|bad,true,true,false,150000..200000,d14_recovery_no_debt,recovery,"부분 회복 뒤 멈추고 도움을 요청한다. 빚이 있다는 문구는 금지한다.",low,PASS
+H43,chase_four,any,4,g4_stop,none,2..3,good|bad,true,false,false,150000..200000,d14_no_help_no_debt,no_help,"점장 조언 이후에도 숨기면 무채무 배드엔딩이다.",low,PASS
+H44,chase_four,any,4,g4_stop,none,0..1,good|bad,false,false,false,50000..100000,d13_no_help_school,no_help,"점장 관계가 부족해 조언을 받지 못한 이유를 유지한다.",medium,PASS
+H45,chase_four,any,4,g4_stop,none,0..4,good|bad,any,any,true,depends,collapse_check,collapse,"잔액 회복 여부와 무관하게 일정 붕괴가 우선한다.",high,RULE_REQUIRED
+S50,wipeout_reject,any,5,g5_stop_then_minjae_reject,none,2..4,good,true,true,false,50000*jobs_after_wipeout,d14_recovery_no_debt,recovery,"민재의 대출 제안까지 거절한 뒤 도움을 요청한다. 빚은 없지만 손실은 남는다.",low,PASS
+S51,wipeout_reject,any,5,g5_stop_then_minjae_reject,none,2..4,good|bad,true,false,false,50000*jobs_after_wipeout,d14_no_help_no_debt,no_help,"돈을 빌리지 않았다는 사실만으로 회복 처리하지 않는다.",low,PASS
+S52,wipeout_reject,any,5,g5_stop_then_minjae_reject,none,0..1,good|bad,false,false,false,50000*jobs_after_wipeout,d13_no_help_school,no_help,"점장 조언이 없고 상담도 피한 무채무 고위험 경로다.",medium,PASS
+S53,no_funds_after_reject,after_g5,5,retry_without_money,none,0..4,good|bad,any,any,false,0,gamble_no_funds,return_to_schedule,"잔액 0원 상태에서는 회차를 늘리지 않고 현재 일정으로 복귀한다.",high,PASS
+S54,wage_after_wipeout,after_g5,5,no_new_loan,none,1..4,good|bad,any,any,false,50000..200000,high_risk_no_debt,depends_on_help,"손실 뒤 번 알바비가 있어도 이전 손실과 고위험 상태가 사라진 것으로 표현하지 않는다.",medium,PASS_WITH_VARIANT
+D60,debt_mom,any,6,borrow_then_gamble,mom,2..4,good,true,true,false,50000*jobs_after_gamble6,d14_recovery_family,recovery,"엄마에게 교통비라고 빌린 거짓말과 감사 답장과 사실 고백을 모두 유지한다.",low,PASS
+D61,debt_mom,any,6,borrow_then_gamble,mom,2..4,good|bad,true,false,false,50000*jobs_after_gamble6,d14_no_help_mom,no_help,"교통카드 내역 질문과 추가 거짓말 뒤 관계 악화를 보여 준다.",low,PASS
+D62,debt_mom,any,6,borrow_then_gamble,mom,0..1,good|bad,false,false,false,50000*jobs_after_gamble6,d14_no_help_mom,no_help,"점장 조언 없이도 엄마 채무 대사는 유지된다.",medium,PASS
+D63,debt_seojun,any,6,borrow_then_gamble,seojun,2..4,good,true,true,false,50000*jobs_after_gamble6,d14_recovery_seojun,recovery,"서준에게 사실과 상환 날짜를 말하고 고맙다는 답장을 보낸다.",low,PASS
+D64,debt_seojun,any,6,borrow_then_gamble,seojun,2..4,good|bad,true,false,false,50000*jobs_after_gamble6,d14_no_help_seojun,no_help,"서준의 걱정이 실망으로 변하되 주인공은 마지막 메시지에 답한다.",low,PASS
+D65,debt_seojun,any,6,borrow_then_gamble,seojun,0..1,good|bad,false,false,false,50000*jobs_after_gamble6,d14_no_help_seojun,no_help,"출근 부족과 서준 채무 갈등이 함께 남는다.",medium,PASS
+D66,debt_minjae,any,6,minjae_offer_accept,minjae,2..4,good,true,true,false,50000*jobs_after_gamble6,d14_recovery_minjae,recovery,"민재의 권유 책임과 채무 상환 책임을 동시에 다룬다.",low,PASS
+D67,debt_minjae,any,6,minjae_offer_accept,minjae,2..4,good|bad,true,false,false,50000*jobs_after_gamble6,d14_no_help_minjae,no_help,"민재가 채권자이면서 다시 권유한 모순을 상환 압박 장면으로 회수한다.",low,PASS
+D68,debt_minjae,any,6,minjae_offer_accept,minjae,0..1,good|bad,false,false,false,50000*jobs_after_gamble6,d14_no_help_minjae,no_help,"점장 조언이 없어도 민재 채무 대화는 빠지지 않는다.",medium,PASS
+D69,debt_any,any,6,borrow_then_gamble,mom|seojun|minjae,0..4,good|bad,any,any,true,depends,collapse_check,collapse,"채무 상대별 대사보다 누적 일정 붕괴 엔딩을 우선하되 엔딩 문구에 빚을 반영한다.",high,NEEDS_COLLAPSE_VARIANT
+D70,debt_cash_recovered,any,6,borrow_then_later_work,mom|seojun|minjae,1..4,good|bad,any,any,false,50000..200000,debt_owner_specific,depends_on_help,"알바비로 잔액이 생겨도 debt가 남아 있으면 무채무 대사로 보내지 않는다.",high,RULE_REQUIRED
+D71,debt_fully_repaid,future,6,repay_all,mom|seojun|minjae,1..4,good|bad,any,any,false,depends,no_debt_followup,depends_on_help,"향후 상환 기능을 연결한다면 debt가 0이 될 때 debt_owner도 cleared로 바꾸거나 라우터가 debt를 먼저 검사해야 한다.",high,FUTURE_FIX
+T01,late_first_gamble,day2,1,stop,none,0..4,good|bad,false,false,false,depends,late_first_gamble_return,prevented,"자료 조사 전후 첫 도박은 1일차 밤 대사 대신 2일차 미완료 과제를 다시 가리킨다.",high,FIX_IN_DRAFT
+T02,late_first_gamble,day4|5|11|12,1,stop,none,0..4,good|bad,false,false,false,depends,late_first_gamble_job_conflict,prevented,"출근 시간과 겹쳤다면 점장 연락과 결근 여부를 먼저 확정하고 그날 저녁으로 간다.",high,SCENE_LINK_REQUIRED
+T03,late_first_gamble,day9,1,stop,none,0..4,good|bad,false,false,false,depends,late_first_gamble_return,prevented,"강연 이후 처음 연 링크이므로 손실 복구라는 표현을 쓰지 않는다.",high,FIX_IN_DRAFT
+T04,late_first_gamble,day10,1,stop,none,0..4,good|bad,false,false,false,depends,late_first_gamble_return,prevented,"금요일 아침 첫 도박 뒤에도 학교 스토리는 그대로 진행하고 지각만 반영한다.",high,SCENE_LINK_REQUIRED
+C01,schedule_school,any,0..6,any,any,0..4,good|bad,any,any,false,depends,late_school_then_same_story,depends,"오전 10시 이후에도 등교를 막지 않고 지각 처리한 뒤 해당 일차 학교 대사를 그대로 실행한다.",high,DESIGN_RULE
+C02,schedule_project,any,0..6,any,any,0..4,good,any,any,false,depends,d8_project_good,depends,"project.progress 4 이상이면 발표 성공과 서연 관계 보상을 유지한다.",low,PASS
+C03,schedule_project,any,0..6,any,any,0..4,bad,any,any,false,depends,d8_project_bad,depends,"project.progress 4 미만이면 서연이 대신 채운 내용과 연락 회피 갈등을 유지한다.",low,PASS
+C04,schedule_manager,any,3..6,any,any,2..4,good|bad,true,any,false,depends,d12_manager_help,depends,"실제 손실과 출근 기록이 모두 있어야 점장 경험담이 열린다.",low,PASS
+C05,schedule_manager,any,0..2,any,none,2..4,good|bad,false,false,false,depends,d12_manager_bond,prevented,"조기 중단 경로에서는 도박 빚 경험담 대신 성실 근무 보상을 사용한다.",low,PASS
+C06,schedule_manager,any,0..6,any,any,0..1,good|bad,false,false,false,depends,d12_manager_distant,depends,"출근 기록이 부족하면 점장이 상담자처럼 갑자기 가까워지지 않는다.",low,PASS
+C07,mixed_random_choices,day1_or_later,0..2,stop,none,0..4,good|bad,false,false,false,depends,prevented_variant,prevented,"공부와 결근과 조기 중단 선택을 마구 섞어도 도박 손실이나 빚을 단정하지 않는다.",high,COVERED
+C08,mixed_random_choices,any,3..4,stop,none,0..4,good|bad,depends,depends,false,depends,no_debt_high_risk_variant,recovery|no_help,"공부 성패와 무관하게 세 번째 손실 이후에는 도움 여부가 엔딩을 가른다.",high,COVERED
+C09,mixed_random_choices,any,5,reject_all_loans,none,0..4,good|bad,depends,depends,false,depends,no_debt_high_risk_variant,recovery|no_help,"돈을 빌리지 않아도 민재의 제안을 거절하는 장면 뒤 다음 날과 남은 일정이 정상 진행돼야 한다.",high,COVERED
+C10,mixed_random_choices,any,6,borrow_then_gamble,mom|seojun|minjae,0..4,good|bad,depends,depends,false,depends,debt_owner_specific,recovery|no_help,"채무 상대와 과제와 출근 선택을 섞어도 상대별 후속 메시지가 중복되거나 누락되지 않아야 한다.",critical,COVERED_WITH_RUNTIME_QA_LATER

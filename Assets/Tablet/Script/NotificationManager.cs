@@ -42,6 +42,7 @@ public class NotificationManager : MonoBehaviour
     {
         // 리스트 저장
         notifications.Add(data);
+        GameFlowManager.Instance?.V3MarkAppAttention(data.appType);
 
 
         if (data.appType == AppType.Message)

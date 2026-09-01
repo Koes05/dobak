@@ -130,7 +130,7 @@ namespace Dobak.Editor
             if (captureStep == 0 && elapsed >= 1.5)
             {
                 int activeContacts = 0;
-                foreach (ProfileSlot slot in UnityEngine.Object.FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                foreach (ProfileSlot slot in UnityEngine.Object.FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include))
                 {
                     if (slot.gameObject.activeSelf)
                         activeContacts++;
@@ -593,7 +593,7 @@ namespace Dobak.Editor
         private static int CountActiveContacts()
         {
             int count = 0;
-            foreach (ProfileSlot slot in UnityEngine.Object.FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (ProfileSlot slot in UnityEngine.Object.FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include))
             {
                 if (slot.gameObject.activeSelf)
                     count++;
@@ -649,7 +649,7 @@ namespace Dobak.Editor
 
         private static ProfileSlot FindProfileSlot(SpeakerType speaker)
         {
-            foreach (ProfileSlot slot in UnityEngine.Object.FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (ProfileSlot slot in UnityEngine.Object.FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include))
             {
                 if (slot.gameObject.activeSelf && slot.speakerType == speaker)
                     return slot;

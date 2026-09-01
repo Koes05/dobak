@@ -31,6 +31,8 @@ namespace Dobak.Manager
         public int bankBalanceAfter;
         public int casinoBalanceAfter;
         public DateTime timestamp;
+        public int gameDay;
+        public int gameHour;
     }
 
     // 잔액을 전역에서 관리하는 싱글톤.
@@ -194,6 +196,7 @@ namespace Dobak.Manager
 
         private void AddRecord(string description, int amount, TransactionScope scope)
         {
+            GameFlowManager flow = GameFlowManager.Instance;
             var record = new TransactionRecord
             {
                 description = description,
@@ -201,7 +204,9 @@ namespace Dobak.Manager
                 scope = scope,
                 bankBalanceAfter = BankCash,
                 casinoBalanceAfter = CasinoCash,
-                timestamp = DateTime.Now
+                timestamp = DateTime.Now,
+                gameDay = flow != null ? flow.CurrentDay : 0,
+                gameHour = flow != null ? flow.CurrentHour : 0
             };
 
             history.Add(record);

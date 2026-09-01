@@ -1,0 +1,45 @@
+row_type,day,scene_id,line_id,condition,speaker,delivery,text,choice_a_id,choice_a_text,choice_b_id,choice_b_text,effects,next_scene,review_note
+config,1,economy,economy_start,,System,data,시작 잔액 50000원,,,,,cash:set=50000,,현재 게임의 시작 잔액 기준 유지
+config,1,economy,economy_goal,,System,data,노트북 수리와 배터리 교체 비용 250000원,,,,,money_goal:set=250000,,돈이 필요한 구체적인 이유
+config,1,economy,economy_job,,System,data,주말 카페 알바 1회 일당 50000원,,,,,job_wage:set=50000,,4회 모두 출근하면 시작 잔액과 합쳐 목표 달성
+config,14,ending,ending_priority,,System,data,엔딩 우선순위는 collapse 다음 recovery 또는 no_help 다음 prevented,,,,,ending_priority:set=collapse>recovery_no_help>prevented,,동시에 여러 조건이 참일 때 장면 중복 방지
+router,14,ending_router,ending_route_collapse,collapse=true,System,router,누적 일정 실패가 기준을 넘으면 붕괴 장면으로 이동,,,,,,collapse_check,모든 채무와 도박 상태보다 먼저 검사
+router,14,ending_router,ending_route_recovery,collapse=false;counter.gamble_sessions>=3;flag.help_requested=true,System,router,고위험 도박 뒤 도움을 요청했으면 회복 장면으로 이동,,,,,,d14_recovery,채무 상대는 회복 후속 라우터에서 분기
+router,14,ending_router,ending_route_no_help,collapse=false;counter.gamble_sessions>=3;flag.help_requested!=true,System,router,고위험 도박 뒤 도움을 요청하지 않았으면 미도움 장면으로 이동,,,,,,d14_no_help,채무 상대는 미도움 후속 라우터에서 분기
+router,14,ending_router,ending_route_prevented,collapse=false;counter.gamble_sessions<3,System,router,도박을 하지 않았거나 두 번 이하에서 멈췄으면 예방 장면으로 이동,,,,,,d14_prevented,잔액과 출근 횟수로 목표 달성 문구를 추가 분기
+story,1,d1_intro,d1_intro_goal,,Protagonist,dialogue,책상 위에 둔 노트북 수리 견적서가 보였다. 수리비와 배터리 교체까지 이십오만 원. 통장에 있는 오만 원에 남은 주말 네 번을 빠지지 않고 일하면 맞출 수 있다.,,,,,,,게임 시작 직후 돈의 목적과 정상적인 달성 방법 제시
+story,1,d1_minjae_invite,d1_minjae_invite_01,,Minjae,message,야 너 노트북 수리비 모은다 했지? 이거 한 번 봐봐.,,,,,,,민재가 주인공의 목표를 알고 접근
+story,1,d1_minjae_invite,d1_minjae_invite_02,,Minjae,message,신규 가입하면 5천 포인트 줌. 오늘 자정 전엔 추천 보너스도 두 배래.,,,,,,,기존 시간 제한 유혹 유지
+story,1,d1_minjae_invite,d1_minjae_invite_03,,Minjae,message,난 방금 추천 보너스로 2만 포인트 받았어. 네 돈 넣는 것도 아니니까 잘되면 수리비도 빨리 채울 수 있잖아.,,,,,,,친구의 성공 경험과 목표 금액을 연결
+story,1,d1_minjae_invite,d1_minjae_invite_04,,Protagonist,overlay,남은 이십만 원을 알바로 모으려면 주말 네 번을 다 나가야 한다. 무료 포인트로 시작하면 잃을 건 없고 조금은 빨라질지도 모른다. 아니 이런 생각부터 이상한 건가.,,,,,,,호기심과 경계심을 동시에 보여 줌
+choice,1,d1_minjae_invite,d1_minjae_invite_05,,Minjae,message,링크 보냈어. 진짜 확인만 해 봐.,d1_decline_link,오늘은 안 볼래,d1_open_link,무료 포인트만 확인할게,,,무도박 루트를 유지하며 첫 진입은 호기심으로 설명
+result,1,gamble_1,gamble_1_01,counter.gamble_sessions=1,System,cinematic,신규 가입 포인트 5000P로 시작한 첫 결과는 성공이었다. 환전한 20000원이 실제 계좌에 들어왔다.,,,,,clock:add=60|cash:add=20000,,고정 승리를 그대로 사용
+result,any,gamble_1,gamble_1_03,counter.gamble_sessions=1,Protagonist,dialogue,한 시간 만에 수리비 이만 원이 채워졌다. 알바 한 번보다 적지만 몸을 쓰지 않고 생긴 돈이라는 생각이 먼저 들었다.,,,,,,after_gamble_1_router,첫 승리를 계속할 이유로 전환하되 실제 발생 일차에 맞춰 후속 장면 분기
+router,any,after_gamble_1_router,after_gamble_1_day1,day=1,System,router,1일차 첫 도박 후 기존 저녁 장면으로 이동,,,,,,d1_after_first_gamble,첫날에 실제로 도박한 경우만 1일차 저녁 장면 사용
+router,any,after_gamble_1_router,after_gamble_1_late,day>1,System,router,2일차 이후 첫 도박 후 당일 복귀 장면으로 이동,,,,,,late_first_gamble_return,첫날 거절 뒤 나중에 시작한 경우를 1일차 장면과 분리
+story,2..14,late_first_gamble_return,late_first_gamble_return_01,day>1,Protagonist,overlay,처음으로 링크를 열어 본 결과 이만 원이 생겼다. 잠깐 확인하려던 시간이 한 시간이나 지나 있었다. 지금부터라도 오늘 남은 일정을 확인하자.,,,,,,,return_to_tablet,발생한 날짜의 현재 시간과 미완료 일정을 유지
+story,4|5|11|12,late_first_gamble_job_conflict,late_first_gamble_job_conflict_01,schedule.job=pending;after_job_cutoff=true,Protagonist,overlay,아... 출근 시간을 넘겼다. 어떡하지. 일단 점장님 연락부터 확인해야겠다.,,,,,schedule.job:set=missed,job_missed_now_router,늦은 첫 도박이 알바 마감과 겹친 경우 결근 대사를 먼저 연결
+story,school_day,late_school_after_gamble,late_school_after_gamble_01,schedule.school=pending;hour>=10,Protagonist,overlay,늦었다. 그래도 지금 가면 남은 수업과 오늘 학교에서 해야 할 일은 따라갈 수 있어. 학교부터 가자.,,,,,schedule.school:set=late,school_story_router,오전 10시 이후도 등교를 막지 않고 지각 뒤 같은 학교 스토리로 연결
+story,4,d4_job,d4_job_01b,schedule.job=complete,Protagonist,dialogue,노트북 수리비를 제가 모으기로 했거든요. 이번 달 주말 근무는 빠지지 않으려고요.,,,,,,,점장님이 목표를 알게 되는 대화를 먼저 배치
+story,4,d4_job,d4_job_02,schedule.job=complete,CafeManager,dialogue,그래도 도망가지 않고 끝까지 했잖아. 오늘 일당 오만 원은 넣어뒀어. 노트북 수리비 모은다 했지? 하루 종일 일해서 번 돈이니 계획해서 써.,,,,,,,앞선 주인공 대사 뒤에 배치해 점장님 지식의 근거 확보
+story,4,d4_job,d4_job_03,schedule.job=complete,Protagonist,dialogue,유니폼에 밴 커피 냄새를 맡으며 입금 알림을 다시 봤다. 민재가 말한 숫자와 달리 이 오만 원이 어떤 시간에서 나온 돈인지는 분명했다.,,,,,,,첫날 도박 여부와 무관하게 성립
+story,4,d4_missed_evening,d4_missed_evening_02,schedule.job=missed,Protagonist,dialogue,시간을 놓쳤다. 점장님한테 연락도 왔고 수리비 계획에서도 오만 원이 비었다. 첫날부터 이게 뭐 하는 짓이지.,,,,,clock:set=21:00,,결근이 관계와 목표 금액에 동시에 영향
+story,5,d5_minjae,d5_minjae_01,,Minjae,message,오늘 알바비까지 받으면 수리비에 더 가까워지겠네. 그 돈 말고 포인트로 한 번만 보면 어때?,,,,,,,알바 전 유혹을 목표와 연결
+choice,5,d5_minjae,d5_minjae_04,,Minjae,message,할 거면 지금 들어와. 링크는 위에 있어.,d5_reply_job,난 알바부터 갈 거야,d5_reply_gamble,한 번만 확인할게,,,기존 선택 구조 유지
+story,5,d5_evening,d5_evening_02,schedule.job=complete,Protagonist,dialogue,오늘 일당만큼 수리비 목표에 가까워졌다. 힘들긴 해도 어디서 생긴 돈인지는 확실하네. 오늘은 그냥 쉬자.,,,,,clock:set=21:00,,전날 출근 여부를 단정하지 않음
+story,5,d5_missed_evening,d5_missed_evening_01,schedule.job=missed,Protagonist,dialogue,오늘 결국 출근하지 못했다. 수리비 계획에서 오늘 몫 오만 원이 비었고 점장님께 답장을 보내고도 휴대폰을 내려놓을 수가 없다.,,,,,,,전날 출근 여부와 무관하게 오늘 결과만 반영
+result,any,gamble_2,gamble_2_01,counter.gamble_sessions=2,System,cinematic,두 번째 결과도 맞았다. 계좌에 40000원이 더 들어왔다.,,,,,clock:add=120|cash:add=40000,,고정 승리 유지
+result,any,gamble_3,gamble_3_01,counter.gamble_sessions=3,System,cinematic,처음에는 조금 오르더니 결과가 연달아 어긋났다. 계좌에서 70000원이 빠졌다.,,,,,clock:add=120|cash:add=-70000,,목표 달성 욕구가 손실 복구 욕구로 바뀌는 지점
+story,9,minjae_reminder_d9,minjae_reminder_d9_01,hour>=18,Minjae,message,강연 들었다고 갑자기 답도 안 하냐? 링크 한 번 보는 것도 겁나?,,,,,,,무도박 루트에 손실 복구를 단정하지 않음
+story,10,d10_start,d10_start_02,,Protagonist,dialogue,이번 주말 이틀까지 빠지지 않으면 수리비로 십만 원을 더 모을 수 있어. 괜히 빠른 방법을 찾지 말자.,,,,,,d10_minjae_router,두 번째 주말 일정의 경제적 의미 제시
+story,10,d10_minjae,d10_minjae_01,debt=0,Minjae,message,이번 주말 이틀 일하면 십만 원이지? 그 돈 생기기 전에 포인트를 불려두면 수리비도 바로 채울 수 있잖아.,,,,,,,정확한 알바비로 재유혹
+choice,10,d10_minjae,d10_minjae_02,debt=0,Minjae,message,지금 안 보면 주말 보너스는 끝날 수도 있음.,d10_reply_wait,난 학교부터 갈 거야. 주말엔 알바할 거고.,d10_reply_gamble,주말 전에 한 번만 볼게,,,금요일 아침에 바로 알바 간다는 기존 오류도 함께 수정
+story,12,d12_manager_bond,d12_manager_bond_02,counter.job_attendance>=2;counter.gamble_sessions<3,CafeManager,dialogue,노트북 수리비도 꽤 모였겠네. 쉽게 번 돈보다 네가 직접 시간을 지켜 번 돈이 오래 남는다는 건 잊지 마.,,,,,flag.early_stop:set=true,,성실한 출근 루트의 보상
+ending,14,d14_prevented_home,d14_prevented_home_goal,counter.gamble_sessions<3;counter.job_attendance>=4;cash>=250000;debt=0,Protagonist,dialogue,주말 근무를 빠지지 않은 덕분에 수리비를 채웠다. 빨리 벌고 싶어서 흔들렸지만 결국 약속한 시간을 지켜 모은 돈이었다.,,,,,,ending_prevented,금액만이 아니라 조기 중단과 무채무까지 함께 확인
+ending,14,d14_prevented_home,d14_prevented_home_goal_mixed,counter.gamble_sessions<3;counter.job_attendance<4;cash>=250000;debt=0,Protagonist,dialogue,목표 금액은 채웠지만 일부는 놓친 근무 대신 도박에서 생긴 돈이었다. 운 좋게 멈췄다고 해서 그 방법이 안전했던 건 아니다. 다음 목표는 일정으로 채우자.,,,,,,ending_prevented,초기 승리 덕분에 결근하고도 목표액에 도달하는 예외를 미화하지 않음
+ending,14,d14_prevented_home,d14_prevented_home_goal_short,counter.gamble_sessions<3;cash<250000;debt=0,Protagonist,dialogue,수리비를 전부 채우지는 못했다. 그래도 빠진 근무와 남은 금액을 다시 계산하니 도박 대신 일정으로 메울 수 있는 계획이 보였다.,,,,,,ending_prevented,예방에는 성공했지만 일정 실패로 목표액이 부족한 경우를 별도 처리
+ending,14,d14_recovery,d14_recovery_goal_debt,counter.gamble_sessions>=3;debt>0,Protagonist,dialogue,노트북을 고치려고 모으던 돈은 사라졌고 갚아야 할 돈까지 남았다. 이제 목표는 잃은 돈을 혼자 복구하는 게 아니라 도움을 받아 빚과 생활을 정리하는 것이다.,,,,,,d14_epilogue,저축 목표가 손실 복구와 빚 상환으로 변질된 채무 경로
+ending,14,d14_recovery,d14_recovery_goal_no_debt,counter.gamble_sessions>=3;debt=0,Protagonist,dialogue,노트북을 고치려고 모으던 돈은 크게 줄었다. 빚을 만들기 전에 멈췄지만 잃은 돈을 혼자 복구하려던 생각과 어긋난 생활부터 도움을 받아 정리해야 한다.,,,,,,d14_epilogue,손실은 있지만 빚은 없는 회복 경로
+ending,any,collapse_check,collapse_no_gamble,counter.gamble_sessions<3;debt=0;collapse=true,Protagonist,dialogue,도박으로 큰 손실을 만들지는 않았지만 학교와 과제와 알바 일정을 계속 놓쳤다. 무너진 생활을 다시 세우려면 무엇부터 바꿀지 도움을 받아 정리해야 한다.,,,,,,ending_collapse,무도박 또는 조기 중단 일정 붕괴에 손실 복구 집착을 잘못 붙이지 않음
+ending,any,collapse_check,collapse_gamble_no_debt,counter.gamble_sessions>=3;debt=0;collapse=true,Protagonist,dialogue,잃은 돈을 되찾겠다는 생각에 학교와 과제와 알바 약속을 계속 놓쳤다. 빚은 만들지 않았지만 혼자 버티는 동안 일상은 이미 무너지고 있었다.,,,,,,ending_collapse,고위험 무채무 일정 붕괴
+ending,any,collapse_check,collapse_gamble_debt,counter.gamble_sessions>=3;debt>0;collapse=true,Protagonist,dialogue,잃은 돈을 되찾으려다 빚과 밀린 일정이 함께 남았다. 더 숨기면 학교와 알바와 관계까지 버틸 수 없다. 이제는 도움을 요청해야 한다.,,,,,,ending_collapse,고위험 채무 일정 붕괴

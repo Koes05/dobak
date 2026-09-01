@@ -1,0 +1,1677 @@
+fileFormatVersion: 2
+guid: 34ebf7bdcd64a2747adee82b42d74efd
+TextureImporter:
+  internalIDToNameTable:
+  - first:
+      213: 3098415925017625706
+    second: account_card_0
+  - first:
+      213: -2722748372441922392
+    second: account_card_1
+  - first:
+      213: 2669039461305496280
+    second: account_card_2
+  - first:
+      213: -3185227094074706648
+    second: account_card_3
+  - first:
+      213: -6037827316144530517
+    second: account_card_4
+  - first:
+      213: 3946465522478257686
+    second: account_card_5
+  - first:
+      213: 1658784177423494834
+    second: account_card_6
+  - first:
+      213: 3304154511342810746
+    second: account_card_7
+  - first:
+      213: -1722925944222143720
+    second: account_card_8
+  - first:
+      213: 3049098219825565450
+    second: account_card_9
+  - first:
+      213: 1799822844296399804
+    second: account_card_10
+  - first:
+      213: 2231033013244207575
+    second: account_card_11
+  - first:
+      213: 3618528398660138235
+    second: account_card_12
+  - first:
+      213: 4396863220693379097
+    second: account_card_13
+  - first:
+      213: 8359642487764465473
+    second: account_card_14
+  - first:
+      213: -468394794279133686
+    second: account_card_15
+  - first:
+      213: 5274663023413511883
+    second: account_card_16
+  - first:
+      213: -8591404361609299329
+    second: account_card_17
+  - first:
+      213: -5249717880863777918
+    second: account_card_18
+  - first:
+      213: -9115479480970648645
+    second: account_card_19
+  - first:
+      213: 3506911921921815391
+    second: account_card_20
+  - first:
+      213: 4699596147923647668
+    second: account_card_21
+  - first:
+      213: -1887178301272366583
+    second: account_card_22
+  - first:
+      213: -7429263995195047916
+    second: account_card_23
+  - first:
+      213: -3794795022447782194
+    second: account_card_24
+  - first:
+      213: -8811181437173130311
+    second: account_card_25
+  - first:
+      213: -9112634789380885516
+    second: account_card_26
+  - first:
+      213: -6752235441578115087
+    second: account_card_27
+  - first:
+      213: -1582328650462856147
+    second: account_card_28
+  - first:
+      213: 6050175470274256193
+    second: account_card_29
+  - first:
+      213: 1216006961240208695
+    second: account_card_30
+  - first:
+      213: -1181904497878556223
+    second: account_card_31
+  - first:
+      213: -3881392971605225209
+    second: account_card_32
+  - first:
+      213: 3116061930349804081
+    second: account_card_33
+  - first:
+      213: -4646767188779481811
+    second: account_card_34
+  - first:
+      213: 501755533169777205
+    second: account_card_35
+  - first:
+      213: 882593872307492766
+    second: account_card_36
+  - first:
+      213: -6961743996984443359
+    second: account_card_37
+  - first:
+      213: 3505633634930541199
+    second: account_card_38
+  - first:
+      213: -810749744961443696
+    second: account_card_39
+  - first:
+      213: -6425290568263636658
+    second: account_card_40
+  - first:
+      213: 6753127011813198057
+    second: account_card_41
+  - first:
+      213: 8159646228413563005
+    second: account_card_42
+  - first:
+      213: 5583052197315569602
+    second: account_card_43
+  - first:
+      213: 3573957721309929582
+    second: account_card_44
+  - first:
+      213: -3200698495907820749
+    second: account_card_45
+  - first:
+      213: -4505547130190487848
+    second: account_card_46
+  - first:
+      213: -6230760711224046068
+    second: account_card_47
+  - first:
+      213: -7742528538175963474
+    second: account_card_48
+  - first:
+      213: -4558674994101249107
+    second: account_card_49
+  - first:
+      213: 1386729464259057223
+    second: account_card_50
+  - first:
+      213: -2051156790455474482
+    second: account_card_51
+  - first:
+      213: 8946803337002910355
+    second: account_card_52
+  - first:
+      213: -2669044564959763800
+    second: account_card_53
+  - first:
+      213: -3803951862305945728
+    second: account_card_54
+  - first:
+      213: 1191466797796329683
+    second: account_card_55
+  - first:
+      213: 3192771754177198261
+    second: account_card_56
+  - first:
+      213: -5066134280730783435
+    second: account_card_57
+  - first:
+      213: 5536914699049207867
+    second: account_card_58
+  externalObjects: {}
+  serializedVersion: 13
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+    linearTexture: 0
+    fadeOut: 0
+    borderMipMap: 0
+    mipMapsPreserveCoverage: 0
+    alphaTestReferenceValue: 0.5
+    mipMapFadeDistanceStart: 1
+    mipMapFadeDistanceEnd: 3
+  bumpmap:
+    convertToNormalMap: 0
+    externalNormalMap: 0
+    heightScale: 0.25
+    normalMapFilter: 0
+    flipGreenChannel: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  streamingMipmapsPriority: 0
+  vTOnly: 0
+  ignoreMipmapLimit: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 1
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 1
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: 1
+  spriteExtrude: 1
+  spriteMeshType: 1
+  alignment: 0
+  spritePivot: {x: 0.5, y: 0.5}
+  spritePixelsToUnits: 100
+  spriteBorder: {x: 0, y: 0, z: 0, w: 0}
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationDetail: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  flipbookRows: 1
+  flipbookColumns: 1
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 4
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: Standalone
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: Android
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: WebGL
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites:
+    - serializedVersion: 2
+      name: account_card_0
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 52
+        width: 2163
+        height: 652
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a64c6112ed8cffa20800000000000000
+      internalID: 3098415925017625706
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_1
+      rect:
+        serializedVersion: 2
+        x: 273
+        y: 677
+        width: 18
+        height: 17
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8a483dfe7cad63ad0800000000000000
+      internalID: -2722748372441922392
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_2
+      rect:
+        serializedVersion: 2
+        x: 651
+        y: 684
+        width: 10
+        height: 9
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8d23d96bf355a0520800000000000000
+      internalID: 2669039461305496280
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_3
+      rect:
+        serializedVersion: 2
+        x: 845
+        y: 675
+        width: 11
+        height: 30
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8253ab085dccbc3d0800000000000000
+      internalID: -3185227094074706648
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_4
+      rect:
+        serializedVersion: 2
+        x: 1279
+        y: 683
+        width: 13
+        height: 11
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: bab1e06bb04553ca0800000000000000
+      internalID: -6037827316144530517
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_5
+      rect:
+        serializedVersion: 2
+        x: 1341
+        y: 677
+        width: 17
+        height: 23
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 61694a1cb79a4c630800000000000000
+      internalID: 3946465522478257686
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_6
+      rect:
+        serializedVersion: 2
+        x: 1358
+        y: 691
+        width: 7
+        height: 7
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 2bead56bb6f250710800000000000000
+      internalID: 1658784177423494834
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_7
+      rect:
+        serializedVersion: 2
+        x: 1440
+        y: 687
+        width: 7
+        height: 11
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a76b79b9507badd20800000000000000
+      internalID: 3304154511342810746
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_8
+      rect:
+        serializedVersion: 2
+        x: 1454
+        y: 681
+        width: 11
+        height: 19
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 81ba5507bffe618e0800000000000000
+      internalID: -1722925944222143720
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_9
+      rect:
+        serializedVersion: 2
+        x: 1544
+        y: 689
+        width: 32
+        height: 18
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a0f8af51da2905a20800000000000000
+      internalID: 3049098219825565450
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_10
+      rect:
+        serializedVersion: 2
+        x: 1933
+        y: 693
+        width: 7
+        height: 8
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: cbb8bec47514af810800000000000000
+      internalID: 1799822844296399804
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_11
+      rect:
+        serializedVersion: 2
+        x: 842
+        y: 681
+        width: 6
+        height: 8
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 7d1279c74b836fe10800000000000000
+      internalID: 2231033013244207575
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_12
+      rect:
+        serializedVersion: 2
+        x: 855
+        y: 677
+        width: 7
+        height: 9
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: bf4fcc32868973230800000000000000
+      internalID: 3618528398660138235
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_13
+      rect:
+        serializedVersion: 2
+        x: 971
+        y: 674
+        width: 9
+        height: 12
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 918a86bbdcbc40d30800000000000000
+      internalID: 4396863220693379097
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_14
+      rect:
+        serializedVersion: 2
+        x: 1317
+        y: 667
+        width: 20
+        height: 17
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 147b6742d8a630470800000000000000
+      internalID: 8359642487764465473
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_15
+      rect:
+        serializedVersion: 2
+        x: 1375
+        y: 680
+        width: 8
+        height: 12
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a0e99509a6def79f0800000000000000
+      internalID: -468394794279133686
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_16
+      rect:
+        serializedVersion: 2
+        x: 1430
+        y: 677
+        width: 8
+        height: 11
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: bc6437cc21e533940800000000000000
+      internalID: 5274663023413511883
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_17
+      rect:
+        serializedVersion: 2
+        x: 1436
+        y: 680
+        width: 7
+        height: 7
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f7a3988904335c880800000000000000
+      internalID: -8591404361609299329
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_18
+      rect:
+        serializedVersion: 2
+        x: 1504
+        y: 675
+        width: 7
+        height: 11
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 28b191cc6614527b0800000000000000
+      internalID: -5249717880863777918
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_19
+      rect:
+        serializedVersion: 2
+        x: 1518
+        y: 674
+        width: 10
+        height: 10
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: bb3e16b35bf4f7180800000000000000
+      internalID: -9115479480970648645
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_20
+      rect:
+        serializedVersion: 2
+        x: 1537
+        y: 643
+        width: 27
+        height: 45
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f537bb400dd0ba030800000000000000
+      internalID: 3506911921921815391
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_21
+      rect:
+        serializedVersion: 2
+        x: 1598
+        y: 674
+        width: 12
+        height: 16
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4bc78c80cc1583140800000000000000
+      internalID: 4699596147923647668
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_22
+      rect:
+        serializedVersion: 2
+        x: 1673
+        y: 677
+        width: 7
+        height: 8
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 902e5dc65556fc5e0800000000000000
+      internalID: -1887178301272366583
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_23
+      rect:
+        serializedVersion: 2
+        x: 1973
+        y: 677
+        width: 9
+        height: 11
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 410cccf12c3f5e890800000000000000
+      internalID: -7429263995195047916
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_24
+      rect:
+        serializedVersion: 2
+        x: 586
+        y: 665
+        width: 8
+        height: 11
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: ec65493680e265bc0800000000000000
+      internalID: -3794795022447782194
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_25
+      rect:
+        serializedVersion: 2
+        x: 652
+        y: 667
+        width: 9
+        height: 11
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 9bb97c1aa2568b580800000000000000
+      internalID: -8811181437173130311
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_26
+      rect:
+        serializedVersion: 2
+        x: 860
+        y: 658
+        width: 8
+        height: 11
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4f3f51b90fa698180800000000000000
+      internalID: -9112634789380885516
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_27
+      rect:
+        serializedVersion: 2
+        x: 909
+        y: 628
+        width: 7
+        height: 15
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1fffee804ad3b42a0800000000000000
+      internalID: -6752235441578115087
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_28
+      rect:
+        serializedVersion: 2
+        x: 1275
+        y: 642
+        width: 7
+        height: 8
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d2cfc37d9707a0ae0800000000000000
+      internalID: -1582328650462856147
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_29
+      rect:
+        serializedVersion: 2
+        x: 1359
+        y: 642
+        width: 8
+        height: 8
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 14d9a76f88a86f350800000000000000
+      internalID: 6050175470274256193
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_30
+      rect:
+        serializedVersion: 2
+        x: 1818
+        y: 638
+        width: 18
+        height: 16
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 735ff1973ef10e010800000000000000
+      internalID: 1216006961240208695
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_31
+      rect:
+        serializedVersion: 2
+        x: 1842
+        y: 641
+        width: 15
+        height: 15
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1c123850f18099fe0800000000000000
+      internalID: -1181904497878556223
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_32
+      rect:
+        serializedVersion: 2
+        x: 1327
+        y: 626
+        width: 7
+        height: 8
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 701d5c528a5822ac0800000000000000
+      internalID: -3881392971605225209
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_33
+      rect:
+        serializedVersion: 2
+        x: 362
+        y: 128
+        width: 7
+        height: 11
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 13a3e98e0d97e3b20800000000000000
+      internalID: 3116061930349804081
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_34
+      rect:
+        serializedVersion: 2
+        x: 275
+        y: 114
+        width: 14
+        height: 9
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d25cbd68cdd538fb0800000000000000
+      internalID: -4646767188779481811
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_35
+      rect:
+        serializedVersion: 2
+        x: 255
+        y: 76
+        width: 36
+        height: 22
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 53adbaebff796f600800000000000000
+      internalID: 501755533169777205
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_36
+      rect:
+        serializedVersion: 2
+        x: 1030
+        y: 97
+        width: 7
+        height: 10
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e9713df537a9f3c00800000000000000
+      internalID: 882593872307492766
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_37
+      rect:
+        serializedVersion: 2
+        x: 1036
+        y: 97
+        width: 7
+        height: 10
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 12eb88a38bae26f90800000000000000
+      internalID: -6961743996984443359
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_38
+      rect:
+        serializedVersion: 2
+        x: 1343
+        y: 93
+        width: 10
+        height: 15
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f8242b2a73386a030800000000000000
+      internalID: 3505633634930541199
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_39
+      rect:
+        serializedVersion: 2
+        x: 100
+        y: 79
+        width: 12
+        height: 12
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 098a5d90763afb4f0800000000000000
+      internalID: -810749744961443696
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_40
+      rect:
+        serializedVersion: 2
+        x: 177
+        y: 81
+        width: 7
+        height: 10
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e496af35548c4d6a0800000000000000
+      internalID: -6425290568263636658
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_41
+      rect:
+        serializedVersion: 2
+        x: 296
+        y: 77
+        width: 11
+        height: 16
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 9e88836dc3de7bd50800000000000000
+      internalID: 6753127011813198057
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_42
+      rect:
+        serializedVersion: 2
+        x: 329
+        y: 85
+        width: 6
+        height: 8
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d7042795303ec3170800000000000000
+      internalID: 8159646228413563005
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_43
+      rect:
+        serializedVersion: 2
+        x: 342
+        y: 82
+        width: 7
+        height: 8
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 2c76577a46cfa7d40800000000000000
+      internalID: 5583052197315569602
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_44
+      rect:
+        serializedVersion: 2
+        x: 437
+        y: 77
+        width: 13
+        height: 14
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e6061f4ac9f399130800000000000000
+      internalID: 3573957721309929582
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_45
+      rect:
+        serializedVersion: 2
+        x: 583
+        y: 81
+        width: 11
+        height: 11
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 33b894e0da5d493d0800000000000000
+      internalID: -3200698495907820749
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_46
+      rect:
+        serializedVersion: 2
+        x: 623
+        y: 83
+        width: 6
+        height: 6
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8de173aa1c41971c0800000000000000
+      internalID: -4505547130190487848
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_47
+      rect:
+        serializedVersion: 2
+        x: 778
+        y: 82
+        width: 9
+        height: 9
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: c0ec7072524e789a0800000000000000
+      internalID: -6230760711224046068
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_48
+      rect:
+        serializedVersion: 2
+        x: 794
+        y: 81
+        width: 14
+        height: 10
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: eae72b2f0530d8490800000000000000
+      internalID: -7742528538175963474
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_49
+      rect:
+        serializedVersion: 2
+        x: 1341
+        y: 78
+        width: 12
+        height: 16
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: dab932aee355cb0c0800000000000000
+      internalID: -4558674994101249107
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_50
+      rect:
+        serializedVersion: 2
+        x: 1923
+        y: 79
+        width: 7
+        height: 10
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 7469abcb917ae3310800000000000000
+      internalID: 1386729464259057223
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_51
+      rect:
+        serializedVersion: 2
+        x: 269
+        y: 70
+        width: 11
+        height: 8
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: ec6654e34c3d883e0800000000000000
+      internalID: -2051156790455474482
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_52
+      rect:
+        serializedVersion: 2
+        x: 275
+        y: 65
+        width: 14
+        height: 12
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 39286599b3e692c70800000000000000
+      internalID: 8946803337002910355
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_53
+      rect:
+        serializedVersion: 2
+        x: 338
+        y: 65
+        width: 9
+        height: 9
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8a2e2effb16a5fad0800000000000000
+      internalID: -2669044564959763800
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_54
+      rect:
+        serializedVersion: 2
+        x: 386
+        y: 65
+        width: 9
+        height: 8
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 08781987fe5a53bc0800000000000000
+      internalID: -3803951862305945728
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_55
+      rect:
+        serializedVersion: 2
+        x: 513
+        y: 66
+        width: 10
+        height: 7
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 3d8825c6db0f88010800000000000000
+      internalID: 1191466797796329683
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_56
+      rect:
+        serializedVersion: 2
+        x: 1532
+        y: 64
+        width: 10
+        height: 12
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 5b8f1a09ef00f4c20800000000000000
+      internalID: 3192771754177198261
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_57
+      rect:
+        serializedVersion: 2
+        x: 2027
+        y: 63
+        width: 18
+        height: 12
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 531dc9496b971b9b0800000000000000
+      internalID: -5066134280730783435
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: account_card_58
+      rect:
+        serializedVersion: 2
+        x: 595
+        y: 55
+        width: 9
+        height: 9
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b38877c359217dc40800000000000000
+      internalID: 5536914699049207867
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    outline: []
+    customData: 
+    physicsShape: []
+    bones: []
+    spriteID: 5e97eb03825dee720800000000000000
+    internalID: 0
+    vertices: []
+    indices: 
+    edges: []
+    weights: []
+    secondaryTextures: []
+    spriteCustomMetadata:
+      entries: []
+    nameFileIdTable:
+      account_card_0: 3098415925017625706
+      account_card_1: -2722748372441922392
+      account_card_10: 1799822844296399804
+      account_card_11: 2231033013244207575
+      account_card_12: 3618528398660138235
+      account_card_13: 4396863220693379097
+      account_card_14: 8359642487764465473
+      account_card_15: -468394794279133686
+      account_card_16: 5274663023413511883
+      account_card_17: -8591404361609299329
+      account_card_18: -5249717880863777918
+      account_card_19: -9115479480970648645
+      account_card_2: 2669039461305496280
+      account_card_20: 3506911921921815391
+      account_card_21: 4699596147923647668
+      account_card_22: -1887178301272366583
+      account_card_23: -7429263995195047916
+      account_card_24: -3794795022447782194
+      account_card_25: -8811181437173130311
+      account_card_26: -9112634789380885516
+      account_card_27: -6752235441578115087
+      account_card_28: -1582328650462856147
+      account_card_29: 6050175470274256193
+      account_card_3: -3185227094074706648
+      account_card_30: 1216006961240208695
+      account_card_31: -1181904497878556223
+      account_card_32: -3881392971605225209
+      account_card_33: 3116061930349804081
+      account_card_34: -4646767188779481811
+      account_card_35: 501755533169777205
+      account_card_36: 882593872307492766
+      account_card_37: -6961743996984443359
+      account_card_38: 3505633634930541199
+      account_card_39: -810749744961443696
+      account_card_4: -6037827316144530517
+      account_card_40: -6425290568263636658
+      account_card_41: 6753127011813198057
+      account_card_42: 8159646228413563005
+      account_card_43: 5583052197315569602
+      account_card_44: 3573957721309929582
+      account_card_45: -3200698495907820749
+      account_card_46: -4505547130190487848
+      account_card_47: -6230760711224046068
+      account_card_48: -7742528538175963474
+      account_card_49: -4558674994101249107
+      account_card_5: 3946465522478257686
+      account_card_50: 1386729464259057223
+      account_card_51: -2051156790455474482
+      account_card_52: 8946803337002910355
+      account_card_53: -2669044564959763800
+      account_card_54: -3803951862305945728
+      account_card_55: 1191466797796329683
+      account_card_56: 3192771754177198261
+      account_card_57: -5066134280730783435
+      account_card_58: 5536914699049207867
+      account_card_6: 1658784177423494834
+      account_card_7: 3304154511342810746
+      account_card_8: -1722925944222143720
+      account_card_9: 3049098219825565450
+  mipmapLimitGroupName: 
+  pSDRemoveMatte: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

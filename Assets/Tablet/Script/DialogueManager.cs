@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -28,6 +29,7 @@ public enum SpeakerType
 public class Choice
 {
     public string choiceText;      // 선택지 버튼 텍스트
+    public string replyText;       // 메시지 앱에 실제로 표시할 내 답장
     public int nextDialogueID;     // 이동할 다음 대화 ID (-1이면 종료)
     public int riskScoreChange;    // 위험도/예방 점수 변화량
 
@@ -85,6 +87,7 @@ public class DialogueManager : MonoBehaviour
     private readonly Dictionary<SpeakerType, ProfileSlot> profileSlotsBySpeaker = new Dictionary<SpeakerType, ProfileSlot>();
     private readonly Queue<ProfileSlot> availableProfileSlots = new Queue<ProfileSlot>();
     private readonly List<SpeakerType> contactOrder = new List<SpeakerType>();
+    private readonly HashSet<string> submittedScenarioActions = new HashSet<string>();
     private ProfileSlot profileTemplate;
     private Vector2 contactStartPosition;
     private float contactSpacing = 120f;
@@ -138,7 +141,7 @@ public class DialogueManager : MonoBehaviour
 
     private void PrepareProfileSlots()
     {
-        foreach (ProfileSlot discovered in FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        foreach (ProfileSlot discovered in FindObjectsByType<ProfileSlot>(FindObjectsInactive.Include))
         {
             if (discovered.gameObject.scene.IsValid() && !profileSlots.Contains(discovered))
                 profileSlots.Add(discovered);
@@ -451,10 +454,15 @@ public class DialogueManager : MonoBehaviour
     // -------------------------------------------------------------
     public void OpenDialogue(SpeakerType speaker)
     {
+        if (dialoguePanel != null && !dialoguePanel.activeSelf)
+            dialoguePanel.SetActive(true);
+
+        if (!isActiveAndEnabled || !gameObject.activeInHierarchy)
+            return;
+
         EnsureInitialized();
         ConfigureChatViewport();
         currentSpeaker = speaker;
-        if (dialoguePanel != null) dialoguePanel.SetActive(true);
 
         bool isNewChannel = !channels.ContainsKey(speaker);
 
@@ -583,13 +591,22 @@ public class DialogueManager : MonoBehaviour
                 Choice targetChoice = choice;
                 btnObj.GetComponent<Button>().onClick.AddListener(() => OnSelectChoice(targetChoice));
             }
+
+            StartCoroutine(ScrollToBottom());
         }
     }
 
     private void OnSelectChoice(Choice selectedChoice)
     {
-        CreateBubble(myBubblePrefab, selectedChoice.choiceText);
-        SetLastMessage(selectedChoice.choiceText);
+        if (!string.IsNullOrWhiteSpace(selectedChoice.scenarioAction) &&
+            !submittedScenarioActions.Add(selectedChoice.scenarioAction))
+            return;
+
+        string sentText = string.IsNullOrWhiteSpace(selectedChoice.replyText)
+            ? selectedChoice.choiceText
+            : selectedChoice.replyText;
+        CreateBubble(myBubblePrefab, sentText);
+        SetLastMessage(sentText);
 
         if (selectedChoice.riskScoreChange != 0)
         {
@@ -599,6 +616,16 @@ public class DialogueManager : MonoBehaviour
         ClearChoices();
         if (channels.TryGetValue(currentSpeaker, out ChatChannel selectedChannel))
             selectedChannel.eventChoices.Clear();
+
+        StartCoroutine(CompleteChoiceAfterReply(selectedChoice, currentSpeaker));
+    }
+
+    private IEnumerator CompleteChoiceAfterReply(Choice selectedChoice, SpeakerType selectedSpeaker)
+    {
+        yield return StartCoroutine(ScrollToBottom());
+        yield return new WaitForSecondsRealtime(0.9f);
+
+        currentSpeaker = selectedSpeaker;
 
         if (GameFlowManager.Instance != null)
         {
@@ -615,10 +642,10 @@ public class DialogueManager : MonoBehaviour
                     break;
                 case ChoiceAction.RejectFirstInvitation:
                     GameFlowManager.Instance.StartInvitationRetempt();
-                    return;
+                    yield break;
                 case ChoiceAction.ContinueInvitation:
                     GameFlowManager.Instance.ContinueInvitation();
-                    return;
+                    yield break;
                 case ChoiceAction.RequestHelp:
                     GameFlowManager.Instance.RequestHelp();
                     break;
@@ -706,6 +733,11 @@ public class DialogueManager : MonoBehaviour
 
     private void CreateBubble(GameObject prefab, string text)
     {
+        CreateBubbleForChannel(prefab, text, currentSpeaker, true);
+    }
+
+    private void CreateBubbleForChannel(GameObject prefab, string text, SpeakerType speaker, bool visible)
+    {
         GameObject bubble = Instantiate(prefab, chatContent);
         TextMeshProUGUI tmp = bubble.GetComponentInChildren<TextMeshProUGUI>();
         if (tmp != null)
@@ -714,12 +746,15 @@ public class DialogueManager : MonoBehaviour
             LayoutRebuilder.ForceRebuildLayoutImmediate(bubble.GetComponent<RectTransform>());
         } 
 
-        if (channels.ContainsKey(currentSpeaker))
+        if (channels.ContainsKey(speaker))
         {
-            channels[currentSpeaker].spawnedBubbles.Add(bubble);
+            channels[speaker].spawnedBubbles.Add(bubble);
         }
 
-        StartCoroutine(ScrollToBottom());
+        bubble.SetActive(visible);
+
+        if (visible && isActiveAndEnabled && gameObject.activeInHierarchy)
+            StartCoroutine(ScrollToBottom());
     }
 
     private void ClearChoices()
@@ -733,8 +768,29 @@ public class DialogueManager : MonoBehaviour
     private IEnumerator ScrollToBottom()
     {
         yield return null;
-        yield return new WaitForEndOfFrame();
-        if (scrollRect != null) scrollRect.verticalNormalizedPosition = 0f;
+
+        if (scrollRect == null)
+            yield break;
+
+        Canvas.ForceUpdateCanvases();
+        if (chatContent is RectTransform contentRect)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(contentRect);
+        if (scrollRect.viewport != null)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(scrollRect.viewport);
+        Canvas.ForceUpdateCanvases();
+
+        scrollRect.StopMovement();
+        scrollRect.velocity = Vector2.zero;
+        scrollRect.verticalNormalizedPosition = 0f;
+
+        // ContentSizeFitter can settle one frame after a new bubble and choices appear.
+        yield return null;
+        Canvas.ForceUpdateCanvases();
+        if (chatContent is RectTransform finalContentRect)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(finalContentRect);
+        scrollRect.StopMovement();
+        scrollRect.velocity = Vector2.zero;
+        scrollRect.verticalNormalizedPosition = 0f;
     }
 
     private void EndDialogue()
@@ -779,6 +835,48 @@ public class DialogueManager : MonoBehaviour
             MoveContactToTop(speaker);
     }
 
+    public void ReceivePlayerMessage(SpeakerType recipient, string recipientName, string message)
+    {
+        EnsureInitialized();
+        bool contactAlreadyExisted = profileSlotsBySpeaker.ContainsKey(recipient);
+        if (!channels.ContainsKey(recipient))
+            channels[recipient] = CreateChannel(recipient, recipientName);
+
+        ChatChannel channel = channels[recipient];
+        channel.speakerName = GetContactName(recipient, recipientName);
+        channel.lastMessage = message;
+        bool visible = dialoguePanel != null && dialoguePanel.activeInHierarchy && currentSpeaker == recipient;
+        CreateBubbleForChannel(myBubblePrefab, message, recipient, visible);
+        UpdateProfileUI(recipient);
+        if (contactAlreadyExisted)
+            MoveContactToTop(recipient);
+    }
+
+    public void ResetScenarioConversations()
+    {
+        EnsureInitialized();
+        ClearChoices();
+        foreach (ChatChannel channel in channels.Values)
+        {
+            foreach (GameObject bubble in channel.spawnedBubbles)
+            {
+                if (bubble != null)
+                    Destroy(bubble);
+            }
+            channel.spawnedBubbles.Clear();
+            channel.receivedMessages.Clear();
+            channel.renderedReceivedCount = 0;
+            channel.eventChoices.Clear();
+            channel.pendingChoiceSets.Clear();
+            channel.unreadCount = 0;
+            channel.lastMessage = string.Empty;
+        }
+        submittedScenarioActions.Clear();
+        if (dialoguePanel != null)
+            dialoguePanel.SetActive(false);
+        UpdateAllProfileUI();
+    }
+
     public void SetEventChoices(SpeakerType speaker, List<Choice> choices)
     {
         EnsureInitialized();
@@ -789,6 +887,10 @@ public class DialogueManager : MonoBehaviour
         if (incoming.Count == 0)
             return;
 
+        if (SameChoiceSet(channel.eventChoices, incoming) ||
+            channel.pendingChoiceSets.Any(queued => SameChoiceSet(queued, incoming)))
+            return;
+
         if (channel.eventChoices.Count == 0)
             channel.eventChoices = incoming;
         else
@@ -797,6 +899,30 @@ public class DialogueManager : MonoBehaviour
         if (dialoguePanel != null && dialoguePanel.activeInHierarchy && currentSpeaker == speaker &&
             channel.pendingChoiceSets.Count == 0)
             CreateChoiceButtons(channel.eventChoices);
+    }
+
+    private static bool SameChoiceSet(List<Choice> left, List<Choice> right)
+    {
+        if (left == null || right == null || left.Count != right.Count || left.Count == 0)
+            return false;
+
+        for (int index = 0; index < left.Count; index++)
+        {
+            if (left[index]?.scenarioAction != right[index]?.scenarioAction ||
+                left[index]?.choiceText != right[index]?.choiceText)
+                return false;
+        }
+        return true;
+    }
+
+    public void DismissEventChoices(SpeakerType speaker)
+    {
+        if (!channels.TryGetValue(speaker, out ChatChannel channel))
+            return;
+        channel.eventChoices.Clear();
+        channel.pendingChoiceSets.Clear();
+        if (currentSpeaker == speaker)
+            ClearChoices();
     }
 
     private void PromoteNextChoiceSet(SpeakerType speaker)

@@ -132,6 +132,14 @@ namespace Dobak.App.Map
             marker.gameObject.SetActive(false);
             foreach (LocationPoint loc in locations)
             {
+                if (loc?.button == null || loc.point == null)
+                    continue;
+
+                bool available = IsAvailableToday(loc);
+                loc.button.gameObject.SetActive(available);
+                if (!available)
+                    continue;
+
                 ConfigureLocationLabel(loc);
                 if (GetDisplayName(loc.locationName) != current)
                     continue;
@@ -146,20 +154,13 @@ namespace Dobak.App.Map
 
         private void ShowMarker(LocationPoint loc)
         {
+            if (!IsAvailableToday(loc))
+                return;
+
             marker.gameObject.SetActive(true);
             marker.anchoredPosition = loc.point.anchoredPosition + new Vector2(32f, 38f);
 
             string displayName = GetDisplayName(loc.locationName);
-            int travelHours = GameFlowManager.Instance != null
-                ? GameFlowManager.Instance.GetTravelHours(displayName)
-                : 1;
-
-            if (currentLocationText != null)
-            {
-                currentLocationText.text = travelHours == 0
-                    ? $"현재 위치 : {displayName}"
-                    : $"{displayName}까지 예상 이동시간 : 약 {travelHours}시간";
-            }
 
             if (GameFlowManager.Instance != null)
                 GameFlowManager.Instance.TravelTo(displayName);
@@ -189,18 +190,13 @@ namespace Dobak.App.Map
             }
 
             string displayName = GetDisplayName(loc.locationName);
-            int travelHours = GameFlowManager.Instance != null
-                ? GameFlowManager.Instance.GetTravelHours(displayName)
-                : 1;
-
             label.font = currentLocationText != null ? currentLocationText.font : label.font;
             label.fontSize = 20f;
+            label.fontStyle = FontStyles.Bold;
             label.alignment = TextAlignmentOptions.Top;
             label.color = Color.white;
             label.raycastTarget = false;
-            label.text = travelHours == 0
-                ? $"{displayName}\n현재 위치"
-                : $"{displayName}\n예상 {travelHours}시간";
+            label.text = displayName;
         }
 
         private static string GetDisplayName(string value)
@@ -212,6 +208,19 @@ namespace Dobak.App.Map
                 case "3": return "집";
                 default: return value;
             }
+        }
+
+        private static bool IsAvailableToday(LocationPoint loc)
+        {
+            if (loc == null || GameFlowManager.Instance == null)
+                return true;
+
+            string location = GetDisplayName(loc.locationName);
+            if (location == "학교")
+                return !GameFlowManager.Instance.IsWeekend && !GameFlowManager.Instance.IsSchoolDone;
+            if (location == "카페")
+                return GameFlowManager.Instance.IsWeekend && !GameFlowManager.Instance.IsJobDone;
+            return true;
         }
     }
 }

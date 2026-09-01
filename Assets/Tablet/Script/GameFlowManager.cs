@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Dobak.App.Casino;
 using Dobak.Manager;
 using TMPro;
@@ -19,9 +20,10 @@ public sealed class GameFlowManager : MonoBehaviour
     private const int DebtEndingThreshold = 150000;
     private const int SchoolOpeningHour = 8;
     private const int SchoolArrivalDeadline = 10;
+    private const int SchoolEndHour = 16;
     private const int JobStartHour = 8;
     private const int JobEndHour = 16;
-    private const int JobDailyWage = 80000;
+    private const int JobDailyWage = 100000;
     private const int MinimumSleepHours = 5;
     private const int ShortSleepEndingLimit = 3;
     private const int CashOutEndingBalance = 10000;
@@ -31,6 +33,8 @@ public sealed class GameFlowManager : MonoBehaviour
     private readonly HashSet<string> sentMessages = new HashSet<string>();
     private readonly HashSet<string> firedScenarioEvents = new HashSet<string>();
     private readonly Dictionary<string, int> lastScenarioEventDay = new Dictionary<string, int>();
+    private readonly Dictionary<AppType, GameObject> appAttentionDots = new Dictionary<AppType, GameObject>();
+    private readonly HashSet<AppType> pendingAppAttention = new HashSet<AppType>();
 
     private QuizManager quizManager;
     private NotificationManager notificationManager;
@@ -55,6 +59,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private TMP_Text endTitleText;
     private TMP_Text endBodyText;
     private Button restartButton;
+    private Button rewindButton;
     private GameObject narrationPanel;
     private TMP_Text narrationTitleText;
     private TMP_Text narrationBodyText;
@@ -67,6 +72,13 @@ public sealed class GameFlowManager : MonoBehaviour
     private Button friendBorrowButton;
     private TMP_Text snsStatusText;
     private RawImage snsFeedImage;
+    private GameObject tutorialHintPanel;
+    private TMP_Text tutorialHintText;
+    private AppType? tutorialHintTarget;
+    private TMP_Text homeWidgetCaption;
+    private AudioSource locationAudioSource;
+    private AudioClip schoolArrivalClip;
+    private AudioClip cafeArrivalClip;
     private readonly List<TMP_Text> dateTexts = new List<TMP_Text>();
     private readonly List<TMP_Text> clockTexts = new List<TMP_Text>();
     private readonly List<TMP_Text> locationTexts = new List<TMP_Text>();
@@ -85,7 +97,9 @@ public sealed class GameFlowManager : MonoBehaviour
     private int daysWithoutGambling;
     private string currentLocation = "집";
     private string activeStoryEvent = "";
-    private readonly Queue<(string title, string body)> narrationQueue = new Queue<(string title, string body)>();
+    private readonly Queue<(string title, string body, Action onClosed)> narrationQueue =
+        new Queue<(string title, string body, Action onClosed)>();
+    private Action activeNarrationClosed;
 
     private bool schoolDone;
     private bool homeworkDone;
@@ -108,12 +122,15 @@ public sealed class GameFlowManager : MonoBehaviour
     public int CurrentDay => currentDay;
     public int CurrentHour => currentHour;
     public string CurrentLocation => currentLocation;
+    public bool IsSchoolDone => schoolDone;
     public bool IsHomeworkDone => homeworkDone;
+    public bool IsJobDone => jobDone;
     public int ConsecutiveShortSleepDays => consecutiveShortSleepDays;
     public int DaysWithoutGambling => daysWithoutGambling;
     public string ActiveStoryEvent => activeStoryEvent;
     public int V3BankCash => coinManager != null ? coinManager.BankCash : 0;
     public string V3ClockText => $"{currentHour:00}:00";
+    public bool V3HasStudyToday => quizManager != null && quizManager.HasActivityForCurrentDay;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void RegisterSceneBootstrap()
@@ -156,10 +173,12 @@ public sealed class GameFlowManager : MonoBehaviour
         scenarioMessages = null;
 
         ApplyKoreanFont();
+        StyleHomeAppLabels();
+        CreateLocationAudio();
         BindExistingStatusText();
         CreateRuntimeUI();
-        gamblingAppIcon = FindSceneObject("BrowserApp");
-        SetGamblingAppVisibility(false);
+        ConfigureAppAttentionDots();
+        gamblingAppIcon = null;
 
         if (appWindow != null)
             appWindow.AppChanged += OnAppChanged;
@@ -176,9 +195,10 @@ public sealed class GameFlowManager : MonoBehaviour
         }
 
         StartNewDay(false);
-        scenarioV3 = gameObject.AddComponent<ScenarioV3Director>();
+        scenarioV3 = GetComponent<ScenarioV3Director>();
+        if (scenarioV3 == null)
+            scenarioV3 = gameObject.AddComponent<ScenarioV3Director>();
         scenarioV3.Initialize(this);
-        yield return new WaitForSeconds(0.8f);
         scenarioV3.BeginNewGame();
     }
 
@@ -211,6 +231,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
         AdvanceHours(hours);
         ShowFeedback($"{reason}: {hours}시간이 지났다.");
+        scenarioV3?.HandleExternalAction("time_changed");
     }
 
     public void TravelTo(string rawLocation)
@@ -226,15 +247,14 @@ public sealed class GameFlowManager : MonoBehaviour
             int arrivalHour = currentHour + travelHours;
             if (arrivalHour < SchoolOpeningHour)
             {
+                appWindow?.CloseCurrentApp();
                 ShowFeedback("학교에는 오전 8시부터 갈 수 있습니다.");
                 return;
             }
 
             if (arrivalHour > SchoolArrivalDeadline)
             {
-                ShowFeedback("오전 10시까지 도착할 수 없어 오늘은 등교할 수 없습니다.");
-                TriggerScenario("school_late");
-                return;
+                ShowFeedback("늦었지만 지금이라도 학교로 가자.");
             }
         }
 
@@ -243,14 +263,24 @@ public sealed class GameFlowManager : MonoBehaviour
             int arrivalHour = currentHour + travelHours;
             if (arrivalHour < JobStartHour)
             {
+                appWindow?.CloseCurrentApp();
                 ShowFeedback("알바는 오전 8시에 시작합니다.");
                 return;
             }
 
             if (arrivalHour > JobStartHour)
             {
-                ShowFeedback("오전 8시 출근 시간을 지나 오늘은 근무할 수 없습니다.");
-                TriggerScenario("job_late");
+                appWindow?.CloseCurrentApp();
+                if (scenarioV3 != null)
+                {
+                    V3ShowDialogue("나", "아... 늦었다. 오늘은 근무하기 어렵겠는데. 점장님께 뭐라고 하지...",
+                        () => scenarioV3.HandleExternalAction("job_missed"));
+                }
+                else
+                {
+                    ShowFeedback("오전 8시 출근 시간을 지나 오늘은 근무할 수 없습니다.");
+                    TriggerScenario("job_late");
+                }
                 return;
             }
         }
@@ -262,38 +292,147 @@ public sealed class GameFlowManager : MonoBehaviour
             return;
         }
 
-        StartCoroutine(FadeTransition($"{location}(으)로 이동 중", () =>
+        AudioClip travelClip = location == "학교" ? schoolArrivalClip
+            : location == "카페" ? cafeArrivalClip
+            : null;
+        float travelVolume = location == "학교" ? 0.28f : 0.3f;
+
+        StartCoroutine(TravelTransition(location, travelHours, travelClip, travelVolume));
+    }
+
+    private IEnumerator TravelTransition(string location, int travelHours, AudioClip travelClip, float travelVolume)
+    {
+        if (fadeGroup == null)
         {
-            currentLocation = location;
-            AdvanceHours(travelHours);
-
-            if (location == "학교" && !IsWeekend && !schoolDone)
-            {
-                schoolDone = true;
-                AdvanceHours(7);
-                if (scenarioV3 != null)
-                    scenarioV3.HandleExternalAction("school_complete");
-                else
-                    TriggerScenario("school_complete");
-            }
-            else if (location == "카페" && IsWeekend && !jobDone)
-            {
-                jobDone = true;
-                AdvanceHours(JobEndHour - JobStartHour);
-                coinManager?.AddBankCash(JobDailyWage, "카페 아르바이트 일당");
-                currentLocation = "집";
-                if (scenarioV3 != null)
-                    scenarioV3.HandleExternalAction("job_complete");
-                else
-                    TriggerScenario("job_complete", new Dictionary<string, string>
-                    {
-                        ["wage"] = JobDailyWage.ToString("N0")
-                    });
-            }
-
+            string fallbackTrigger = CompleteTravelActivity(location, travelHours);
+            if (fallbackTrigger != null)
+                DispatchTravelCompletion(fallbackTrigger);
             appWindow?.CloseCurrentApp();
             RefreshUI();
-        }));
+            ShowNextNarration();
+            yield break;
+        }
+
+        isTransitioning = true;
+        fadeGroup.blocksRaycasts = true;
+        fadeCaption.text = $"{location}(으)로 이동 중";
+        yield return FadeTo(1f, 0.3f);
+        if (travelClip != null)
+        {
+            PlayLocationSfx(travelClip, travelVolume);
+            yield return new WaitForSecondsRealtime(0.15f);
+        }
+
+        string completedTrigger = CompleteTravelActivity(location, travelHours);
+
+        yield return new WaitForSecondsRealtime(0.2f);
+        yield return FadeTo(0f, 0.35f);
+        fadeGroup.blocksRaycasts = false;
+        isTransitioning = false;
+        appWindow?.CloseCurrentApp();
+        RefreshUI();
+        ShowNextNarration();
+        if (completedTrigger != null)
+            DispatchTravelCompletion(completedTrigger);
+    }
+
+    public void V3ReturnHomeAfterActivity(Action completed)
+    {
+        if (currentLocation == "집")
+        {
+            completed?.Invoke();
+            return;
+        }
+
+        StartCoroutine(ReturnHomeAfterActivity(completed));
+    }
+
+    public void V3PromptReturnHomeAfterActivity(Action completed)
+    {
+        if (currentLocation == "집")
+        {
+            completed?.Invoke();
+            return;
+        }
+
+        if (!V3ShowDialogue("나", "집에 돌아가야겠다.", () => V3ReturnHomeAfterActivity(completed)))
+            V3ReturnHomeAfterActivity(completed);
+    }
+
+    private IEnumerator ReturnHomeAfterActivity(Action completed)
+    {
+        isTransitioning = true;
+        if (fadeGroup != null)
+        {
+            fadeGroup.blocksRaycasts = true;
+            fadeCaption.text = "집으로 돌아가는 중";
+            yield return FadeTo(1f, 0.3f);
+            yield return new WaitForSecondsRealtime(0.35f);
+        }
+
+        currentLocation = "집";
+        appWindow?.CloseCurrentApp();
+        RefreshUI();
+
+        if (fadeGroup != null)
+        {
+            yield return FadeTo(0f, 0.35f);
+            fadeGroup.blocksRaycasts = false;
+        }
+        isTransitioning = false;
+        completed?.Invoke();
+        ShowNextNarration();
+    }
+
+    private string CompleteTravelActivity(string location, int travelHours)
+    {
+        currentLocation = location;
+        AdvanceHours(travelHours);
+
+        if (location == "학교" && !IsWeekend && !schoolDone)
+        {
+            schoolDone = true;
+            AdvanceHours(Mathf.Max(0, SchoolEndHour - currentHour));
+            return "school_complete";
+        }
+
+        if (location == "카페" && IsWeekend && !jobDone)
+        {
+            jobDone = true;
+            AdvanceHours(JobEndHour - JobStartHour);
+            coinManager?.AddBankCash(JobDailyWage, "카페 아르바이트 일당");
+            return "job_complete";
+        }
+
+        return null;
+    }
+
+    private void DispatchTravelCompletion(string completedTrigger)
+    {
+        if (scenarioV3 != null)
+            scenarioV3.HandleExternalAction(completedTrigger);
+        else if (completedTrigger == "job_complete")
+            TriggerScenario(completedTrigger, new Dictionary<string, string> { ["wage"] = JobDailyWage.ToString("N0") });
+        else
+            TriggerScenario(completedTrigger);
+    }
+
+    private void CreateLocationAudio()
+    {
+        if (locationAudioSource != null)
+            return;
+
+        locationAudioSource = gameObject.AddComponent<AudioSource>();
+        locationAudioSource.playOnAwake = false;
+        locationAudioSource.volume = 0.3f;
+        schoolArrivalClip = Resources.Load<AudioClip>("Audio/SFX/school_bell");
+        cafeArrivalClip = Resources.Load<AudioClip>("Audio/SFX/cafe_door_bell");
+    }
+
+    private void PlayLocationSfx(AudioClip clip, float volume)
+    {
+        if (clip != null && locationAudioSource != null)
+            locationAudioSource.PlayOneShot(clip, volume);
     }
 
     public void ResolveInvitation(bool accepted)
@@ -371,6 +510,12 @@ public sealed class GameFlowManager : MonoBehaviour
             return false;
         }
 
+        if (!V3HasStudyToday)
+        {
+            ShowFeedback("오늘 진행할 숙제나 조별과제 일정은 없습니다.");
+            return false;
+        }
+
         return true;
     }
 
@@ -380,13 +525,25 @@ public sealed class GameFlowManager : MonoBehaviour
         return location == currentLocation ? 0 : 1;
     }
 
-    private void Sleep()
+    public void Sleep()
     {
         if (gameEnded || isTransitioning)
             return;
 
-        int sleepHours = GetSleepHoursUntilSeven(currentHour);
+        if (currentLocation != "집")
+        {
+            ShowFeedback("잠을 자려면 지도 앱으로 집에 돌아가야 한다.");
+            return;
+        }
+
+        if (!CanSleepNow)
+        {
+            ShowFeedback("아직 잘 시간이 아니다. 저녁 일정을 먼저 마무리하자.");
+            return;
+        }
+
         sleepDone = true;
+        pendingAppAttention.Remove(AppType.Sleep);
         RefreshUI();
 
         if (scenarioV3 != null)
@@ -394,11 +551,12 @@ public sealed class GameFlowManager : MonoBehaviour
             StartCoroutine(FadeTransition("하루를 마무리하는 중", () =>
             {
                 currentLocation = "집";
-                scenarioV3.CompleteDayFromSleep(sleepHours);
+                scenarioV3.CompleteDayFromSleep(0);
             }, 0.55f));
             return;
         }
 
+        int sleepHours = GetSleepHoursUntilSeven(currentHour);
         StartCoroutine(FadeTransition("하루를 마무리하는 중", () =>
         {
             currentLocation = "집";
@@ -509,29 +667,9 @@ public sealed class GameFlowManager : MonoBehaviour
     private void AdvanceHours(int hours)
     {
         int remaining = Mathf.Max(0, hours);
-        bool wasEjectedFromSchool = false;
         while (remaining > 0 && !gameEnded)
         {
             int untilBoundary = GetHoursUntilDayBoundary(currentHour);
-            int normalizedHour = ((currentHour % 24) + 24) % 24;
-            if (currentLocation == "학교" && normalizedHour >= 20)
-            {
-                currentLocation = "집";
-                wasEjectedFromSchool = true;
-            }
-
-            if (currentLocation == "학교" && normalizedHour >= DayStartHour && normalizedHour < 20)
-            {
-                int untilSchoolCloses = 20 - normalizedHour;
-                if (remaining >= untilSchoolCloses && untilSchoolCloses < untilBoundary)
-                {
-                    currentHour = 20;
-                    remaining -= untilSchoolCloses;
-                    currentLocation = "집";
-                    wasEjectedFromSchool = true;
-                    continue;
-                }
-            }
 
             if (remaining < untilBoundary)
             {
@@ -547,11 +685,17 @@ public sealed class GameFlowManager : MonoBehaviour
         }
 
         RefreshUI();
-        if (wasEjectedFromSchool && !gameEnded)
-            TriggerScenario("school_closed");
         if (!gameEnded)
             TriggerScenario("time_changed");
     }
+
+    public bool IsDailyScheduleComplete => IsWeekend
+        ? jobDone
+        : schoolDone && (!V3HasStudyToday || homeworkDone);
+
+    public bool IsSleepHour => currentHour >= 21 || currentHour < DayStartHour;
+
+    public bool CanSleepNow => currentLocation == "집" && IsSleepHour;
 
     public static int GetHoursUntilDayBoundary(int hour)
     {
@@ -712,16 +856,21 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private void OnAppChanged(AppType? openedApp)
     {
-        if (actionBar != null)
-            actionBar.SetActive(openedApp == null);
         if (openedApp != null && borrowChoicePanel != null)
             borrowChoicePanel.SetActive(false);
+
+        scenarioV3?.NotifyAppOpened(openedApp);
 
         if (openedApp == null)
             return;
 
+        pendingAppAttention.Remove(openedApp.Value);
+        RefreshAttentionDots();
+
         if (openedApp == AppType.Map)
             TriggerScenario("app_map_open");
+        else if (openedApp == AppType.Study)
+            quizManager?.BeginActivityView();
         else if (openedApp == AppType.Message)
             TriggerScenario("app_message_open");
         else if (openedApp == AppType.Bank)
@@ -733,7 +882,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private void SetGamblingAppVisibility(bool visible)
     {
         if (gamblingAppIcon != null)
-            gamblingAppIcon.SetActive(visible);
+            gamblingAppIcon.SetActive(false);
     }
 
     public void StartInvitationRetempt()
@@ -785,7 +934,8 @@ public sealed class GameFlowManager : MonoBehaviour
         if (narrationPanel == null || isTransitioning || narrationPanel.activeSelf || narrationQueue.Count == 0)
             return;
 
-        (string title, string body) = narrationQueue.Dequeue();
+        (string title, string body, Action onClosed) = narrationQueue.Dequeue();
+        activeNarrationClosed = onClosed;
         narrationTitleText.text = title;
         narrationBodyText.text = body;
         narrationPanel.SetActive(true);
@@ -798,6 +948,9 @@ public sealed class GameFlowManager : MonoBehaviour
             return;
 
         narrationPanel.SetActive(false);
+        Action callback = activeNarrationClosed;
+        activeNarrationClosed = null;
+        callback?.Invoke();
         ShowNextNarration();
     }
 
@@ -820,7 +973,12 @@ public sealed class GameFlowManager : MonoBehaviour
             dialogueManager?.ReceiveNotificationMessage(speaker, title, message);
     }
 
-    private IEnumerator FadeTransition(string caption, Action midpoint, float hold = 0.3f)
+    private IEnumerator FadeTransition(
+        string caption,
+        Action midpoint,
+        float hold = 0.3f,
+        AudioClip transitionClip = null,
+        float transitionVolume = 0.3f)
     {
         if (fadeGroup == null)
         {
@@ -833,6 +991,11 @@ public sealed class GameFlowManager : MonoBehaviour
         fadeCaption.text = caption;
 
         yield return FadeTo(1f, 0.3f);
+        if (transitionClip != null)
+        {
+            PlayLocationSfx(transitionClip, transitionVolume);
+            yield return new WaitForSecondsRealtime(0.15f);
+        }
         midpoint?.Invoke();
         yield return new WaitForSeconds(hold);
         yield return FadeTo(0f, 0.35f);
@@ -865,6 +1028,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
         gameEnded = true;
         narrationQueue.Clear();
+        activeNarrationClosed = null;
         if (narrationPanel != null)
             narrationPanel.SetActive(false);
         if (feedbackCoroutine != null)
@@ -880,6 +1044,12 @@ public sealed class GameFlowManager : MonoBehaviour
         {
             endTitleText.text = title;
             endBodyText.text = body + "\n\n도박 문제 예방·상담 1336";
+            if (rewindButton != null)
+            {
+                rewindButton.gameObject.SetActive(scenarioV3 != null && scenarioV3.CanRewind);
+                if (scenarioV3 != null && scenarioV3.CanRewind)
+                    rewindButton.GetComponentInChildren<TMP_Text>().text = $"분기점으로 돌아가기 · {scenarioV3.RewindLabel}";
+            }
             endPanel.SetActive(true);
             endPanel.transform.SetAsLastSibling();
         }
@@ -890,7 +1060,7 @@ public sealed class GameFlowManager : MonoBehaviour
     public void RestartGame()
     {
         scenarioV3?.ClearSavedRun();
-        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        SceneManager.LoadScene("Intro");
     }
 
     public void V3ResetRun(int startingCash)
@@ -911,6 +1081,22 @@ public sealed class GameFlowManager : MonoBehaviour
         RefreshUI();
     }
 
+    public void V3RestoreRun(int day, int hour, string location, int cash, int restoredDebt)
+    {
+        currentDay = Mathf.Clamp(day, 1, FinalDay);
+        currentHour = Mathf.Clamp(hour, 0, 23);
+        currentLocation = NormalizeLocation(location);
+        debt = Mathf.Max(0, restoredDebt);
+        gameEnded = false;
+        isTransitioning = false;
+        schoolDone = homeworkDone = jobDone = sleepDone = false;
+        coinManager?.SetBankCash(cash, "분기점 복원");
+        quizManager?.ConfigureForDay(currentDay, !IsWeekend);
+        if (endPanel != null)
+            endPanel.SetActive(false);
+        RefreshUI();
+    }
+
     public void V3SetClock(string clock)
     {
         if (TimeSpan.TryParse(clock, CultureInfo.InvariantCulture, out TimeSpan parsed))
@@ -925,15 +1111,18 @@ public sealed class GameFlowManager : MonoBehaviour
         RefreshUI();
     }
 
-    public void V3SetCash(int amount)
+    public void V3SetCash(int amount, string description = "잔액 조정")
     {
-        coinManager?.SetBankCash(amount);
+        coinManager?.SetBankCash(amount, description);
         RefreshUI();
     }
 
-    public void V3AddCash(int amount)
+    public void V3AddCash(int amount, string description = null)
     {
-        coinManager?.AdjustBankCash(amount, amount >= 0 ? "시나리오 입금" : "시나리오 지출");
+        string recordName = string.IsNullOrWhiteSpace(description)
+            ? amount >= 0 ? "입금" : "결제"
+            : description;
+        coinManager?.AdjustBankCash(amount, recordName);
         RefreshUI();
     }
 
@@ -958,11 +1147,12 @@ public sealed class GameFlowManager : MonoBehaviour
     public void V3SetSchedule(string schedule, string value)
     {
         bool complete = string.Equals(value, "complete", StringComparison.OrdinalIgnoreCase);
+        bool resolved = complete || string.Equals(value, "missed", StringComparison.OrdinalIgnoreCase);
         switch (schedule)
         {
-            case "school": schoolDone = complete; break;
-            case "homework": homeworkDone = complete; break;
-            case "job": jobDone = complete; break;
+            case "school": schoolDone = resolved; break;
+            case "homework": homeworkDone = resolved; break;
+            case "job": jobDone = resolved; break;
             case "sleep": sleepDone = complete || value == "short"; break;
         }
         RefreshUI();
@@ -988,10 +1178,47 @@ public sealed class GameFlowManager : MonoBehaviour
         RefreshUI();
     }
 
+    public void V3ShowTutorialHint(AppType target, string text)
+    {
+        tutorialHintTarget = target;
+        pendingAppAttention.Add(target);
+        if (tutorialHintText != null)
+            tutorialHintText.text = text;
+        if (tutorialHintPanel != null)
+            tutorialHintPanel.SetActive(false);
+        RefreshAttentionDots();
+    }
+
+    public void V3HideTutorialHint(AppType target)
+    {
+        if (tutorialHintTarget != target)
+            return;
+        tutorialHintTarget = null;
+        pendingAppAttention.Remove(target);
+        if (tutorialHintPanel != null)
+            tutorialHintPanel.SetActive(false);
+        RefreshAttentionDots();
+    }
+
+    public void V3MarkAppAttention(AppType target)
+    {
+        pendingAppAttention.Add(target);
+        RefreshAttentionDots();
+    }
+
+    public bool V3ShowDialogue(string title, string body, Action onClosed)
+    {
+        if (narrationPanel == null || string.IsNullOrWhiteSpace(body))
+            return false;
+        narrationQueue.Enqueue((string.IsNullOrWhiteSpace(title) ? "나" : title, body, onClosed));
+        ShowNextNarration();
+        return true;
+    }
+
     private void RefreshUI()
     {
         if (actionBar != null)
-            actionBar.SetActive(scenarioV3 == null && !gameEnded);
+            actionBar.SetActive(false);
 
         string weekday = GetWeekdayName(currentDay);
         string meridiem = currentHour < 12 ? "오전" : "오후";
@@ -1007,11 +1234,13 @@ public sealed class GameFlowManager : MonoBehaviour
             text.text = clock;
         foreach (TMP_Text text in locationTexts)
             text.text = $"현재위치 : {currentLocation}";
-
         UpdateHomeChecklist();
+        RefreshAttentionDots();
 
         if (sleepButton != null)
-            sleepButton.interactable = !gameEnded && !isTransitioning;
+        {
+            sleepButton.gameObject.SetActive(false);
+        }
         if (helpButton != null)
         {
             helpButton.gameObject.SetActive(scenarioV3 == null && CanRequestHelp);
@@ -1059,8 +1288,106 @@ public sealed class GameFlowManager : MonoBehaviour
         }
 
         homeChecklistLines.Sort((left, right) => right.rectTransform.anchoredPosition.y.CompareTo(left.rectTransform.anchoredPosition.y));
+        StyleHomeWidget();
 
         RefreshUI();
+    }
+
+    private void ConfigureAppAttentionDots()
+    {
+        appAttentionDots.Clear();
+        GameObject appManagerObject = FindSceneObject("AppManager");
+        if (appManagerObject == null)
+            return;
+
+        var launcherNames = new Dictionary<AppType, string>
+        {
+            [AppType.Browser] = "CasinoApp",
+            [AppType.Map] = "Map Launcher",
+            [AppType.Message] = "MesegeApp",
+            [AppType.Study] = "StudyApp",
+            [AppType.Bank] = "BankApp",
+            [AppType.Sleep] = "Sleep Launcher",
+            [AppType.Setting] = "Setting_Btn"
+        };
+        TMP_FontAsset font = FindPreferredFont();
+        foreach (KeyValuePair<AppType, string> pair in launcherNames)
+        {
+            Transform launcher = appManagerObject.transform.Find(pair.Value);
+            if (launcher == null)
+                continue;
+
+            Transform existing = launcher.Find("Attention Dot");
+            TMP_Text dot = existing != null ? existing.GetComponent<TMP_Text>() : null;
+            if (dot == null)
+            {
+                dot = CreateText("Attention Dot", launcher, font, 42f, FontStyles.Bold,
+                    new Color(0.93f, 0.12f, 0.15f));
+                dot.text = "●";
+                dot.alignment = TextAlignmentOptions.Center;
+                RectTransform rect = dot.rectTransform;
+                rect.anchorMin = rect.anchorMax = new Vector2(1f, 1f);
+                rect.pivot = new Vector2(0.5f, 0.5f);
+                rect.anchoredPosition = new Vector2(-5f, -5f);
+                rect.sizeDelta = new Vector2(48f, 48f);
+            }
+            dot.raycastTarget = false;
+            appAttentionDots[pair.Key] = dot.gameObject;
+        }
+        RefreshAttentionDots();
+    }
+
+    private void RefreshAttentionDots()
+    {
+        foreach (KeyValuePair<AppType, GameObject> pair in appAttentionDots)
+        {
+            bool visible = pendingAppAttention.Contains(pair.Key);
+            if (pair.Key == AppType.Map)
+                visible |= currentLocation == "집" && (IsWeekend ? !jobDone : !schoolDone);
+            else if (pair.Key == AppType.Message)
+                visible |= scenarioV3 != null && scenarioV3.HasPendingMessageAction;
+            else if (pair.Key == AppType.Study)
+                visible |= !IsWeekend && schoolDone && V3HasStudyToday && !homeworkDone;
+            else if (pair.Key == AppType.Sleep)
+                visible |= IsSleepHour && currentLocation == "집" && !sleepDone;
+            pair.Value.SetActive(visible);
+        }
+    }
+
+    private void StyleHomeWidget()
+    {
+        if (homeChecklistLines.Count == 0)
+            return;
+
+        Transform widget = homeChecklistLines[0].transform.parent;
+        Image background = widget.GetComponent<Image>();
+        if (background != null)
+            background.color = new Color(0.965f, 0.975f, 0.99f, 0.97f);
+
+        foreach (TMP_Text line in homeChecklistLines)
+        {
+            line.fontSize = 27f;
+            line.color = new Color(0.12f, 0.17f, 0.24f, 1f);
+            line.textWrappingMode = TextWrappingModes.Normal;
+            RectTransform rect = line.rectTransform;
+            rect.sizeDelta = new Vector2(760f, 52f);
+        }
+
+        TMP_FontAsset font = FindPreferredFont();
+        TMP_Text existingTitle = widget.GetComponentsInChildren<TMP_Text>(true)
+            .FirstOrDefault(text => !homeChecklistLines.Contains(text));
+        if (existingTitle != null)
+        {
+            existingTitle.text = "오늘 해야 하는 일";
+            existingTitle.font = font;
+            existingTitle.fontSize = 32f;
+            existingTitle.fontStyle = FontStyles.Bold;
+            existingTitle.color = new Color(0.08f, 0.27f, 0.52f, 1f);
+        }
+
+        GameObject oldCaption = FindSceneObject("Home Widget Caption");
+        if (oldCaption != null)
+            oldCaption.SetActive(false);
     }
 
     private void UpdateHomeChecklist()
@@ -1071,17 +1398,16 @@ public sealed class GameFlowManager : MonoBehaviour
         string[] lines = IsWeekend
             ? new[]
             {
-                $"{Mark(jobDone)} 알바 가기  (08:00~16:00 · 카페)",
-                $"{Mark(sleepDone)} 잠자기  (최소 5시간)",
-                CanRequestHelp ? "[  ] 도움 요청  (빚이 생긴 지금 선택 가능)" : "",
+                $"{Mark(jobDone)} 카페 알바  08:00~16:00",
+                "",
                 ""
             }
             : new[]
             {
-                $"{Mark(schoolDone)} 학교 가기  (오전 10시 도착 마감)",
-                $"{Mark(homeworkDone)} 숙제하기  (공부 · 5문제)",
-                $"{Mark(sleepDone)} 잠자기  (최소 5시간)",
-                CanRequestHelp ? "[  ] 도움 요청  (빚이 생긴 지금 선택 가능)" : ""
+                $"{Mark(schoolDone)} 학교 가기",
+                V3HasStudyToday ? $"{Mark(homeworkDone)} {quizManager.CurrentActivityTitle}" : "오늘은 별도 과제 없음",
+                "",
+                ""
             };
 
         for (int i = 0; i < homeChecklistLines.Count; i++)
@@ -1096,39 +1422,25 @@ public sealed class GameFlowManager : MonoBehaviour
 
         TMP_FontAsset font = FindPreferredFont();
 
+        if (TryBindPlacedRuntimeUI())
+        {
+            ConfigureBlockingNarrationPanel();
+            return;
+        }
+
         CreateSettingsApp(canvas, font);
 
-        GameObject panel = CreatePanel("Daily Action Bar", canvas.transform, new Color(0.035f, 0.075f, 0.13f, 0.92f));
-        actionBar = panel;
-        RectTransform panelRect = panel.GetComponent<RectTransform>();
-        panelRect.anchorMin = Vector2.zero;
-        panelRect.anchorMax = Vector2.zero;
-        panelRect.pivot = Vector2.zero;
-        panelRect.anchoredPosition = new Vector2(200f, 125f);
-        panelRect.sizeDelta = new Vector2(750f, 90f);
-
-        moneyText = CreateText("Money Text", panel.transform, font, 20, FontStyles.Normal, new Color(0.64f, 0.8f, 0.92f));
-        moneyText.gameObject.SetActive(false);
-
-        sleepButton = CreateButton("Sleep Button", panel.transform, font, "잠자기", new Color(0.16f, 0.45f, 0.78f));
-        SetRect(sleepButton.GetComponent<RectTransform>(), new Vector2(20f, -16f), new Vector2(220f, 58f));
-        sleepButton.onClick.AddListener(Sleep);
-
-        helpButton = CreateButton("Help Button", panel.transform, font, "도움 요청", new Color(0.16f, 0.58f, 0.48f));
-        SetRect(helpButton.GetComponent<RectTransform>(), new Vector2(255f, -16f), new Vector2(220f, 58f));
-        helpButton.onClick.AddListener(RequestHelp);
-
-        loanButton = CreateButton("Loan Button", panel.transform, font, "돈 부탁", new Color(0.72f, 0.36f, 0.18f));
-        SetRect(loanButton.GetComponent<RectTransform>(), new Vector2(490f, -16f), new Vector2(115f, 58f));
-        loanButton.onClick.AddListener(ShowBorrowChoices);
-
-        repayDebtButton = CreateButton("Repay Debt Button", panel.transform, font, "빌린 돈 갚기", new Color(0.18f, 0.5f, 0.42f));
-        SetRect(repayDebtButton.GetComponent<RectTransform>(), new Vector2(490f, -16f), new Vector2(220f, 58f));
-        repayDebtButton.onClick.AddListener(RepayDebt);
-
-        cashOutButton = CreateButton("Cashout Button", panel.transform, font, "환전 시도", new Color(0.66f, 0.28f, 0.3f));
-        SetRect(cashOutButton.GetComponent<RectTransform>(), new Vector2(615f, -16f), new Vector2(115f, 58f));
-        cashOutButton.onClick.AddListener(AttemptCashOut);
+        tutorialHintPanel = CreatePanel("Tutorial Hint", canvas.transform, new Color(0.025f, 0.08f, 0.15f, 0.96f));
+        RectTransform hintRect = tutorialHintPanel.GetComponent<RectTransform>();
+        hintRect.anchorMin = hintRect.anchorMax = new Vector2(0.5f, 1f);
+        hintRect.pivot = new Vector2(0.5f, 1f);
+        hintRect.anchoredPosition = new Vector2(0f, -92f);
+        hintRect.sizeDelta = new Vector2(860f, 70f);
+        tutorialHintText = CreateText("Tutorial Hint Text", tutorialHintPanel.transform, font, 25f,
+            FontStyles.Bold, Color.white);
+        tutorialHintText.alignment = TextAlignmentOptions.Center;
+        Stretch(tutorialHintText.rectTransform);
+        tutorialHintPanel.SetActive(false);
 
         borrowChoicePanel = CreatePanel("Borrow Choice Panel", canvas.transform, new Color(0.04f, 0.08f, 0.14f, 0.98f));
         RectTransform borrowRect = borrowChoicePanel.GetComponent<RectTransform>();
@@ -1212,6 +1524,7 @@ public sealed class GameFlowManager : MonoBehaviour
         narrationButtonRect.sizeDelta = new Vector2(150f, 62f);
         narrationContinueButton.onClick.AddListener(CloseNarration);
         narrationPanel.SetActive(false);
+        ConfigureBlockingNarrationPanel();
 
         endPanel = CreatePanel("Ending Panel", canvas.transform, new Color(0.025f, 0.05f, 0.09f, 1f));
         Stretch(endPanel.GetComponent<RectTransform>());
@@ -1231,27 +1544,143 @@ public sealed class GameFlowManager : MonoBehaviour
 
         restartButton = CreateButton("Restart Button", endPanel.transform, font, "처음부터 다시 시작", new Color(0.16f, 0.45f, 0.78f));
         RectTransform restartRect = restartButton.GetComponent<RectTransform>();
-        restartRect.anchorMin = new Vector2(0.5f, 0.16f);
-        restartRect.anchorMax = new Vector2(0.5f, 0.16f);
+        restartRect.anchorMin = new Vector2(0.5f, 0.1f);
+        restartRect.anchorMax = new Vector2(0.5f, 0.1f);
         restartRect.pivot = new Vector2(0.5f, 0.5f);
         restartRect.anchoredPosition = Vector2.zero;
         restartRect.sizeDelta = new Vector2(360f, 72f);
         restartButton.onClick.AddListener(RestartGame);
+
+        rewindButton = CreateButton("Rewind Button", endPanel.transform, font, "분기점으로 돌아가기", new Color(0.18f, 0.56f, 0.46f));
+        RectTransform rewindRect = rewindButton.GetComponent<RectTransform>();
+        rewindRect.anchorMin = new Vector2(0.5f, 0.2f);
+        rewindRect.anchorMax = new Vector2(0.5f, 0.2f);
+        rewindRect.pivot = new Vector2(0.5f, 0.5f);
+        rewindRect.anchoredPosition = Vector2.zero;
+        rewindRect.sizeDelta = new Vector2(520f, 72f);
+        rewindButton.onClick.AddListener(() => scenarioV3?.RestorePreviousCheckpoint());
+        rewindButton.gameObject.SetActive(false);
         endPanel.SetActive(false);
 
-        panel.transform.SetAsLastSibling();
         feedbackPanel.transform.SetAsLastSibling();
         fade.transform.SetAsLastSibling();
     }
 
+    private bool TryBindPlacedRuntimeUI()
+    {
+        tutorialHintPanel = FindSceneObject("Tutorial Hint");
+        actionBar = FindSceneObject("Daily Action Bar");
+        GameObject fade = FindSceneObject("Screen Fade");
+        if (tutorialHintPanel == null || fade == null)
+            return false;
+
+        tutorialHintText = FindSceneObject("Tutorial Hint Text")?.GetComponent<TMP_Text>();
+        moneyText = FindSceneObject("Money Text")?.GetComponent<TMP_Text>();
+        sleepButton = FindSceneObject("Sleep Button")?.GetComponent<Button>();
+        helpButton = FindSceneObject("Help Button")?.GetComponent<Button>();
+        loanButton = FindSceneObject("Loan Button")?.GetComponent<Button>();
+        repayDebtButton = FindSceneObject("Repay Debt Button")?.GetComponent<Button>();
+        cashOutButton = FindSceneObject("Cashout Button")?.GetComponent<Button>();
+        borrowChoicePanel = FindSceneObject("Borrow Choice Panel");
+        momBorrowButton = FindSceneObject("Ask Mom Button")?.GetComponent<Button>();
+        friendBorrowButton = FindSceneObject("Ask Friend Button")?.GetComponent<Button>();
+        feedbackPanel = FindSceneObject("Action Feedback Toast");
+        feedbackGroup = feedbackPanel?.GetComponent<CanvasGroup>();
+        feedbackText = FindSceneObject("Action Feedback")?.GetComponent<TMP_Text>();
+        fadeGroup = fade.GetComponent<CanvasGroup>();
+        fadeCaption = FindSceneObject("Fade Caption")?.GetComponent<TMP_Text>();
+        narrationPanel = FindSceneObject("Narration Dialogue");
+        narrationTitleText = FindSceneObject("Narration Speaker")?.GetComponent<TMP_Text>();
+        narrationBodyText = FindSceneObject("Narration Body")?.GetComponent<TMP_Text>();
+        narrationContinueButton = FindSceneObject("Narration Continue Button")?.GetComponent<Button>();
+        endPanel = FindSceneObject("Ending Panel");
+        endTitleText = FindSceneObject("Ending Title")?.GetComponent<TMP_Text>();
+        endBodyText = FindSceneObject("Ending Body")?.GetComponent<TMP_Text>();
+        restartButton = FindSceneObject("Restart Button")?.GetComponent<Button>();
+        rewindButton = FindSceneObject("Rewind Button")?.GetComponent<Button>();
+
+        RebindButton(sleepButton, Sleep);
+        RebindButton(helpButton, RequestHelp);
+        RebindButton(loanButton, ShowBorrowChoices);
+        RebindButton(repayDebtButton, RepayDebt);
+        RebindButton(cashOutButton, AttemptCashOut);
+        RebindButton(momBorrowButton, AskMomForMoney);
+        RebindButton(friendBorrowButton, AskFriendForMoney);
+        RebindButton(narrationContinueButton, CloseNarration);
+        RebindButton(restartButton, RestartGame);
+        if (rewindButton != null)
+        {
+            rewindButton.onClick.RemoveAllListeners();
+            rewindButton.onClick.AddListener(() => scenarioV3?.RestorePreviousCheckpoint());
+        }
+        Button closeBorrow = FindSceneObject("Close Borrow Button")?.GetComponent<Button>();
+        if (closeBorrow != null)
+        {
+            closeBorrow.onClick.RemoveAllListeners();
+            closeBorrow.onClick.AddListener(() => borrowChoicePanel?.SetActive(false));
+        }
+
+        GameObject settings = FindSceneObject("Runtime Settings App");
+        if (settings != null)
+            appWindow?.RegisterRuntimeApp(AppType.Setting, settings);
+        GameObject sleepApp = FindSceneObject("Sleep App");
+        if (sleepApp != null)
+            appWindow?.RegisterRuntimeApp(AppType.Sleep, sleepApp);
+
+        Button settingButton = FindSceneObject("Setting_Btn")?.GetComponent<Button>();
+        if (settingButton != null && appWindow != null)
+            RebindButton(settingButton, appWindow.OpenSetting);
+
+        if (actionBar != null)
+            actionBar.SetActive(false);
+        return true;
+    }
+
+    private static void RebindButton(Button button, UnityEngine.Events.UnityAction action)
+    {
+        if (button == null || action == null)
+            return;
+        button.onClick.RemoveAllListeners();
+        button.onClick.AddListener(action);
+    }
+
     private void ShowFeedback(string message)
     {
+        if (V3ShowDialogue("안내", message, null))
+        {
+            if (feedbackCoroutine != null)
+            {
+                StopCoroutine(feedbackCoroutine);
+                feedbackCoroutine = null;
+            }
+            if (feedbackGroup != null)
+                feedbackGroup.alpha = 0f;
+            return;
+        }
+
         if (feedbackText == null)
             return;
 
         if (feedbackCoroutine != null)
             StopCoroutine(feedbackCoroutine);
         feedbackCoroutine = StartCoroutine(FeedbackRoutine(message));
+    }
+
+    private void ConfigureBlockingNarrationPanel()
+    {
+        if (narrationPanel == null)
+            return;
+
+        Stretch(narrationPanel.GetComponent<RectTransform>());
+        Image blocker = narrationPanel.GetComponent<Image>();
+        if (blocker != null)
+            blocker.raycastTarget = true;
+        CanvasGroup group = narrationPanel.GetComponent<CanvasGroup>();
+        if (group == null)
+            group = narrationPanel.AddComponent<CanvasGroup>();
+        group.interactable = true;
+        group.blocksRaycasts = true;
+        group.ignoreParentGroups = false;
     }
 
     private IEnumerator FeedbackRoutine(string message)
@@ -1540,7 +1969,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private void QueueNarration(string title, string body)
     {
-        narrationQueue.Enqueue((string.IsNullOrWhiteSpace(title) ? "나" : title, body));
+        narrationQueue.Enqueue((string.IsNullOrWhiteSpace(title) ? "나" : title, body, null));
         ShowNextNarration();
     }
 
@@ -1724,7 +2153,7 @@ public sealed class GameFlowManager : MonoBehaviour
     }
 
     private static string Mark(bool completed) => completed ? "[완료]" : "[  ]";
-    private static int GetWeekdayIndex(int day) => (day - 1) % 7;
+    private static int GetWeekdayIndex(int day) => (day + 1) % 7;
 
     private static string GetWeekdayName(int day)
     {
@@ -1790,7 +2219,34 @@ public sealed class GameFlowManager : MonoBehaviour
         foreach (TMP_Text text in Resources.FindObjectsOfTypeAll<TMP_Text>())
         {
             if (text != null && text.gameObject.scene.IsValid())
+            {
                 text.font = font;
+                text.fontStyle |= FontStyles.Bold;
+            }
+        }
+    }
+
+    public static void StyleHomeAppLabels()
+    {
+        GameObject appManager = FindSceneObject("AppManager");
+        if (appManager == null)
+            return;
+
+        foreach (Transform launcher in appManager.transform)
+        {
+            if (launcher.GetComponent<Button>() == null)
+                continue;
+
+            foreach (TMP_Text text in launcher.GetComponentsInChildren<TMP_Text>(true))
+            {
+                text.color = Color.white;
+                text.fontStyle = FontStyles.Bold;
+                Shadow shadow = text.GetComponent<Shadow>();
+                if (shadow == null)
+                    shadow = text.gameObject.AddComponent<Shadow>();
+                shadow.effectColor = new Color(0f, 0f, 0f, 0.72f);
+                shadow.effectDistance = new Vector2(2f, -2f);
+            }
         }
     }
 
@@ -1802,7 +2258,7 @@ public sealed class GameFlowManager : MonoBehaviour
         TextMeshProUGUI text = go.GetComponent<TextMeshProUGUI>();
         text.font = font;
         text.fontSize = size;
-        text.fontStyle = style;
+        text.fontStyle = style | FontStyles.Bold;
         text.color = color;
         text.alignment = TextAlignmentOptions.TopLeft;
         text.raycastTarget = false;

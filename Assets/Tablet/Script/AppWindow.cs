@@ -15,7 +15,8 @@ public enum AppType
     Message,
     Map,
     Setting,
-    SNS
+    SNS,
+    Sleep
 }
 
 /// <summary>
@@ -72,8 +73,11 @@ public class AppWindow : MonoBehaviour
 
     // 애니메이션 중복 실행 방지
     private bool isOpening;
+    private AppType? pendingAppType;
     private AudioSource uiAudioSource;
     private AudioClip appOpenClip;
+
+    public AppType? CurrentAppType { get; private set; }
 
     //=========================
     // 시작
@@ -83,6 +87,7 @@ public class AppWindow : MonoBehaviour
     {
         uiAudioSource = gameObject.AddComponent<AudioSource>();
         uiAudioSource.playOnAwake = false;
+        uiAudioSource.volume = 0.35f;
         appOpenClip = Resources.Load<AudioClip>("Audio/SFX/app_open");
 
         // Splash 숨김
@@ -114,9 +119,15 @@ public class AppWindow : MonoBehaviour
         if (type == AppType.Study && GameFlowManager.Instance != null && !GameFlowManager.Instance.CanOpenStudy())
             return;
 
-        // 애니메이션 중이면 무시
-        if (isOpening)
+        if (CurrentAppType == type && currentApp != null && currentApp.activeInHierarchy)
             return;
+
+        // 전환 중 들어온 요청은 마지막 요청을 보관했다가 곧바로 실행한다.
+        if (isOpening)
+        {
+            pendingAppType = type;
+            return;
+        }
 
         StartCoroutine(OpenRoutine(type));
     }
@@ -129,12 +140,15 @@ public class AppWindow : MonoBehaviour
     {
         isOpening = true;
         if (appOpenClip != null)
-            uiAudioSource.PlayOneShot(appOpenClip, 0.35f);
+            uiAudioSource.PlayOneShot(appOpenClip, 0.22f);
 
         // 이전 앱이 켜져있으면 종료
         if (currentApp != null)
         {
             currentApp.SetActive(false);
+            currentApp = null;
+            CurrentAppType = null;
+            AppChanged?.Invoke(null);
         }
 
         //-------------------
@@ -150,7 +164,7 @@ public class AppWindow : MonoBehaviour
 
         while (timer < animationTime)
         {
-            timer += Time.deltaTime;
+            timer += Time.unscaledDeltaTime;
 
             float t = Mathf.SmoothStep(0, 1, timer / animationTime);
 
@@ -168,6 +182,7 @@ public class AppWindow : MonoBehaviour
         {
             currentApp = app;
             currentApp.SetActive(true);
+            CurrentAppType = type;
             AppChanged?.Invoke(type);
         }
 
@@ -175,7 +190,7 @@ public class AppWindow : MonoBehaviour
         // Splash 잠깐 유지
         //-------------------
 
-        yield return new WaitForSeconds(splashTime);
+        yield return new WaitForSecondsRealtime(splashTime);
 
         //-------------------
         // Splash 종료
@@ -184,6 +199,14 @@ public class AppWindow : MonoBehaviour
         splash.SetActive(false);
 
         isOpening = false;
+
+        if (pendingAppType.HasValue)
+        {
+            AppType queuedType = pendingAppType.Value;
+            pendingAppType = null;
+            if (CurrentAppType != queuedType || currentApp == null || !currentApp.activeInHierarchy)
+                StartCoroutine(OpenRoutine(queuedType));
+        }
     }
 
     //=========================
@@ -192,10 +215,12 @@ public class AppWindow : MonoBehaviour
 
     public void CloseCurrentApp()
     {
+        pendingAppType = null;
         if (currentApp != null)
         {
             currentApp.SetActive(false);
             currentApp = null;
+            CurrentAppType = null;
             AppChanged?.Invoke(null);
         }
     }
@@ -246,5 +271,10 @@ public class AppWindow : MonoBehaviour
     public void OpenSNS()
     {
         OpenApp(AppType.SNS);
+    }
+
+    public void OpenSleep()
+    {
+        OpenApp(AppType.Sleep);
     }
 }
