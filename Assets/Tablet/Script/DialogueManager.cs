@@ -83,6 +83,8 @@ public class DialogueManager : MonoBehaviour
 
     private Dictionary<SpeakerType, ChatChannel> channels = new Dictionary<SpeakerType, ChatChannel>();
     private SpeakerType currentSpeaker;
+    private SpeakerType mostRecentSpeaker = SpeakerType.Friend;
+    private SpeakerType preferredSpeaker = SpeakerType.Unknown;
     private bool initialized;
     private readonly Dictionary<SpeakerType, ProfileSlot> profileSlotsBySpeaker = new Dictionary<SpeakerType, ProfileSlot>();
     private readonly Queue<ProfileSlot> availableProfileSlots = new Queue<ProfileSlot>();
@@ -479,18 +481,14 @@ public class DialogueManager : MonoBehaviour
 
         // 💡 [신규] 해당 채팅방을 열었으므로 안 읽은 메시지를 0으로 초기화
         channels[speaker].unreadCount = 0;
+        FindAnyObjectByType<NotificationManager>(FindObjectsInactive.Include)
+            ?.ClearMessageNotifications(speaker);
 
         RefreshChatWindow();
 
         ChatChannel currentChannel = channels[speaker];
 
         RenderReceivedMessages(currentChannel);
-
-        if (currentChannel.spawnedBubbles.Count == 0)
-        {
-            Debug.Log("아직 받은 메시지가 없습니다.");
-            return;
-        }
 
         if (currentChannel.eventChoices.Count > 0)
         {
@@ -501,6 +499,21 @@ public class DialogueManager : MonoBehaviour
 
         // 채팅방 진입 시 해당 프로필의 배지 갱신 (0이 되었으므로 숨겨짐)
         UpdateProfileUI(speaker);
+    }
+
+    public void PreferConversation(SpeakerType speaker)
+    {
+        preferredSpeaker = speaker;
+    }
+
+    public void OpenMostRecentConversation()
+    {
+        EnsureInitialized();
+        SpeakerType target = preferredSpeaker != SpeakerType.Unknown
+            ? preferredSpeaker
+            : mostRecentSpeaker;
+        preferredSpeaker = SpeakerType.Unknown;
+        OpenDialogue(target);
     }
 
     public void OpenDialogueByInt(int speakerIndex)
@@ -818,6 +831,7 @@ public class DialogueManager : MonoBehaviour
         // 마지막 메시지 변경
         channels[speaker].lastMessage = message;
         channels[speaker].receivedMessages.Add(message);
+        mostRecentSpeaker = speaker;
 
         if (isActiveAndEnabled && dialoguePanel != null && dialoguePanel.activeInHierarchy && currentSpeaker == speaker)
         {
@@ -845,6 +859,7 @@ public class DialogueManager : MonoBehaviour
         ChatChannel channel = channels[recipient];
         channel.speakerName = GetContactName(recipient, recipientName);
         channel.lastMessage = message;
+        mostRecentSpeaker = recipient;
         bool visible = dialoguePanel != null && dialoguePanel.activeInHierarchy && currentSpeaker == recipient;
         CreateBubbleForChannel(myBubblePrefab, message, recipient, visible);
         UpdateProfileUI(recipient);

@@ -18,6 +18,7 @@
 # Unity crash-recovery copies are local emergency files, not project assets.
 /[Aa]ssets/_Recovery/
 /[Aa]ssets/_Recovery.meta
+/.codex-run-submission-qa
 
 # MemoryCaptures can get excessive in size.
 # They also could contain extremely sensitive data

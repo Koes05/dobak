@@ -13,7 +13,11 @@ using UnityEngine.UI;
 
 public static class ScenarioV4FullPlayQa
 {
-    private enum Route { Recovery, Prevention, NoGamble, NoHelp, NoFunds, MinjaeDebt, SeojunDebt, MixedA, MixedB, MixedC }
+    private enum Route
+    {
+        Recovery, Prevention, NoGamble, NoHelp, NoFunds, MinjaeDebt, SeojunDebt,
+        LoanHeld, RepeatLoss, ProjectFail, MixedA, MixedB, MixedC
+    }
 
     private static readonly Route[] AllRoutes =
     {
@@ -24,6 +28,9 @@ public static class ScenarioV4FullPlayQa
         Route.NoFunds,
         Route.MinjaeDebt,
         Route.SeojunDebt,
+        Route.LoanHeld,
+        Route.RepeatLoss,
+        Route.ProjectFail,
         Route.MixedA,
         Route.MixedB,
         Route.MixedC
@@ -39,6 +46,7 @@ public static class ScenarioV4FullPlayQa
     private static string lastCapturedScene = string.Empty;
     private static readonly HashSet<int> capturedDays = new HashSet<int>();
     private static readonly HashSet<int> capturedQuizDays = new HashSet<int>();
+    private static readonly HashSet<int> capturedOfferDays = new HashSet<int>();
     private static bool quizOpen;
     private static bool testedWrongAnswer;
     private static bool replyBubbleVerified;
@@ -51,6 +59,13 @@ public static class ScenarioV4FullPlayQa
     private static bool anyRouteFailed;
     private static int observedDay;
     private static bool routeCompleted;
+    private static bool repeatLossObserved;
+    private static bool cafeSceneLocationChecked;
+    private static bool projectFailureObserved;
+    private static bool seoyeonRepairObserved;
+    private static bool preventedReturnHomeObserved;
+    private static string expectedConsecutiveGambleScene = string.Empty;
+    private static string lastBlockingDialogue = string.Empty;
 
     private const double UiSettleDelay = 0.12d;
     private const double SceneSettleDelay = 0.2d;
@@ -58,7 +73,10 @@ public static class ScenarioV4FullPlayQa
 
     public static void RunRecovery() => Run(Route.Recovery);
     public static void RunPrevention() => Run(Route.Prevention);
+    public static void RunNoGamble() => Run(Route.NoGamble);
     public static void RunNoHelp() => Run(Route.NoHelp);
+    public static void RunNoFunds() => Run(Route.NoFunds);
+    public static void RunProjectFail() => Run(Route.ProjectFail);
     public static void RunAll()
     {
         runAllRoutes = true;
@@ -99,12 +117,20 @@ public static class ScenarioV4FullPlayQa
         capturedChoiceDebug = false;
         choiceSubmittedAt = 0d;
         routeCompleted = false;
+        repeatLossObserved = false;
+        cafeSceneLocationChecked = false;
+        projectFailureObserved = false;
+        seoyeonRepairObserved = false;
+        preventedReturnHomeObserved = false;
+        expectedConsecutiveGambleScene = string.Empty;
+        lastBlockingDialogue = string.Empty;
         pendingMapTarget = string.Empty;
         lastLine = string.Empty;
         lastCapturedScene = string.Empty;
         observedDay = 0;
         capturedDays.Clear();
         capturedQuizDays.Clear();
+        capturedOfferDays.Clear();
         string save = Path.Combine(Application.persistentDataPath, "scenario_v3_history.json");
         if (File.Exists(save))
             File.Delete(save);
@@ -145,7 +171,7 @@ public static class ScenarioV4FullPlayQa
                 : $"[SCENARIO V4 {route.ToString().ToUpperInvariant()} QA] PASS");
             anyRouteFailed |= failed;
             int routeIndex = Array.IndexOf(AllRoutes, route);
-            if (runAllRoutes && !failed && routeIndex >= 0 && routeIndex < AllRoutes.Length - 1)
+            if (runAllRoutes && routeIndex >= 0 && routeIndex < AllRoutes.Length - 1)
             {
                 Route nextRoute = AllRoutes[routeIndex + 1];
                 EditorApplication.delayCall += () => Run(nextRoute);
@@ -190,11 +216,19 @@ public static class ScenarioV4FullPlayQa
 
         if (EditorApplication.timeSinceStartup >= nextDebugAt)
         {
+            FieldInfo transitionField = typeof(ScenarioV3Director).GetField("sceneTransitionInProgress",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            bool sceneTransition = transitionField != null && (bool)transitionField.GetValue(director);
+            ScenarioV3Line pendingOutgoing = GetPrivate<ScenarioV3Line>(director, "pendingOutgoingLine");
+            TMP_Text narrationBody = GetPrivate<TMP_Text>(flow, "narrationBodyText");
+            CanvasGroup fade = GetPrivate<CanvasGroup>(flow, "fadeGroup");
             Debug.Log($"[SCENARIO V4 {route}] day={flow.CurrentDay} hour={flow.CurrentHour} " +
                       $"scene={director.ActiveSceneId}/{director.ActiveLineId} choices={director.CurrentChoices.Count} " +
                       $"location={flow.CurrentLocation} school={flow.IsSchoolDone} study={flow.IsHomeworkDone} " +
                       $"job={flow.IsJobDone} project={director.GetState("project.progress")} " +
-                      $"app={apps.CurrentAppType} pendingMap={pendingMapTarget} quiz={quizOpen}");
+                      $"app={apps.CurrentAppType} pendingMap={pendingMapTarget} quiz={quizOpen} " +
+                      $"sceneTransition={sceneTransition} pendingOutgoing={pendingOutgoing?.id} " +
+                      $"narration='{narrationBody?.text}' fade={fade?.alpha:0.00}/{fade?.blocksRaycasts}");
             nextDebugAt = EditorApplication.timeSinceStartup + 5d;
         }
 
@@ -205,8 +239,11 @@ public static class ScenarioV4FullPlayQa
             Expect(director.ChoiceHistory.Select(choice => choice.choiceId).Distinct().Count() ==
                    director.ChoiceHistory.Count,
                 "A scenario choice was submitted more than once.");
-            Expect(int.Parse(director.GetState("project.progress")) >= 4,
-                $"Group project progress only reached {director.GetState("project.progress")}.");
+            if (route != Route.ProjectFail)
+            {
+                Expect(int.Parse(director.GetState("project.progress")) >= 4,
+                    $"Group project progress only reached {director.GetState("project.progress")}.");
+            }
             if (route == Route.Recovery)
             {
                 Expect(director.GetState("ending") == "recovery", $"Expected recovery ending, got {director.GetState("ending")}.");
@@ -214,13 +251,15 @@ public static class ScenarioV4FullPlayQa
                 Expect(director.GetState("flag.help_requested") == "true", "Teacher counseling was not requested.");
             }
             else if (route == Route.Prevention || route == Route.NoGamble || route == Route.NoHelp ||
-                     route == Route.MinjaeDebt || route == Route.SeojunDebt)
+                     route == Route.MinjaeDebt || route == Route.SeojunDebt || route == Route.LoanHeld ||
+                     route == Route.RepeatLoss || route == Route.ProjectFail)
             {
                 if (route == Route.Prevention)
                 {
                     Expect(director.GetState("ending") == "prevented", $"Expected prevention ending, got {director.GetState("ending")}.");
                     Expect(flow.CurrentDebt == 0, "Prevention route unexpectedly created debt.");
                     Expect(int.Parse(director.GetState("counter.gamble_sessions")) < 3, "Prevention route accumulated too many gambling sessions.");
+                    Expect(preventedReturnHomeObserved, "The prevention ending skipped the explicit return-home transition.");
                 }
                 else if (route == Route.NoGamble)
                 {
@@ -228,8 +267,9 @@ public static class ScenarioV4FullPlayQa
                     Expect(flow.CurrentDebt == 0, "No-gamble route unexpectedly created debt.");
                     Expect(int.Parse(director.GetState("counter.gamble_sessions")) == 0,
                         "No-gamble route incorrectly recorded a gambling session.");
-                    Expect(director.GetState("flag.first_day_refused") == "true",
-                        "The first-day refusal state was not retained.");
+                    Expect(director.IsGamblingAppUnlocked,
+                        "The no-gamble route should still have been free to open the gambling app.");
+                    Expect(preventedReturnHomeObserved, "The no-gamble ending skipped the explicit return-home transition.");
                 }
                 else if (route == Route.NoHelp)
                 {
@@ -244,12 +284,41 @@ public static class ScenarioV4FullPlayQa
                     Expect(director.GetState("ending") == "recovery",
                         $"Expected recovery after disclosing Minjae debt, got {director.GetState("ending")}.");
                 }
-                else
+                else if (route == Route.SeojunDebt)
                 {
                     Expect(director.GetState("debt_owner") == "seojun", "Seojun debt route lost its lender state.");
                     Expect(flow.CurrentDebt > 0, "Seojun debt route did not retain its debt consequence.");
                     Expect(director.GetState("ending") == "recovery",
                         $"Expected recovery after disclosing Seojun debt, got {director.GetState("ending")}.");
+                }
+                else if (route == Route.LoanHeld)
+                {
+                    Expect(director.GetState("debt_owner") == "seojun", "Held-loan route lost its lender state.");
+                    Expect(flow.CurrentDebt > 0, "Held-loan route did not retain its debt consequence.");
+                    Expect(flow.V3BankCash > 0, "Held-loan route spent every borrowed and earned won despite stopping gambling.");
+                    Expect(int.Parse(director.GetState("counter.gamble_sessions")) == 5,
+                        "Held-loan route gambled again after borrowing.");
+                    Expect(director.GetState("ending") == "recovery",
+                        $"Expected recovery after disclosing held debt, got {director.GetState("ending")}.");
+                }
+                else if (route == Route.RepeatLoss)
+                {
+                    Expect(repeatLossObserved, "The fixed seventh-session repeat-loss scene was never shown.");
+                    Expect(int.Parse(director.GetState("counter.gamble_sessions")) >= 7,
+                        "Repeat-loss route did not reach the seventh gambling session.");
+                    Expect(director.GetState("ending") == "recovery",
+                        $"Expected recovery after repeated loss, got {director.GetState("ending")}.");
+                }
+                else
+                {
+                    Expect(projectFailureObserved, "The incomplete-project scene was never shown.");
+                    Expect(seoyeonRepairObserved, "The day-14 Seoyeon repair scene was never shown.");
+                    Expect(int.Parse(director.GetState("project.progress")) < 4,
+                        "Project-failure route unexpectedly completed enough project work.");
+                    Expect(director.GetState("flag.project_result") == "bad",
+                        "Project-failure route did not retain the failed project result.");
+                    Expect(director.GetState("ending") == "recovery",
+                        $"Expected recovery after the project failure route, got {director.GetState("ending")}.");
                 }
             }
             else
@@ -273,20 +342,91 @@ public static class ScenarioV4FullPlayQa
         GameObject blockingNarration = GameObject.Find("Narration Dialogue");
         if (blockingNarration != null && blockingNarration.activeInHierarchy)
         {
-            FindActiveButton("Narration Continue Button")?.onClick.Invoke();
+            TMP_Text title = GetPrivate<TMP_Text>(flow, "narrationTitleText");
+            TMP_Text body = GetPrivate<TMP_Text>(flow, "narrationBodyText");
+            string dialogueKey = $"{title?.text}\n{body?.text}";
+            if (dialogueKey != lastBlockingDialogue)
+            {
+                lastBlockingDialogue = dialogueKey;
+                Debug.Log($"[SCENARIO V4 DIALOGUE] {dialogueKey.Replace('\n', ' ')}");
+                Capture($"dialogue-{Safe(director.ActiveSceneId + "-" + director.ActiveLineId + "-" + flow.CurrentDay)}.png");
+            }
+
+            Button continueButton = GetPrivate<Button>(flow, "narrationContinueButton");
+            if (continueButton == null || !continueButton.gameObject.activeInHierarchy)
+            {
+                Fail("A blocking narration was visible without an active Continue button.");
+                EditorApplication.ExitPlaymode();
+                return;
+            }
+            continueButton.onClick.Invoke();
             nextActionAt = EditorApplication.timeSinceStartup + UiSettleDelay;
             return;
         }
 
         if (!string.IsNullOrEmpty(director.ActiveSceneId))
         {
+            if (!string.IsNullOrEmpty(expectedConsecutiveGambleScene))
+            {
+                Expect(director.ActiveSceneId == expectedConsecutiveGambleScene,
+                    $"Consecutive gambling returned to {director.ActiveSceneId} instead of {expectedConsecutiveGambleScene}.");
+                expectedConsecutiveGambleScene = string.Empty;
+            }
+            if (director.ActiveSceneId == "gamble_repeat_loss")
+                repeatLossObserved = true;
+            if (director.ActiveSceneId == "d8_project_bad")
+                projectFailureObserved = true;
+            if (director.ActiveSceneId == "d14_seoyeon_bad")
+                seoyeonRepairObserved = true;
+            if (director.ActiveSceneId == "d14_prevented_return_home")
+                preventedReturnHomeObserved = true;
+            if (!cafeSceneLocationChecked &&
+                (director.ActiveSceneId == "d11_minjae_cafe" || director.ActiveSceneId == "d11_minjae_debt_cafe"))
+            {
+                cafeSceneLocationChecked = true;
+                Expect(flow.CurrentLocation == "카페",
+                    $"{director.ActiveSceneId} started at {flow.CurrentLocation} instead of 카페.");
+            }
             HandleStory(director, apps);
+            return;
+        }
+
+        GameObject transientNovel = GetPrivate<GameObject>(director, "novelPanel");
+        if (transientNovel != null && transientNovel.activeInHierarchy)
+        {
+            GetPrivate<Button>(director, "continueButton")?.onClick.Invoke();
+            nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
             return;
         }
 
         if (!string.IsNullOrEmpty(pendingMapTarget))
         {
             CompleteMapAction();
+            return;
+        }
+
+        if (director.HasPendingMessageAction)
+        {
+            if (apps.CurrentAppType != AppType.Message)
+                apps.OpenMessage();
+            nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
+            return;
+        }
+
+        if (ShouldStartGamble(director, flow.CurrentDay))
+        {
+            quizOpen = false;
+            apps.CloseCurrentApp();
+            Button launcher = FindActiveButton("Gambling Launcher");
+            if (launcher == null)
+            {
+                Fail("The gambling app is unlocked, but its home launcher is missing.");
+                return;
+            }
+            if (capturedOfferDays.Add(flow.CurrentDay))
+                Capture($"gambling-icon-day-{flow.CurrentDay:00}.png");
+            launcher.onClick.Invoke();
+            nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
             return;
         }
         if (quizOpen)
@@ -319,16 +459,28 @@ public static class ScenarioV4FullPlayQa
             }
             if (flow.V3HasStudyToday && !flow.IsHomeworkDone)
             {
-                if (flow.CurrentLocation != "집")
+                bool skipProjectWork = route == Route.ProjectFail && flow.CurrentDay == 6;
+                if (skipProjectWork)
+                {
+                    if (flow.CurrentHour < 21)
+                    {
+                        flow.V3SetClock("21:00");
+                        nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
+                        return;
+                    }
+                }
+                else if (flow.CurrentLocation != "집")
                 {
                     BeginMapAction(apps, "집");
                     return;
                 }
-
-                apps.OpenStudy();
-                quizOpen = true;
-                nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
-                return;
+                else
+                {
+                    apps.OpenStudy();
+                    quizOpen = true;
+                    nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
+                    return;
+                }
             }
         }
 
@@ -421,6 +573,10 @@ public static class ScenarioV4FullPlayQa
                 return;
             }
 
+            if (selected.id == "g3_chase")
+                expectedConsecutiveGambleScene = "gamble_4";
+            else if (selected.id == "g4_continue")
+                expectedConsecutiveGambleScene = "gamble_5";
             visible.onClick.Invoke();
             choiceSubmittedAt = EditorApplication.timeSinceStartup;
             if (!string.IsNullOrWhiteSpace(selected.replyText) && VisibleTextContains(selected.replyText))
@@ -462,36 +618,39 @@ public static class ScenarioV4FullPlayQa
     {
         string[] recoveryChoices =
         {
-            "d1_open_link", "d2_reply_gamble", "d3_reply_gamble", "g3_chase", "g4_continue",
-            "g5_borrow", "borrow_mom", "d5_reply_job", "d6_reply_project", "d9_reply_school",
-            "d10_reply_wait", "d13_tell_teacher"
+            "g3_chase", "g4_continue", "g5_borrow", "borrow_mom", "d13_tell_teacher"
         };
         string[] preventionChoices =
         {
-            "d1_open_link", "d2_reply_study", "d3_reply_ignore", "g3_stop", "g4_stop", "g5_stop",
-            "d5_reply_job", "d6_reply_project", "d9_reply_school", "d10_reply_wait"
+            "g3_stop", "g4_stop", "g5_stop"
         };
         string[] noGambleChoices =
         {
-            "d1_decline_link", "d2_reply_study", "d3_reply_ignore", "d5_reply_job",
-            "d6_reply_project", "d9_reply_school", "d10_reply_wait"
+            "g3_stop", "g4_stop", "g5_stop"
         };
         string[] noFundsChoices =
         {
-            "d1_open_link", "d2_reply_gamble", "d3_reply_gamble", "g3_chase", "g4_continue",
-            "g5_stop", "d5_reply_gamble", "d6_reply_project", "d9_reply_school", "d10_reply_wait"
+            "g3_chase", "g4_continue", "g5_stop", "minjae_loan_reject"
         };
         string[] minjaeDebtChoices =
         {
-            "d1_open_link", "d2_reply_gamble", "d3_reply_gamble", "g3_chase", "g4_continue",
-            "g5_stop", "minjae_loan_accept", "d5_reply_job", "d6_reply_project", "d9_reply_school",
-            "d10_debt_reply_wait", "d13_tell_teacher"
+            "g3_chase", "g4_continue", "g5_stop", "minjae_loan_accept", "d13_tell_teacher"
         };
         string[] seojunDebtChoices =
         {
-            "d1_open_link", "d2_reply_gamble", "d3_reply_gamble", "g3_chase", "g4_continue",
-            "g5_borrow", "borrow_friend", "d5_reply_job", "d6_reply_project", "d9_reply_school",
-            "d10_reply_wait", "d13_tell_teacher"
+            "g3_chase", "g4_continue", "g5_borrow", "borrow_friend", "d13_tell_teacher"
+        };
+        string[] loanHeldChoices =
+        {
+            "g3_chase", "g4_continue", "g5_borrow", "borrow_friend", "d13_tell_teacher"
+        };
+        string[] repeatLossChoices =
+        {
+            "g3_chase", "g4_continue", "g5_borrow", "borrow_mom", "d13_tell_teacher"
+        };
+        string[] projectFailChoices =
+        {
+            "g3_stop", "d13_tell_teacher"
         };
         if (route == Route.MixedA || route == Route.MixedB || route == Route.MixedC)
         {
@@ -513,7 +672,13 @@ public static class ScenarioV4FullPlayQa
                 ? noFundsChoices
                 : route == Route.MinjaeDebt
                     ? minjaeDebtChoices
-                    : route == Route.SeojunDebt ? seojunDebtChoices : recoveryChoices;
+                    : route == Route.SeojunDebt
+                        ? seojunDebtChoices
+                        : route == Route.LoanHeld
+                            ? loanHeldChoices
+                            : route == Route.RepeatLoss
+                                ? repeatLossChoices
+                                : route == Route.ProjectFail ? projectFailChoices : recoveryChoices;
         foreach (string id in preferred)
         {
             ScenarioV3Choice match = choices.FirstOrDefault(choice => choice.id == id);
@@ -521,6 +686,33 @@ public static class ScenarioV4FullPlayQa
                 return match;
         }
         return choices[0];
+    }
+
+    private static bool ShouldStartGamble(ScenarioV3Director director, int day)
+    {
+        if (!director.IsGamblingAppUnlocked)
+            return false;
+
+        int sessions = int.TryParse(director.GetState("counter.gamble_sessions"), out int parsed) ? parsed : 0;
+        int target = route switch
+        {
+            Route.Recovery or Route.MinjaeDebt or Route.SeojunDebt => day >= 3 ? 6 : day == 2 ? 2 : 1,
+            Route.LoanHeld => day >= 3 ? 5 : day == 2 ? 2 : 1,
+            Route.RepeatLoss => day >= 5 ? 7 : day >= 3 ? 6 : day == 2 ? 2 : 1,
+            Route.ProjectFail => day >= 3 ? 3 : day == 2 ? 2 : 1,
+            Route.Prevention => day >= 2 ? 2 : 1,
+            Route.NoGamble => 0,
+            Route.NoHelp => day >= 3 ? 3 : day == 2 ? 2 : 1,
+            Route.NoFunds => day >= 3 ? 6 : day == 2 ? 2 : 1,
+            Route.MixedA => day >= 10 ? 3 : day >= 6 ? 2 : day >= 2 ? 1 : 0,
+            Route.MixedB => day >= 9 ? 3 : day >= 5 ? 2 : day >= 3 ? 1 : 0,
+            Route.MixedC => day >= 9 ? 5 : day >= 6 ? 4 : day >= 5 ? 3 : day >= 2 ? 2 : 1,
+            _ => 0
+        };
+
+        if (route == Route.NoFunds && int.TryParse(director.GetState("counter.no_funds_attempts"), out int attempts) && attempts > 0)
+            return false;
+        return sessions < target;
     }
 
     private static void BeginMapAction(AppWindow apps, string target)
@@ -595,6 +787,7 @@ public static class ScenarioV4FullPlayQa
     {
         text = (text ?? string.Empty).Replace('\n', ' ').Replace('\r', ' ');
         return text == "1336" ||
+               text.Contains("일정에 적어 둔다") ||
                text.Contains("친구에게 돈을 빌렸다") ||
                text.Contains("레벨·출석 보상") ||
                text.Contains("돈이나 재산상 가치") ||

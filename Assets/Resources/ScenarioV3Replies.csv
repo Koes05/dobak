@@ -1,19 +1,6 @@
 choice_id,reply_text
-d1_open_link,"응, 링크 보내줘."
-d1_reply_mom,"응. 지금 집 가는 중이야."
-d2_reply_study,"난 자료 조사부터 하고 볼게."
-d2_reply_gamble,"그럼 잠깐만 확인해볼게."
-d3_reply_ignore,"오늘은 안 할래."
-d3_reply_gamble,"받은 포인트 안에서만 볼게."
-d5_reply_job,"난 알바부터 갈 거야."
-d5_reply_gamble,"한 번만 확인하고 갈게."
-d6_reply_project,"난 발표자료부터 만들게."
-d6_reply_gamble,"결과만 보고 시작할게."
-d9_reply_school,"난 학교 갈 거야."
-d9_reply_gamble,"이번에 정리하고 끝낼게."
-d10_reply_wait,"알바비로 천천히 갚을 거야."
-d10_reply_gamble,"주말 전에 끝내볼게."
+d1_reply_mom,응. 지금 집 가는 중이야.
 borrow_mom,"엄마, 교통카드 충전해야 하는데 오만 원만 보내줄 수 있어?"
 borrow_friend,"서준아, 미안한데 급하게 오만 원만 빌려줄 수 있어?"
-d13_tell_teacher,"선생님... 사실 도박 때문에 돈을 잃었어요."
-d13_hide_again,"아니에요. 그냥 잠을 좀 못 자서 그래요."
+d13_tell_teacher,선생님... 사실 도박 때문에 돈을 잃었어요.
+d13_hide_again,아니에요. 그냥 잠을 좀 못 자서 그래요.

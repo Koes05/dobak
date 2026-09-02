@@ -32,6 +32,8 @@ public class NotificationManager : MonoBehaviour
 
     public void OpenNotification(NotificationData data)
     {
+        if (data.appType == AppType.Message)
+            dialogueManager?.PreferConversation(data.speakerType);
         appWindow?.OpenApp(data.appType);
     }
 
@@ -42,6 +44,8 @@ public class NotificationManager : MonoBehaviour
     {
         // 리스트 저장
         notifications.Add(data);
+        if (notifications.Count > maxNotificationCount)
+            notifications.RemoveAt(0);
         GameFlowManager.Instance?.V3MarkAppAttention(data.appType);
 
 
@@ -90,6 +94,33 @@ public class NotificationManager : MonoBehaviour
         {
             Destroy(child.gameObject);
         }
+    }
+
+    public void ClearMessageNotifications(SpeakerType speaker)
+    {
+        notifications.RemoveAll(data =>
+            data != null && data.appType == AppType.Message && data.speakerType == speaker);
+        popup?.HideImmediately();
+
+        if (content != null)
+        {
+            foreach (Transform child in content)
+            {
+                NotificationItem item = child.GetComponent<NotificationItem>();
+                if (item != null && item.MatchesMessageSpeaker(speaker))
+                    Destroy(child.gameObject);
+            }
+        }
+
+        bool hasUnreadMessageNotification = notifications.Exists(data =>
+            data != null && data.appType == AppType.Message);
+        if (!hasUnreadMessageNotification)
+            GameFlowManager.Instance?.V3ClearAppAttention(AppType.Message);
+    }
+
+    public void DismissNotification(NotificationData data)
+    {
+        notifications.Remove(data);
     }
 
     public void HidePopup()

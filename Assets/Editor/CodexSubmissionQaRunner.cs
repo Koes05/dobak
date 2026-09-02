@@ -6,6 +6,7 @@ using UnityEngine;
 [InitializeOnLoad]
 public static class CodexSubmissionQaRunner
 {
+    // Marker modes let focused route tests restart cleanly after script reloads.
     private const string MarkerName = ".codex-run-submission-qa";
     private static bool restartQueued;
 
@@ -18,8 +19,18 @@ public static class CodexSubmissionQaRunner
     private static void TryRun()
     {
         string marker = Path.GetFullPath(Path.Combine(Application.dataPath, "..", MarkerName));
-        if (!File.Exists(marker) || EditorApplication.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode)
+        if (!File.Exists(marker))
             return;
+
+        if (EditorApplication.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            EditorApplication.update -= TryRun;
+            EditorApplication.playModeStateChanged -= ResumeMarkerAfterEditMode;
+            EditorApplication.playModeStateChanged += ResumeMarkerAfterEditMode;
+            if (EditorApplication.isPlaying)
+                EditorApplication.ExitPlaymode();
+            return;
+        }
 
         EditorApplication.update -= TryRun;
         string mode = File.ReadAllText(marker).Trim();
@@ -28,6 +39,26 @@ public static class CodexSubmissionQaRunner
         {
             Debug.Log("[CODEX SUBMISSION QA] Starting no-help route.");
             ScenarioV4FullPlayQa.RunNoHelp();
+        }
+        else if (string.Equals(mode, "project-fail", System.StringComparison.OrdinalIgnoreCase))
+        {
+            Debug.Log("[CODEX SUBMISSION QA] Starting project-failure route.");
+            ScenarioV4FullPlayQa.RunProjectFail();
+        }
+        else if (string.Equals(mode, "prevention", System.StringComparison.OrdinalIgnoreCase))
+        {
+            Debug.Log("[CODEX SUBMISSION QA] Starting prevention route.");
+            ScenarioV4FullPlayQa.RunPrevention();
+        }
+        else if (string.Equals(mode, "no-gamble", System.StringComparison.OrdinalIgnoreCase))
+        {
+            Debug.Log("[CODEX SUBMISSION QA] Starting no-gamble route.");
+            ScenarioV4FullPlayQa.RunNoGamble();
+        }
+        else if (string.Equals(mode, "no-funds", System.StringComparison.OrdinalIgnoreCase))
+        {
+            Debug.Log("[CODEX SUBMISSION QA] Starting no-funds route.");
+            ScenarioV4FullPlayQa.RunNoFunds();
         }
         else if (string.Equals(mode, "final-remaining", System.StringComparison.OrdinalIgnoreCase))
         {
@@ -44,6 +75,16 @@ public static class CodexSubmissionQaRunner
             Debug.Log("[CODEX SUBMISSION QA] Starting all scenario routes.");
             ScenarioV4FullPlayQa.RunAll();
         }
+    }
+
+    private static void ResumeMarkerAfterEditMode(PlayModeStateChange state)
+    {
+        if (state != PlayModeStateChange.EnteredEditMode)
+            return;
+
+        EditorApplication.playModeStateChanged -= ResumeMarkerAfterEditMode;
+        EditorApplication.update -= TryRun;
+        EditorApplication.update += TryRun;
     }
 
     [MenuItem("Tools/Codex/Run Submission QA %#q")]

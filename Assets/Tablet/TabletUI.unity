@@ -2188,6 +2188,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f4bc3aa31fb17bb45b55294e104675e0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameFlowManager
+  gamblingLauncherSprite: {fileID: -3824348996952660154, guid: 495b1513c12803d4fbafe40a322c7cb8, type: 3}
 --- !u!4 &309280451
 Transform:
   m_ObjectHideFlags: 0

@@ -64,6 +64,11 @@ public class NotificationItem : MonoBehaviour,
         message.text = data.message;
     }
 
+    public bool MatchesMessageSpeaker(SpeakerType speaker)
+    {
+        return data != null && data.appType == AppType.Message && data.speakerType == speaker;
+    }
+
     private void SetAppIcon(AppType appType)
     {
         if (data != null && data.icon != null)
@@ -123,6 +128,7 @@ public class NotificationItem : MonoBehaviour,
         // 충분히 밀었으면 삭제
         if (distance > removeDistance)
         {
+            manager?.DismissNotification(data);
             Destroy(gameObject);
         }
         else
@@ -138,7 +144,7 @@ public class NotificationItem : MonoBehaviour,
     public void OnPointerClick(PointerEventData eventData)
     {
         manager.OpenNotification(data);
-
+        manager.DismissNotification(data);
         Destroy(gameObject);
     }
 }

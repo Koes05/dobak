@@ -1,4 +1,4 @@
-﻿event_id,trigger,condition,chance,selection,once,sequence,speaker,title,message,delivery,choice_a,action_a,choice_b,action_b,state_key,state_value
+event_id,trigger,condition,chance,selection,once,sequence,speaker,title,message,delivery,choice_a,action_a,choice_b,action_b,state_key,state_value
 tutorial_start,game_start,day=1,1,,game,0,Unknown,나,아침이다. 오늘도 학교에 가야 한다. 먼저 지도 앱에서 학교까지 걸리는 시간을 확인해 보자.,narration,,,,,,
 tutorial_map,app_map_open,day=1,1,,game,0,Unknown,나,지금은 집에 있다. 지도 앱에서 학교를 목적지로 정하면 걸리는 시간이 보인다. 늦기 전에 출발해야겠다.,narration,,,,,,
 tutorial_school,school_complete,day=1,1,,game,0,Unknown,나,수업이 끝났다. 공부 앱에 오늘 숙제 다섯 문제가 올라와 있다.,narration,,,,,,
@@ -45,7 +45,7 @@ job_late,job_late,,1,,day,0,CafeManager,카페 매니저,오전 8시 출근 시�
 miss_school,schedule_missed,weekend=false;school_done=false,1,,day,0,Teacher,담임 선생님,오늘 등교하지 않았습니다. 무슨 일이 있는지 확인이 필요합니다.,message,,,,,,
 miss_homework,schedule_missed,weekend=false;school_done=true;homework_done=false,1,,day,0,Teacher,담임 선생님,오늘 숙제가 제출되지 않았습니다. 내일까지 확인해 주세요.,message,,,,,,
 miss_job,schedule_missed,weekend=true;job_done=false,1,,day,0,CafeManager,카페 매니저,근무 시간인데 연락이 되지 않네요. 다음 근무 조정이 필요합니다.,message,연락 못해 죄송하다고 한다,trigger:miss_job_reply_sorry,다음 근무를 다시 묻는다,trigger:miss_job_reply_explain,,
-attendance_warning,day_start,schedule_failures>=2,1,,game,0,Teacher,학교 알림,최근 지각과 결석 또는 과제 누락이 반복되고 있습니다. 무슨 일이 있는지 확인이 필요합니다.,message,,,,,,
+attendance_warning,day_start,schedule_failures>=2,1,,game,0,Teacher,학교 알림,최근 지각 또는 과제 누락이 반복되고 있습니다. 무슨 일이 있는지 확인이 필요합니다.,message,,,,,,
 attendance_recovery,school_complete,day=8;schedule_failures=0,1,,game,0,Teacher,담임 선생님,이번 주는 출석과 과제 제출이 안정적이네요. 지금 흐름을 이어가 봅시다.,message,,,,,,
 short_sleep,short_sleep,,1,,day,0,Mom,엄마,오늘은 {hours}시간밖에 못 잤네. 내일은 조금 더 일찍 자자.,message,오늘은 일찍 자겠다고 한다,trigger:short_sleep_reply_early,괜찮다고 답한다,trigger:short_sleep_reply_fine,,
 gamble_round_1,gamble_resolved,rounds=1,1,,game,0,Friend,민재,해봤어? 무료 포인트만 확인하고 나온 거지?,message,이제 그만한다고 답한다,trigger:gamble_1_reply_stop,조금 더 해본다고 답한다,trigger:gamble_1_reply_continue,,

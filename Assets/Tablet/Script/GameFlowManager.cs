@@ -23,7 +23,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private const int SchoolEndHour = 16;
     private const int JobStartHour = 8;
     private const int JobEndHour = 16;
-    private const int JobDailyWage = 100000;
+    private const int JobDailyWage = 50000;
     private const int MinimumSleepHours = 5;
     private const int ShortSleepEndingLimit = 3;
     private const int CashOutEndingBalance = 10000;
@@ -67,6 +67,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private Coroutine feedbackCoroutine;
     private GameObject actionBar;
     private GameObject gamblingAppIcon;
+    [SerializeField] private Sprite gamblingLauncherSprite;
     private GameObject borrowChoicePanel;
     private Button momBorrowButton;
     private Button friendBorrowButton;
@@ -129,6 +130,26 @@ public sealed class GameFlowManager : MonoBehaviour
     public int DaysWithoutGambling => daysWithoutGambling;
     public string ActiveStoryEvent => activeStoryEvent;
     public int V3BankCash => coinManager != null ? coinManager.BankCash : 0;
+
+    public void V3SetGamblingUnlocked(bool unlocked, bool markAttention = false)
+    {
+        gamblingUnlocked = unlocked;
+        SetGamblingAppVisibility(unlocked);
+        if (markAttention && unlocked)
+            pendingAppAttention.Add(AppType.Browser);
+        else if (!unlocked)
+            pendingAppAttention.Remove(AppType.Browser);
+        RefreshUI();
+    }
+
+    public void V3SetGamblingAttention(bool visible)
+    {
+        if (visible && gamblingUnlocked)
+            pendingAppAttention.Add(AppType.Browser);
+        else
+            pendingAppAttention.Remove(AppType.Browser);
+        RefreshUI();
+    }
     public string V3ClockText => $"{currentHour:00}:00";
     public bool V3HasStudyToday => quizManager != null && quizManager.HasActivityForCurrentDay;
 
@@ -178,7 +199,6 @@ public sealed class GameFlowManager : MonoBehaviour
         BindExistingStatusText();
         CreateRuntimeUI();
         ConfigureAppAttentionDots();
-        gamblingAppIcon = null;
 
         if (appWindow != null)
             appWindow.AppChanged += OnAppChanged;
@@ -347,6 +367,38 @@ public sealed class GameFlowManager : MonoBehaviour
         StartCoroutine(ReturnHomeAfterActivity(completed));
     }
 
+    public bool V3TransitionScene(Action midpoint)
+    {
+        if (fadeGroup == null || isTransitioning)
+            return false;
+
+        isTransitioning = true;
+        fadeGroup.blocksRaycasts = true;
+        fadeCaption.text = string.Empty;
+        fadeGroup.alpha = 1f;
+        fadeGroup.transform.SetAsLastSibling();
+        midpoint?.Invoke();
+        fadeGroup.transform.SetAsLastSibling();
+        StartCoroutine(FadeSceneIn());
+        return true;
+    }
+
+    private IEnumerator FadeSceneIn()
+    {
+        yield return new WaitForSecondsRealtime(0.08f);
+        yield return FadeTo(0f, 0.3f);
+        fadeGroup.blocksRaycasts = false;
+        isTransitioning = false;
+        RefreshUI();
+        ShowNextNarration();
+    }
+
+    public void V3ClearAppAttention(AppType target)
+    {
+        pendingAppAttention.Remove(target);
+        RefreshAttentionDots();
+    }
+
     public void V3PromptReturnHomeAfterActivity(Action completed)
     {
         if (currentLocation == "집")
@@ -355,7 +407,13 @@ public sealed class GameFlowManager : MonoBehaviour
             return;
         }
 
-        if (!V3ShowDialogue("나", "집에 돌아가야겠다.", () => V3ReturnHomeAfterActivity(completed)))
+        string prompt = currentLocation switch
+        {
+            "학교" => "종례도 끝났다. 오늘 해야 할 일을 확인하고 집에 가자.",
+            "카페" => "오늘 근무도 끝났다. 정리하고 집에 가자.",
+            _ => "이제 집에 돌아가야겠다."
+        };
+        if (!V3ShowDialogue("나", prompt, () => V3ReturnHomeAfterActivity(completed)))
             V3ReturnHomeAfterActivity(completed);
     }
 
@@ -365,7 +423,7 @@ public sealed class GameFlowManager : MonoBehaviour
         if (fadeGroup != null)
         {
             fadeGroup.blocksRaycasts = true;
-            fadeCaption.text = "집으로 돌아가는 중";
+            fadeCaption.text = "집으로 돌아가는 중...";
             yield return FadeTo(1f, 0.3f);
             yield return new WaitForSecondsRealtime(0.35f);
         }
@@ -882,7 +940,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private void SetGamblingAppVisibility(bool visible)
     {
         if (gamblingAppIcon != null)
-            gamblingAppIcon.SetActive(false);
+            gamblingAppIcon.SetActive(visible);
     }
 
     public void StartInvitationRetempt()
@@ -997,7 +1055,8 @@ public sealed class GameFlowManager : MonoBehaviour
             yield return new WaitForSecondsRealtime(0.15f);
         }
         midpoint?.Invoke();
-        yield return new WaitForSeconds(hold);
+        fadeGroup.transform.SetAsLastSibling();
+        yield return new WaitForSecondsRealtime(hold);
         yield return FadeTo(0f, 0.35f);
 
         fadeGroup.blocksRaycasts = false;
@@ -1300,9 +1359,12 @@ public sealed class GameFlowManager : MonoBehaviour
         if (appManagerObject == null)
             return;
 
+        TMP_FontAsset font = FindPreferredFont();
+        EnsureGamblingLauncher(appManagerObject.transform, font);
+
         var launcherNames = new Dictionary<AppType, string>
         {
-            [AppType.Browser] = "CasinoApp",
+            [AppType.Browser] = "Gambling Launcher",
             [AppType.Map] = "Map Launcher",
             [AppType.Message] = "MesegeApp",
             [AppType.Study] = "StudyApp",
@@ -1310,7 +1372,6 @@ public sealed class GameFlowManager : MonoBehaviour
             [AppType.Sleep] = "Sleep Launcher",
             [AppType.Setting] = "Setting_Btn"
         };
-        TMP_FontAsset font = FindPreferredFont();
         foreach (KeyValuePair<AppType, string> pair in launcherNames)
         {
             Transform launcher = appManagerObject.transform.Find(pair.Value);
@@ -1334,6 +1395,72 @@ public sealed class GameFlowManager : MonoBehaviour
             dot.raycastTarget = false;
             appAttentionDots[pair.Key] = dot.gameObject;
         }
+        RefreshAttentionDots();
+    }
+
+    private void EnsureGamblingLauncher(Transform appManager, TMP_FontAsset font)
+    {
+        Transform existing = appManager.Find("Gambling Launcher");
+        if (existing != null)
+        {
+            gamblingAppIcon = existing.gameObject;
+            return;
+        }
+
+        GameObject launcher = new GameObject("Gambling Launcher", typeof(RectTransform),
+            typeof(CanvasRenderer), typeof(Image), typeof(Button));
+        launcher.layer = 5;
+        launcher.transform.SetParent(appManager, false);
+
+        RectTransform rect = launcher.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = new Vector2(1f, 0.5f);
+        rect.pivot = new Vector2(1f, 0.5f);
+        rect.anchoredPosition = new Vector2(-600f, -100f);
+        rect.sizeDelta = new Vector2(150f, 150f);
+
+        Image background = launcher.GetComponent<Image>();
+        Sprite gamblingIcon = gamblingLauncherSprite ?? Resources.FindObjectsOfTypeAll<Sprite>()
+            .FirstOrDefault(sprite => sprite != null && sprite.texture != null &&
+                                      sprite.texture.name == "ChatGPT Image 2026년 8월 11일 오후 05_14_13-Photoroom" &&
+                                      sprite.name.EndsWith("Photoroom_1", StringComparison.Ordinal));
+        if (gamblingIcon != null)
+        {
+            background.sprite = gamblingIcon;
+            background.preserveAspect = true;
+            background.color = Color.white;
+        }
+        else
+        {
+            background.sprite = null;
+            background.color = new Color(0.93f, 0.32f, 0.34f, 1f);
+        }
+
+        TMP_Text label = CreateText("Gambling Icon Label", launcher.transform, font, 24f,
+            FontStyles.Normal, new Color(0.196f, 0.196f, 0.196f, 1f));
+        label.text = "도박";
+        label.alignment = TextAlignmentOptions.Center;
+        RectTransform labelRect = label.rectTransform;
+        labelRect.anchorMin = labelRect.anchorMax = new Vector2(0.5f, 0f);
+        labelRect.pivot = new Vector2(0.5f, 1f);
+        labelRect.anchoredPosition = new Vector2(0f, -12f);
+        labelRect.sizeDelta = new Vector2(200f, 42f);
+        label.raycastTarget = false;
+
+        Button button = launcher.GetComponent<Button>();
+        button.targetGraphic = background;
+        button.onClick.AddListener(StartScenarioGambling);
+        gamblingAppIcon = launcher;
+        gamblingAppIcon.SetActive(gamblingUnlocked);
+    }
+
+    private void StartScenarioGambling()
+    {
+        if (!gamblingUnlocked || gameEnded || isTransitioning || scenarioV3 == null)
+            return;
+
+        pendingAppAttention.Remove(AppType.Browser);
+        appWindow?.CloseCurrentApp();
+        scenarioV3.TryStartGambleFromHome();
         RefreshAttentionDots();
     }
 
@@ -1395,19 +1522,22 @@ public sealed class GameFlowManager : MonoBehaviour
         if (homeChecklistLines.Count == 0)
             return;
 
+        string goalLine = $"노트북 수리비  {V3BankCash:N0} / 250,000원";
+        string debtLine = debt > 0 ? $"빌린 돈  {debt:N0}원" : "";
         string[] lines = IsWeekend
             ? new[]
             {
                 $"{Mark(jobDone)} 카페 알바  08:00~16:00",
-                "",
+                goalLine,
+                debtLine,
                 ""
             }
             : new[]
             {
                 $"{Mark(schoolDone)} 학교 가기",
                 V3HasStudyToday ? $"{Mark(homeworkDone)} {quizManager.CurrentActivityTitle}" : "오늘은 별도 과제 없음",
-                "",
-                ""
+                goalLine,
+                debtLine
             };
 
         for (int i = 0; i < homeChecklistLines.Count; i++)

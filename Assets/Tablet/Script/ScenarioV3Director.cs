@@ -85,6 +85,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private bool pendingDayAdvance;
     private bool waitingForMessageChoice;
     private SpeakerType waitingMessageSpeaker = SpeakerType.Unknown;
+    private ScenarioV3Scene waitingMessageScene;
+    private int waitingMessageLineIndex = -1;
     private ScenarioV3Line pendingOutgoingLine;
     private SpeakerType pendingOutgoingSpeaker = SpeakerType.Unknown;
     private string pendingOutgoingContact = string.Empty;
@@ -95,6 +97,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private List<string> currentDialoguePages = new List<string>();
     private int currentDialoguePageIndex;
     private bool isTyping;
+    private bool sceneTransitionInProgress;
 
     private GameObject novelPanel;
     private RawImage novelBackground;
@@ -127,6 +130,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
     public bool CanRewind => checkpoints.Count > 0;
     public string RewindLabel => FindRewindCheckpoint()?.label ?? string.Empty;
     public bool HasPendingMessageAction => pendingOutgoingLine != null || waitingForMessageChoice || GetInt("unread_count") > 0;
+    public bool HasPendingGambleOffer => GetState("pending.gamble_attention") == "true";
+    public bool IsGamblingAppUnlocked => GetState("flag.gambling_app_unlocked") == "true";
 
     private string SavePath => Path.Combine(Application.persistentDataPath, "scenario_v3_history.json");
 
@@ -153,6 +158,9 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (!IsReady || string.IsNullOrWhiteSpace(trigger))
             return;
 
+        if (trigger == "homework_complete" || trigger == "school_complete" || trigger == "job_complete")
+            ResolvePendingGambleAttentionAsDeclined();
+
         if (trigger == "homework_complete")
             SetState("schedule.homework", "complete");
         else if (trigger == "school_complete")
@@ -163,6 +171,11 @@ public sealed class ScenarioV3Director : MonoBehaviour
             SetState("schedule.job", "missed");
 
         PlayTrigger(trigger);
+        if (activeScene == null && sceneQueue.Count == 0)
+        {
+            if (!TryResolveMissedJob() && !TryQueueEveningFill())
+                TryQueueBedtimeCue();
+        }
         TrySendUnreadReminder();
         Save();
     }
@@ -186,8 +199,29 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
     }
 
+    public void TryStartGambleFromHome()
+    {
+        if (!IsReady || flow.IsGameEnded || !IsGamblingAppUnlocked || activeScene != null ||
+            waitingForMessageChoice || pendingOutgoingLine != null)
+            return;
+
+        SetState("pending.gamble_attention", "false");
+        flow.V3SetGamblingAttention(false);
+        ApplyEffect("gamble:advance");
+        string target = immediateRoute;
+        immediateRoute = string.Empty;
+        if (!string.IsNullOrWhiteSpace(target))
+            PlayScene(target);
+        Save();
+    }
+
     public void HandleChoice(string choiceId)
     {
+        if (activeScene == null && waitingForMessageChoice && waitingMessageScene != null)
+        {
+            activeScene = waitingMessageScene;
+            activeLineIndex = waitingMessageLineIndex;
+        }
         if (activeScene == null || activeLineIndex < 0 || activeLineIndex >= activeScene.lines.Count)
             return;
 
@@ -204,6 +238,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
         waitingForMessageChoice = false;
         waitingMessageSpeaker = SpeakerType.Unknown;
+        waitingMessageScene = null;
+        waitingMessageLineIndex = -1;
         flow.V3Refresh();
         AppendDialogueLog("나", string.IsNullOrWhiteSpace(choice.replyText) ? choice.text : choice.replyText);
         string before = SnapshotState();
@@ -230,7 +266,6 @@ public sealed class ScenarioV3Director : MonoBehaviour
             string routedScene = immediateRoute;
             immediateRoute = string.Empty;
             activeScene = null;
-            HideNovel();
             PlayScene(routedScene);
             return;
         }
@@ -238,7 +273,6 @@ public sealed class ScenarioV3Director : MonoBehaviour
         {
             FinalizeCurrentDayStatus();
             activeScene = null;
-            HideNovel();
             QueueTrigger("day_end", AdvanceToNextDay);
             StartQueuedScene();
             return;
@@ -247,7 +281,6 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (!string.IsNullOrWhiteSpace(reactiveTrigger))
         {
             activeScene = null;
-            HideNovel();
             QueueTrigger(reactiveTrigger, () => ContinueAfterChoice(nextScene));
             StartQueuedScene();
             return;
@@ -261,6 +294,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (!IsReady || flow.IsGameEnded)
             return;
 
+        ResolvePendingGambleAttentionAsDeclined();
+
         if (waitingForMessageChoice)
         {
             dialogue?.DismissEventChoices(waitingMessageSpeaker);
@@ -268,6 +303,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
                 AddInt("counter.minjae_ignored", 1);
             waitingForMessageChoice = false;
             waitingMessageSpeaker = SpeakerType.Unknown;
+            waitingMessageScene = null;
+            waitingMessageLineIndex = -1;
             activeScene = null;
             activeLineIndex = 0;
         }
@@ -299,6 +336,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         sceneQueue.Clear();
         queueCompleted = null;
         waitingForMessageChoice = false;
+        waitingMessageScene = null;
+        waitingMessageLineIndex = -1;
         ClearPendingOutgoingMessage();
         deliveredOutgoingLineIds.Clear();
         pendingDayAdvance = false;
@@ -323,6 +362,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         flow.V3SetSchedule("homework", GetState("schedule.homework"));
         flow.V3SetSchedule("job", GetState("schedule.job"));
         flow.V3SetSchedule("sleep", GetState("schedule.sleep"));
+        flow.V3SetGamblingUnlocked(IsGamblingAppUnlocked);
+        flow.V3SetGamblingAttention(HasPendingGambleOffer);
 
         activeScene = database.GetScene(checkpoint.sceneId);
         activeLineIndex = checkpoint.lineIndex;
@@ -347,10 +388,13 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private void ResetRun()
     {
         sceneQueue.Clear();
+        sceneTransitionInProgress = false;
         activeScene = null;
         activeLineIndex = 0;
         waitingForMessageChoice = false;
         waitingMessageSpeaker = SpeakerType.Unknown;
+        waitingMessageScene = null;
+        waitingMessageLineIndex = -1;
         ClearPendingOutgoingMessage();
         seenScenes.Clear();
         choiceHistory.Clear();
@@ -373,6 +417,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["day_finalized"] = "0";
         state["counter.job_attendance"] = "0";
         state["counter.gamble_sessions"] = "0";
+        state["pending.gamble_attention"] = "false";
+        state["flag.gambling_app_unlocked"] = "false";
         state["relation.seoyeon"] = "0";
         state["relation.manager"] = "0";
         flow.V3ResetRun(50000);
@@ -382,7 +428,6 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     private void ContinueAfterChoice(string nextScene)
     {
-        HideNovel();
         if (!string.IsNullOrWhiteSpace(nextScene))
         {
             if (!TryReturnHomeBeforeNextScene(nextScene, () => PlayScene(nextScene)))
@@ -434,7 +479,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     private void StartQueuedScene()
     {
-        if (activeScene != null || waitingForMessageChoice)
+        if (activeScene != null || waitingForMessageChoice || sceneTransitionInProgress)
             return;
 
         if (sceneQueue.Count > 0)
@@ -445,10 +490,45 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
         Action completed = queueCompleted;
         queueCompleted = null;
+        if (flow.CurrentLocation == "학교" && flow.IsSchoolDone)
+        {
+            ShowReturnHomeMonologue("school", () =>
+                flow.V3ReturnHomeAfterActivity(() =>
+                {
+                    completed?.Invoke();
+                    ContinueAfterActivityReturn();
+                }));
+            return;
+        }
+        if (flow.CurrentLocation == "카페" && flow.IsJobDone)
+        {
+            ShowReturnHomeMonologue("job", () =>
+                flow.V3ReturnHomeAfterActivity(() =>
+                {
+                    completed?.Invoke();
+                    ContinueAfterActivityReturn();
+                }));
+            return;
+        }
+        HideNovel();
         completed?.Invoke();
     }
 
     private void BeginScene(ScenarioV3Scene scene)
+    {
+        sceneTransitionInProgress = true;
+        if (flow != null && flow.V3TransitionScene(() =>
+            {
+                sceneTransitionInProgress = false;
+                BeginSceneImmediate(scene);
+            }))
+            return;
+
+        sceneTransitionInProgress = false;
+        BeginSceneImmediate(scene);
+    }
+
+    private void BeginSceneImmediate(ScenarioV3Scene scene)
     {
         activeScene = scene;
         activeLineIndex = 0;
@@ -513,13 +593,14 @@ public sealed class ScenarioV3Director : MonoBehaviour
                        string.Equals(line.speaker, "System", StringComparison.OrdinalIgnoreCase)
             ? "안내"
             : ContactName(line.speaker);
-        string text = ExpandText(line.text);
+        string text = FormatProtagonistMonologue(line, ExpandText(line.text));
         if (!flow.V3ShowDialogue(title, text, () => FinishLine(line)))
             ShowNovelLine(line);
     }
 
     private void PresentMessage(ScenarioV3Line line)
     {
+        HideNovel();
         bool sentByPlayer = string.Equals(line.speaker, "Protagonist", StringComparison.OrdinalIgnoreCase);
         SpeakerType speaker = sentByPlayer ? MapContact(line.contact) : MapSpeaker(line.speaker);
         string contact = string.IsNullOrWhiteSpace(line.contact)
@@ -565,6 +646,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         {
             waitingForMessageChoice = true;
             waitingMessageSpeaker = speaker;
+            waitingMessageScene = activeScene;
+            waitingMessageLineIndex = activeLineIndex;
             flow.V3Refresh();
             var chatChoices = new List<Choice>();
             foreach (ScenarioV3Choice choice in choices)
@@ -582,7 +665,9 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
 
         bool isTerminalMessage = activeScene != null && activeLineIndex >= activeScene.lines.Count - 1;
-        StartCoroutine(AdvanceMessageLine(line, isTerminalMessage));
+        bool nextLineIsMessage = activeScene != null && activeLineIndex + 1 < activeScene.lines.Count &&
+            string.Equals(activeScene.lines[activeLineIndex + 1].delivery, "message", StringComparison.OrdinalIgnoreCase);
+        StartCoroutine(AdvanceMessageLine(line, text, isTerminalMessage, nextLineIsMessage));
     }
 
     private void TryDeliverPendingOutgoingMessage()
@@ -616,7 +701,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         string contact = pendingOutgoingContact;
         string text = pendingOutgoingText;
 
-        yield return new WaitForSecondsRealtime(0.18f);
+        yield return new WaitForSecondsRealtime(0.65f);
         if (!IsMessageAppReady())
         {
             pendingOutgoingCoroutine = null;
@@ -624,7 +709,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
 
         dialogue.OpenDialogue(speaker);
-        yield return new WaitForSecondsRealtime(0.3f);
+        yield return new WaitForSecondsRealtime(0.35f);
 
         if (pendingOutgoingLine != line || !IsMessageUiReady())
         {
@@ -640,7 +725,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         bool isTerminalPlayerMessage = activeScene != null && activeLineIndex >= activeScene.lines.Count - 1;
         ClearPendingOutgoingMessage(false);
 
-        yield return new WaitForSecondsRealtime(0.4f);
+        yield return new WaitForSecondsRealtime(GetMessageReadingDelay(text, true));
         while (isTerminalPlayerMessage && appWindow != null && appWindow.CurrentAppType == AppType.Message)
             yield return null;
 
@@ -658,15 +743,32 @@ public sealed class ScenarioV3Director : MonoBehaviour
         pendingOutgoingText = string.Empty;
     }
 
-    private IEnumerator AdvanceMessageLine(ScenarioV3Line line, bool waitForMessageAppClose)
+    private IEnumerator AdvanceMessageLine(
+        ScenarioV3Line line,
+        string text,
+        bool waitForMessageAppClose,
+        bool nextLineIsMessage)
     {
-        yield return new WaitForSeconds(0.28f);
+        float delay = nextLineIsMessage ? GetMessageReadingDelay(text, false) : 0.4f;
+        yield return new WaitForSecondsRealtime(delay);
         while (waitForMessageAppClose && appWindow != null &&
                appWindow.CurrentAppType == AppType.Message)
         {
             yield return null;
         }
         FinishLine(line);
+    }
+
+    private static float GetMessageReadingDelay(string text, bool sentByPlayer)
+    {
+        int readableCharacters = string.IsNullOrWhiteSpace(text)
+            ? 0
+            : text.Count(character => !char.IsWhiteSpace(character));
+        float baseDelay = sentByPlayer ? 0.85f : 1.05f;
+        float perCharacter = sentByPlayer ? 0.022f : 0.032f;
+        float minimum = sentByPlayer ? 1.0f : 1.2f;
+        float maximum = sentByPlayer ? 1.8f : 2.6f;
+        return Mathf.Clamp(baseDelay + readableCharacters * perCharacter, minimum, maximum);
     }
 
     private void TrySendUnreadReminder()
@@ -704,6 +806,11 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     private void ShowNovelLine(ScenarioV3Line line)
     {
+        ShowNovelLine(line, () => FinishLine(line));
+    }
+
+    private void ShowNovelLine(ScenarioV3Line line, Action completed, string visualArc = null)
+    {
         if (novelPanel == null)
             return;
 
@@ -715,12 +822,12 @@ public sealed class ScenarioV3Director : MonoBehaviour
             ? string.Empty
             : ContactName(line.speaker);
         speakerText.text = displaySpeaker;
-        string expandedText = ExpandText(line.text);
+        string expandedText = FormatProtagonistMonologue(line, ExpandText(line.text));
         currentDialoguePages = PaginateDialogue(expandedText);
         currentDialoguePageIndex = 0;
         currentFullText = currentDialoguePages[0];
         AppendDialogueLog(string.IsNullOrWhiteSpace(displaySpeaker) ? "나" : displaySpeaker, expandedText);
-        ApplyArcVisual(activeScene.arc, line.delivery);
+        ApplyArcVisual(visualArc ?? activeScene?.arc ?? "home", line.delivery);
         ApplyCharacterPortrait(line);
 
         List<ScenarioV3Choice> choices = line.Choices.ToList();
@@ -737,7 +844,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
             else if (!IsLastDialoguePage)
                 ShowNextDialoguePage(choices.Count > 0);
             else
-                FinishLine(line);
+                completed?.Invoke();
         });
         if (typewriterCoroutine != null)
             StopCoroutine(typewriterCoroutine);
@@ -864,7 +971,14 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     private void FinishLine(ScenarioV3Line line)
     {
-        HideNovel();
+        if (activeScene == null || activeLineIndex < 0 || activeLineIndex >= activeScene.lines.Count)
+            return;
+
+        ScenarioV3Line currentLine = activeScene.lines[activeLineIndex];
+        if (!ReferenceEquals(currentLine, line) &&
+            !string.Equals(currentLine.id, line?.id, StringComparison.OrdinalIgnoreCase))
+            return;
+
         string next = line.autoNext;
         activeLineIndex++;
         if (!database.ShouldReturnToTablet(activeScene?.id) && !string.IsNullOrWhiteSpace(next))
@@ -880,11 +994,15 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     private void FinishScene()
     {
+        if (waitingForMessageChoice)
+            return;
+
         bool returnToTablet = activeScene != null && database.ShouldReturnToTablet(activeScene.id);
-        bool returnHome = IsActivityArc(activeScene?.arc) && flow.CurrentLocation != "집";
+        bool hasQueuedScene = sceneQueue.Count > 0;
+        string activityArc = activeScene?.arc;
+        bool returnHome = IsActivityArc(activityArc) && flow.CurrentLocation != "집" && !hasQueuedScene;
         activeScene = null;
         activeLineIndex = 0;
-        HideNovel();
         Save();
         if (pendingDayAdvance)
         {
@@ -896,17 +1014,20 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
         if (returnHome)
         {
-            flow.V3PromptReturnHomeAfterActivity(ContinueAfterActivityReturn);
+            ShowReturnHomeMonologue(activityArc, ContinueAfterActivityReturn);
             return;
         }
         if (TryResolveMissedJob())
             return;
-        if (returnToTablet)
+        if (returnToTablet && !hasQueuedScene)
         {
+            HideNovel();
             sceneQueue.Clear();
             queueCompleted = null;
             waitingForMessageChoice = false;
             waitingMessageSpeaker = SpeakerType.Unknown;
+            waitingMessageScene = null;
+            waitingMessageLineIndex = -1;
             appWindow?.CloseCurrentApp();
             if (!TryQueueEveningFill())
                 TryQueueBedtimeCue();
@@ -999,10 +1120,53 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (nextScene != null && string.Equals(nextScene.arc, activeScene.arc, StringComparison.OrdinalIgnoreCase))
             return false;
 
+        string activityArc = activeScene.arc;
         activeScene = null;
-        HideNovel();
-        flow.V3PromptReturnHomeAfterActivity(completed);
+        ShowReturnHomeMonologue(activityArc, completed);
         return true;
+    }
+
+    private void ShowReturnHomeMonologue(string activityArc, Action completed)
+    {
+        string prompt = string.Equals(activityArc, "school", StringComparison.OrdinalIgnoreCase)
+            ? "종례도 끝났다. 오늘 해야 할 일을 확인하고 집에 가자."
+            : "오늘 근무도 끝났다. 정리하고 집에 가자.";
+        var line = new ScenarioV3Line
+        {
+            id = "return_home_monologue",
+            speaker = "Protagonist",
+            contact = "나",
+            delivery = "narration",
+            text = prompt
+        };
+        ShowNovelLine(line, () =>
+        {
+            HideNovel();
+            flow.V3ReturnHomeAfterActivity(completed);
+        }, activityArc);
+    }
+
+    private string FormatProtagonistMonologue(ScenarioV3Line line, string text)
+    {
+        bool isProtagonist = string.Equals(line?.speaker, "Protagonist", StringComparison.OrdinalIgnoreCase);
+        bool isMonologue = string.Equals(line?.delivery, "narration", StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(line?.delivery, "overlay", StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(line?.delivery, "cinematic", StringComparison.OrdinalIgnoreCase);
+        if (!isMonologue && string.Equals(line?.delivery, "dialogue", StringComparison.OrdinalIgnoreCase) &&
+            activeScene != null)
+        {
+            isMonologue = !activeScene.lines.Any(candidate =>
+                !string.Equals(candidate.speaker, "Protagonist", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(candidate.speaker, "Narrator", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(candidate.speaker, "System", StringComparison.OrdinalIgnoreCase));
+        }
+        if (!isProtagonist || !isMonologue || string.IsNullOrWhiteSpace(text))
+            return text;
+
+        string trimmed = text.Trim();
+        return trimmed.StartsWith("(", StringComparison.Ordinal) && trimmed.EndsWith(")", StringComparison.Ordinal)
+            ? trimmed
+            : $"({trimmed})";
     }
 
     private static bool IsActivityArc(string arc)
@@ -1013,6 +1177,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     private void AdvanceToNextDay()
     {
+        ResolvePendingGambleAttentionAsDeclined();
         FinalizeCurrentDayStatus();
 
         if (QueueTrigger("collapse_check", null) > 0)
@@ -1033,6 +1198,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["evening_filled"] = "0";
         state["bedtime_cued"] = "0";
         state["day_finalized"] = "0";
+        state["pending.gamble_attention"] = "false";
         state["day_cash_start"] = flow.V3BankCash.ToString(CultureInfo.InvariantCulture);
         Save();
 
@@ -1103,8 +1269,26 @@ public sealed class ScenarioV3Director : MonoBehaviour
             return;
         }
         if (key.Equals("gamble", StringComparison.OrdinalIgnoreCase) &&
+            operation.Equals("unlock", StringComparison.OrdinalIgnoreCase))
+        {
+            SetState("flag.gambling_app_unlocked", "true");
+            SetState("pending.gamble_attention", "true");
+            flow.V3SetGamblingUnlocked(true, true);
+            return;
+        }
+        if (key.Equals("gamble", StringComparison.OrdinalIgnoreCase) &&
+            (operation.Equals("offer", StringComparison.OrdinalIgnoreCase) ||
+             operation.Equals("attention", StringComparison.OrdinalIgnoreCase)))
+        {
+            SetState("pending.gamble_attention", "true");
+            flow.V3SetGamblingAttention(true);
+            return;
+        }
+        if (key.Equals("gamble", StringComparison.OrdinalIgnoreCase) &&
             operation.Equals("advance", StringComparison.OrdinalIgnoreCase))
         {
+            SetState("pending.gamble_attention", "false");
+            flow.V3SetGamblingAttention(false);
             int session = GetInt("counter.gamble_sessions") + 1;
             if (session >= 6 && flow.V3BankCash <= 0)
             {
@@ -1112,9 +1296,15 @@ public sealed class ScenarioV3Director : MonoBehaviour
                 immediateRoute = "gamble_no_funds";
                 return;
             }
+            if (session > 6)
+            {
+                SetState("counter.gamble_sessions", session.ToString(CultureInfo.InvariantCulture));
+                immediateRoute = "gamble_repeat_loss";
+                return;
+            }
             SetState("counter.gamble_sessions", session.ToString(CultureInfo.InvariantCulture));
             SetState("flag.gambling_started", "true");
-            immediateRoute = "gamble_" + Mathf.Min(session, 6).ToString(CultureInfo.InvariantCulture);
+            immediateRoute = "gamble_" + session.ToString(CultureInfo.InvariantCulture);
             return;
         }
         if (key.Equals("tutorial", StringComparison.OrdinalIgnoreCase) && operation.StartsWith("set="))
@@ -1331,6 +1521,16 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private void AddInt(string key, int amount)
     {
         state[key] = (GetInt(key) + amount).ToString(CultureInfo.InvariantCulture);
+    }
+
+    private void ResolvePendingGambleAttentionAsDeclined()
+    {
+        if (!HasPendingGambleOffer)
+            return;
+
+        SetState("pending.gamble_attention", "false");
+        AddInt("counter.refusals", 1);
+        flow.V3SetGamblingAttention(false);
     }
 
     private string ExpandText(string text)

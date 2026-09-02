@@ -74,6 +74,8 @@ public class AppWindow : MonoBehaviour
     // 애니메이션 중복 실행 방지
     private bool isOpening;
     private AppType? pendingAppType;
+    private Coroutine openingRoutine;
+    private float openingStartedAt;
     private AudioSource uiAudioSource;
     private AudioClip appOpenClip;
 
@@ -122,14 +124,55 @@ public class AppWindow : MonoBehaviour
         if (CurrentAppType == type && currentApp != null && currentApp.activeInHierarchy)
             return;
 
-        // 전환 중 들어온 요청은 마지막 요청을 보관했다가 곧바로 실행한다.
+        // 앱 본체는 즉시 활성화하고 스플래시는 그 위에서 재생한다.
+        // 그래야 연출 도중 메시지나 선택지가 도착해도 비활성 UI에서 코루틴이 끊기지 않는다.
         if (isOpening)
-        {
-            pendingAppType = type;
-            return;
-        }
+            CancelOpening();
 
-        StartCoroutine(OpenRoutine(type));
+        ActivateApp(type);
+        StartOpenRoutine(type);
+    }
+
+    private void ActivateApp(AppType type)
+    {
+        if (currentApp != null)
+            currentApp.SetActive(false);
+
+        currentApp = null;
+        CurrentAppType = null;
+        AppChanged?.Invoke(null);
+
+        if (!appDictionary.TryGetValue(type, out GameObject app))
+            return;
+
+        currentApp = app;
+        currentApp.SetActive(true);
+        CurrentAppType = type;
+        if (type == AppType.Message)
+        {
+            DialogueManager dialogue = currentApp.GetComponentInChildren<DialogueManager>(true);
+            if (dialogue == null)
+                dialogue = FindAnyObjectByType<DialogueManager>(FindObjectsInactive.Include);
+            dialogue?.OpenMostRecentConversation();
+        }
+        AppChanged?.Invoke(type);
+    }
+
+    private void StartOpenRoutine(AppType type)
+    {
+        openingStartedAt = Time.realtimeSinceStartup;
+        openingRoutine = StartCoroutine(OpenRoutine(type));
+    }
+
+    private void CancelOpening()
+    {
+        if (openingRoutine != null)
+            StopCoroutine(openingRoutine);
+        openingRoutine = null;
+        isOpening = false;
+        pendingAppType = null;
+        if (splash != null)
+            splash.SetActive(false);
     }
 
     //=========================
@@ -141,15 +184,6 @@ public class AppWindow : MonoBehaviour
         isOpening = true;
         if (appOpenClip != null)
             uiAudioSource.PlayOneShot(appOpenClip, 0.22f);
-
-        // 이전 앱이 켜져있으면 종료
-        if (currentApp != null)
-        {
-            currentApp.SetActive(false);
-            currentApp = null;
-            CurrentAppType = null;
-            AppChanged?.Invoke(null);
-        }
 
         //-------------------
         // Splash 시작
@@ -173,22 +207,7 @@ public class AppWindow : MonoBehaviour
             yield return null;
         }
 
-        //-------------------
-        // 앱 켜기
-        //-------------------
-
-        // Dictionary에서 바로 찾기
-        if (appDictionary.TryGetValue(type, out GameObject app))
-        {
-            currentApp = app;
-            currentApp.SetActive(true);
-            CurrentAppType = type;
-            AppChanged?.Invoke(type);
-        }
-
-        //-------------------
-        // Splash 잠깐 유지
-        //-------------------
+        // 앱은 이미 활성화되어 있고 스플래시만 잠깐 유지한다.
 
         yield return new WaitForSecondsRealtime(splashTime);
 
@@ -199,14 +218,9 @@ public class AppWindow : MonoBehaviour
         splash.SetActive(false);
 
         isOpening = false;
+        openingRoutine = null;
 
-        if (pendingAppType.HasValue)
-        {
-            AppType queuedType = pendingAppType.Value;
-            pendingAppType = null;
-            if (CurrentAppType != queuedType || currentApp == null || !currentApp.activeInHierarchy)
-                StartCoroutine(OpenRoutine(queuedType));
-        }
+        pendingAppType = null;
     }
 
     //=========================
@@ -215,7 +229,7 @@ public class AppWindow : MonoBehaviour
 
     public void CloseCurrentApp()
     {
-        pendingAppType = null;
+        CancelOpening();
         if (currentApp != null)
         {
             currentApp.SetActive(false);
