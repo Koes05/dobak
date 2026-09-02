@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using Dobak.Manager;
 using TMPro;
 using UnityEngine.UI;
@@ -51,11 +51,12 @@ namespace Dobak.App.Bank
 
             // 뱅크 화면에는 "뱅크 -> 카지노 충전" 기록만 표시 (카지노 내부 베팅/당첨은 표시 안 함)
             int visibleCount = 0;
-            foreach (var record in CoinManager.Instance.History)
+            for (int index = CoinManager.Instance.History.Count - 1; index >= 0; index--)
             {
+                var record = CoinManager.Instance.History[index];
                 if (IsVisibleBankRecord(record.scope))
                 {
-                    CreateEntry(record);
+                    CreateEntry(record, false);
                     visibleCount++;
                 }
             }
@@ -69,17 +70,20 @@ namespace Dobak.App.Bank
             if (IsVisibleBankRecord(record.scope))
             {
                 RemoveEmptyState();
-                CreateEntry(record);
+                CreateEntry(record, true);
             }
         }
 
-        private void CreateEntry(TransactionRecord record)
+        private void CreateEntry(TransactionRecord record, bool newestLive)
         {
             var entry = Instantiate(entryPrefab, entryContainer);
             foreach (TMP_Text text in entry.GetComponentsInChildren<TMP_Text>(true))
                 text.font = cashText.font;
             entry.Set(record);
-            entry.transform.SetAsFirstSibling();
+            if (newestLive)
+                entry.transform.SetAsFirstSibling();
+            else
+                entry.transform.SetAsLastSibling();
         }
 
         private static bool IsVisibleBankRecord(TransactionScope scope)

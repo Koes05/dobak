@@ -1,6 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using TMPro;
 using UnityEngine;
@@ -91,12 +92,12 @@ public class QuizManager : MonoBehaviour
         if (questionText != null)
         {
             questionText.enableAutoSizing = true;
-            questionText.fontSizeMin = 30f;
-            questionText.fontSizeMax = 48f;
+            questionText.fontSizeMin = 28f;
+            questionText.fontSizeMax = 40f;
             questionText.fontStyle |= FontStyles.Bold;
             questionText.textWrappingMode = TextWrappingModes.Normal;
             questionText.overflowMode = TextOverflowModes.Overflow;
-            questionText.margin = new Vector4(60f, 28f, 60f, 28f);
+            questionText.margin = new Vector4(42f, 24f, 42f, 24f);
 
             RectTransform questionPanel = questionText.transform.parent.GetComponent<RectTransform>();
             if (questionPanel != null)
@@ -111,18 +112,17 @@ public class QuizManager : MonoBehaviour
 
         foreach (Button answerButton in answerButtons)
         {
-            TMP_Text label = answerButton != null ? answerButton.GetComponentInChildren<TMP_Text>(true) : null;
+            TMP_Text label = GetAnswerLabel(answerButton);
             if (label == null)
                 continue;
 
-            label.enableAutoSizing = true;
-            label.fontSizeMin = 26f;
-            label.fontSizeMax = 36f;
-            label.fontStyle |= FontStyles.Bold;
+            // 폰트 크기는 씬에 설정된 Answer_Text 값을 그대로 사용한다.
+            // 런타임에서 크기를 바꾸지 않고 RectTransform만 버튼 내부에 맞춘다.
+            label.enableAutoSizing = false;
             label.textWrappingMode = TextWrappingModes.Normal;
-            label.overflowMode = TextOverflowModes.Overflow;
-            label.alignment = TextAlignmentOptions.MidlineLeft;
-            label.margin = new Vector4(260f, 8f, 36f, 8f);
+            label.overflowMode = TextOverflowModes.Ellipsis;
+            label.alignment = TextAlignmentOptions.MidlineRight;
+            ConfigureAnswerTextRect(label);
         }
 
         foreach (TMP_Text label in GetComponentsInChildren<TMP_Text>(true))
@@ -151,7 +151,17 @@ public class QuizManager : MonoBehaviour
         if (answerHeaderObject != null)
             answerHeaderObject.SetActive(false);
 
-        float[] choiceY = { -10f, -160f, -310f, -460f };
+        // 씬에 남아 있는 구형 선택지 번호(1/2/3/4)와 런타임 Choice Number를 모두 숨긴다.
+        foreach (TMP_Text label in GetComponentsInChildren<TMP_Text>(true))
+        {
+            if (label == null || answerButtons.Any(button => button != null && label.transform.IsChildOf(button.transform)))
+                continue;
+            string value = (label.text ?? string.Empty).Trim();
+            if (value == "1" || value == "2" || value == "3" || value == "4")
+                label.gameObject.SetActive(false);
+        }
+
+        float[] choiceY = { -45f, -217f, -389f, -561f };
         for (int i = 0; i < answerButtons.Length; i++)
         {
             RectTransform choiceRect = answerButtons[i] != null
@@ -160,15 +170,15 @@ public class QuizManager : MonoBehaviour
             if (choiceRect == null)
                 continue;
 
-            choiceRect.sizeDelta = new Vector2(1040f, 174f);
-            choiceRect.anchoredPosition = new Vector2(0f, choiceY[Mathf.Min(i, choiceY.Length - 1)]);
-            TMP_Text label = answerButtons[i].GetComponentInChildren<TMP_Text>(true);
+            choiceRect.anchorMin = choiceRect.anchorMax = new Vector2(0.5f, 0.5f);
+            choiceRect.pivot = new Vector2(0.5f, 0.5f);
+            choiceRect.sizeDelta = new Vector2(1100f, 150f);
+            choiceRect.anchoredPosition = new Vector2(440f, choiceY[Mathf.Min(i, choiceY.Length - 1)]);
+            TMP_Text label = GetAnswerLabel(answerButtons[i]);
             if (label != null)
             {
-                label.rectTransform.anchorMin = Vector2.zero;
-                label.rectTransform.anchorMax = Vector2.one;
-                label.rectTransform.anchoredPosition = Vector2.zero;
-                label.rectTransform.sizeDelta = Vector2.zero;
+                ConfigureAnswerTextRect(label);
+                label.alignment = TextAlignmentOptions.MidlineRight;
                 label.color = new Color(0.08f, 0.1f, 0.14f, 1f);
             }
 
@@ -188,7 +198,9 @@ public class QuizManager : MonoBehaviour
                 choiceImage.color = Color.white;
             }
 
-            CreateChoiceNumber(answerButtons[i], i + 1);
+            Transform choiceNumber = answerButtons[i].transform.Find("Choice Number");
+            if (choiceNumber != null)
+                choiceNumber.gameObject.SetActive(false);
         }
 
         if (progressText != null)
@@ -280,12 +292,42 @@ public class QuizManager : MonoBehaviour
         return sprite;
     }
 
+    private static TMP_Text GetAnswerLabel(Button button)
+    {
+        if (button == null)
+            return null;
+
+        TMP_Text answerText = button.GetComponentsInChildren<TMP_Text>(true)
+            .FirstOrDefault(label => label != null && label.gameObject.name == "Answer_Text");
+        if (answerText != null)
+            return answerText;
+
+        return button.GetComponentsInChildren<TMP_Text>(true)
+            .FirstOrDefault(label => label != null && label.gameObject.name != "Choice Number");
+    }
+
+    private static void ConfigureAnswerTextRect(TMP_Text label)
+    {
+        if (label == null)
+            return;
+
+        RectTransform rect = label.rectTransform;
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        // Inspector 기준: Left 150 / Right 150 / Top 0 / Bottom 0.
+        rect.offsetMin = new Vector2(150f, 0f);
+        rect.offsetMax = new Vector2(-150f, 0f);
+        rect.anchoredPosition = Vector2.zero;
+        label.margin = Vector4.zero;
+    }
+
     private static void CreateChoiceNumber(Button button, int number)
     {
         if (button == null || button.transform.Find("Choice Number") != null)
             return;
 
-        TMP_Text source = button.GetComponentInChildren<TMP_Text>(true);
+        TMP_Text source = GetAnswerLabel(button);
         GameObject numberObject = new GameObject(
             "Choice Number",
             typeof(RectTransform),
@@ -402,8 +444,13 @@ public class QuizManager : MonoBehaviour
             answerButtons[i].gameObject.SetActive(visible);
             answerButtons[i].interactable = visible;
             if (visible)
-                answerButtons[i].GetComponentInChildren<TMP_Text>().text = WrapChoiceText(item.choices[i]);
+            {
+                TMP_Text label = GetAnswerLabel(answerButtons[i]);
+                if (label != null)
+                    label.text = WrapChoiceText(item.choices[i]);
+            }
         }
+        LayoutAnswerButtons();
         if (resultText != null)
             resultText.gameObject.SetActive(false);
         if (resultBox != null)
@@ -412,30 +459,47 @@ public class QuizManager : MonoBehaviour
 
     private static string WrapChoiceText(string text)
     {
-        const int targetLineLength = 28;
-        string[] words = (text ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (words.Length == 0)
-            return string.Empty;
+        // 실제 버튼 폭을 기준으로 TMP가 자연스럽게 줄바꿈한다.
+        // 문자 수 기준 강제 줄바꿈은 "득실 / 을"처럼 조사가 따로 떨어지는 원인이 된다.
+        return (text ?? string.Empty).Trim();
+    }
 
-        var result = new StringBuilder();
-        int lineLength = 0;
-        foreach (string word in words)
+    private void LayoutAnswerButtons()
+    {
+        const float firstY = -45f;
+        const float gap = 22f;
+        const float cardWidth = 1100f;
+        const float cardHeight = 150f;
+        float currentY = firstY;
+
+        for (int i = 0; i < answerButtons.Length; i++)
         {
-            if (lineLength > 0 && lineLength + 1 + word.Length > targetLineLength)
-            {
-                result.Append('\n');
-                lineLength = 0;
-            }
-            else if (lineLength > 0)
-            {
-                result.Append(' ');
-                lineLength++;
-            }
+            Button button = answerButtons[i];
+            if (button == null || !button.gameObject.activeSelf)
+                continue;
 
-            result.Append(word);
-            lineLength += word.Length;
+            TMP_Text label = GetAnswerLabel(button);
+            RectTransform rect = button.GetComponent<RectTransform>();
+            if (label == null || rect == null)
+                continue;
+
+            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(cardWidth, cardHeight);
+            // X는 기존 위치를 유지하고 Y만 일정 간격으로 정렬한다.
+            rect.anchoredPosition = new Vector2(440f, currentY);
+
+            ConfigureAnswerTextRect(label);
+            label.alignment = TextAlignmentOptions.MidlineRight;
+            label.textWrappingMode = TextWrappingModes.Normal;
+            label.overflowMode = TextOverflowModes.Ellipsis;
+
+            Transform choiceNumber = button.transform.Find("Choice Number");
+            if (choiceNumber != null)
+                choiceNumber.gameObject.SetActive(false);
+
+            currentY -= cardHeight + gap;
         }
-        return result.ToString();
     }
 
     private void CheckAnswer(int selectedIndex)
@@ -553,7 +617,7 @@ public class QuizManager : MonoBehaviour
         rect.anchorMin = answering ? new Vector2(0f, 0.45f) : Vector2.zero;
         rect.anchorMax = Vector2.one;
         rect.anchoredPosition = Vector2.zero;
-        rect.sizeDelta = answering ? new Vector2(-120f, -110f) : new Vector2(-140f, -120f);
+        rect.sizeDelta = answering ? new Vector2(-70f, -100f) : new Vector2(-100f, -110f);
     }
 
     public void ResetDailyQuiz()

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
@@ -80,6 +80,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private AudioSource locationAudioSource;
     private AudioClip schoolArrivalClip;
     private AudioClip cafeArrivalClip;
+    private AudioClip uiButtonClip;
     private readonly List<TMP_Text> dateTexts = new List<TMP_Text>();
     private readonly List<TMP_Text> clockTexts = new List<TMP_Text>();
     private readonly List<TMP_Text> locationTexts = new List<TMP_Text>();
@@ -265,6 +266,14 @@ public sealed class GameFlowManager : MonoBehaviour
 
         if (location == "학교" && !IsWeekend && !schoolDone)
         {
+            if (currentHour >= SchoolEndHour)
+            {
+                appWindow?.CloseCurrentApp();
+                ShowFeedback("오늘 수업은 이미 끝났다. 전달된 내용은 메시지에서 확인하자.");
+                scenarioV3?.HandleExternalAction("school_missed");
+                return;
+            }
+
             int arrivalHour = currentHour + travelHours;
             if (arrivalHour < SchoolOpeningHour)
             {
@@ -475,19 +484,30 @@ public sealed class GameFlowManager : MonoBehaviour
     private string CompleteTravelActivity(string location, int travelHours)
     {
         currentLocation = location;
-        AdvanceHours(travelHours);
+        if (scenarioV3 != null)
+            V3AddMinutes(travelHours * 60);
+        else
+            AdvanceHours(travelHours);
 
         if (location == "학교" && !IsWeekend && !schoolDone)
         {
             schoolDone = true;
-            AdvanceHours(Mathf.Max(0, SchoolEndHour - currentHour));
+            int classHours = Mathf.Max(0, SchoolEndHour - currentHour);
+            if (scenarioV3 != null)
+                V3AddMinutes(classHours * 60);
+            else
+                AdvanceHours(classHours);
             return "school_complete";
         }
 
         if (location == "카페" && IsWeekend && !jobDone)
         {
             jobDone = true;
-            AdvanceHours(JobEndHour - JobStartHour);
+            int jobHours = JobEndHour - JobStartHour;
+            if (scenarioV3 != null)
+                V3AddMinutes(jobHours * 60);
+            else
+                AdvanceHours(jobHours);
             coinManager?.AddBankCash(JobDailyWage, "카페 아르바이트 일당");
             return "job_complete";
         }
@@ -515,6 +535,7 @@ public sealed class GameFlowManager : MonoBehaviour
         locationAudioSource.volume = 0.3f;
         schoolArrivalClip = Resources.Load<AudioClip>("Audio/SFX/school_bell");
         cafeArrivalClip = Resources.Load<AudioClip>("Audio/SFX/cafe_door_bell");
+        uiButtonClip = Resources.Load<AudioClip>("Audio/SFX/button_click");
     }
 
     private void PlayLocationSfx(AudioClip clip, float volume)
@@ -550,6 +571,20 @@ public sealed class GameFlowManager : MonoBehaviour
         TriggerScenario("help_requested");
     }
 
+    public int V3RepayAvailableDebt(string description = "빌린 돈 상환")
+    {
+        if (gameEnded || debt <= 0 || coinManager == null)
+            return 0;
+
+        int repayment = Mathf.Min(debt, coinManager.BankCash);
+        if (repayment <= 0 || !coinManager.TrySpendBankCash(repayment, description, TransactionScope.DebtRepayment))
+            return 0;
+
+        debt = Mathf.Max(0, debt - repayment);
+        RefreshUI();
+        return repayment;
+    }
+
     public void RepayDebt()
     {
         if (gameEnded || debt <= 0 || coinManager == null)
@@ -579,17 +614,36 @@ public sealed class GameFlowManager : MonoBehaviour
             return;
 
         homeworkDone = true;
-        AdvanceHours(2);
+        pendingAppAttention.Remove(AppType.Study);
+        tutorialHintTarget = tutorialHintTarget == AppType.Study ? null : tutorialHintTarget;
+
         if (scenarioV3 != null)
+        {
+            V3AddMinutes(120);
+            // 공부가 끝났으면 결과 화면을 계속 붙잡지 않고 태블릿 홈으로 복귀한다.
+            appWindow?.CloseCurrentApp();
             scenarioV3.HandleExternalAction("homework_complete");
+        }
         else
+        {
+            AdvanceHours(2);
             TriggerScenario("homework_complete");
+        }
+        RefreshAttentionDots();
     }
 
     public bool CanOpenStudy()
     {
         if (gameEnded)
             return false;
+
+        // 초반에는 공부 앱으로 바로 빠져 버리지 않도록 엄마와 민재의 첫 메시지를 실제로 확인한 뒤 해금한다.
+        if (scenarioV3 != null && !scenarioV3.HasCompletedInitialMessageIntro)
+        {
+            ShowFeedback("엄마와 민재의 메시지를 먼저 확인하자.");
+            V3MarkAppAttention(AppType.Message);
+            return false;
+        }
 
         if (!IsWeekend && !schoolDone)
         {
@@ -991,6 +1045,27 @@ public sealed class GameFlowManager : MonoBehaviour
         if (string.IsNullOrWhiteSpace(action))
             return;
 
+        const string v3BorrowSendPrefix = "v3-borrow-send:";
+        if (action.StartsWith(v3BorrowSendPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            scenarioV3?.ConfirmDeferredBorrowMessage(action.Substring(v3BorrowSendPrefix.Length));
+            return;
+        }
+
+        const string v3BorrowCancelPrefix = "v3-borrow-cancel:";
+        if (action.StartsWith(v3BorrowCancelPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            scenarioV3?.CancelDeferredBorrowMessage(action.Substring(v3BorrowCancelPrefix.Length));
+            return;
+        }
+
+        const string v3SendMessagePrefix = "v3-send-message:";
+        if (action.StartsWith(v3SendMessagePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            scenarioV3?.ConfirmPendingOutgoingMessage(action.Substring(v3SendMessagePrefix.Length));
+            return;
+        }
+
         const string v3ChoicePrefix = "v3-choice:";
         if (action.StartsWith(v3ChoicePrefix, StringComparison.OrdinalIgnoreCase))
         {
@@ -1275,6 +1350,12 @@ public sealed class GameFlowManager : MonoBehaviour
         RefreshAttentionDots();
     }
 
+    public void V3NotifyConversationClosed(SpeakerType speaker)
+    {
+        scenarioV3?.NotifyConversationClosed(speaker);
+        RefreshAttentionDots();
+    }
+
     public void V3ShowTutorialHint(AppType target, string text)
     {
         tutorialHintTarget = target;
@@ -1442,6 +1523,12 @@ public sealed class GameFlowManager : MonoBehaviour
         if (existing != null)
         {
             gamblingAppIcon = existing.gameObject;
+            Button existingButton = existing.GetComponent<Button>();
+            if (existingButton != null)
+            {
+                // 씬에 이미 배치된 런처는 기존 실행 로직은 유지하고 클릭 SFX만 보강한다.
+                existingButton.onClick.AddListener(() => PlayLocationSfx(uiButtonClip, 0.22f));
+            }
             return;
         }
 
@@ -1496,6 +1583,28 @@ public sealed class GameFlowManager : MonoBehaviour
         if (!gamblingUnlocked || gameEnded || isTransitioning || scenarioV3 == null)
             return;
 
+        PlayLocationSfx(uiButtonClip, 0.22f);
+
+        // 일정 잠금 상태라면 버튼을 무반응으로 두지 않고 해야 할 일을 직접 알려 준다.
+        if (IsWeekend && !jobDone)
+        {
+            V3ShowDialogue("나", "(아직 오늘 해야 할 일이 남아 있다. 알바부터 다녀오자.)",
+                () => V3MarkAppAttention(AppType.Map));
+            return;
+        }
+        if (!IsWeekend && !schoolDone)
+        {
+            V3ShowDialogue("나", "(아직 오늘 해야 할 일이 남아 있다. 학교부터 다녀오자.)",
+                () => V3MarkAppAttention(AppType.Map));
+            return;
+        }
+        if (!IsWeekend && V3HasStudyToday && !homeworkDone)
+        {
+            V3ShowDialogue("나", "(아직 오늘 해야 할 일이 남아 있다. 공부부터 끝내자.)",
+                () => V3MarkAppAttention(AppType.Study));
+            return;
+        }
+
         pendingAppAttention.Remove(AppType.Browser);
         appWindow?.CloseCurrentApp();
         scenarioV3.TryStartGambleFromHome();
@@ -1507,10 +1616,12 @@ public sealed class GameFlowManager : MonoBehaviour
         foreach (KeyValuePair<AppType, GameObject> pair in appAttentionDots)
         {
             bool visible = pendingAppAttention.Contains(pair.Key);
-            if (pair.Key == AppType.Map)
+            if (pair.Key == AppType.Browser)
+                visible |= gamblingUnlocked && !gameEnded;
+            else if (pair.Key == AppType.Map)
                 visible |= currentLocation == "집" && (IsWeekend ? !jobDone : !schoolDone);
             else if (pair.Key == AppType.Message)
-                visible |= (scenarioV3 != null && scenarioV3.HasPendingMessageAction) ||
+                visible |= (scenarioV3 != null && scenarioV3.HasUnreadMessageAttention) ||
                            (dialogueManager != null && dialogueManager.TotalUnreadCount > 0);
             else if (pair.Key == AppType.Study)
                 visible |= !IsWeekend && schoolDone && V3HasStudyToday && !homeworkDone;
@@ -1563,6 +1674,13 @@ public sealed class GameFlowManager : MonoBehaviour
 
         string goalLine = $"노트북 수리비  {V3BankCash:N0} / 250,000원";
         string debtLine = debt > 0 ? $"빌린 돈  {debt:N0}원" : "";
+        bool knowsProject = scenarioV3 == null || currentDay > 1 || schoolDone ||
+                            string.Equals(scenarioV3.GetState("flag.project_introduced"), "true", StringComparison.OrdinalIgnoreCase);
+        string studyLine = !knowsProject
+            ? ""
+            : V3HasStudyToday
+                ? $"{Mark(homeworkDone)} {quizManager.CurrentActivityTitle}"
+                : "오늘은 별도 과제 없음";
         string[] lines = IsWeekend
             ? new[]
             {
@@ -1574,7 +1692,7 @@ public sealed class GameFlowManager : MonoBehaviour
             : new[]
             {
                 $"{Mark(schoolDone)} 학교 가기",
-                V3HasStudyToday ? $"{Mark(homeworkDone)} {quizManager.CurrentActivityTitle}" : "오늘은 별도 과제 없음",
+                studyLine,
                 goalLine,
                 debtLine
             };

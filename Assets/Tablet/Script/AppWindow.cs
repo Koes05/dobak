@@ -124,30 +124,37 @@ public class AppWindow : MonoBehaviour
         if (CurrentAppType == type && currentApp != null && currentApp.activeInHierarchy)
             return;
 
-        // 앱 본체는 즉시 활성화하고 스플래시는 그 위에서 재생한다.
-        // 그래야 연출 도중 메시지나 선택지가 도착해도 비활성 UI에서 코루틴이 끊기지 않는다.
+        if (!appDictionary.ContainsKey(type))
+            return;
+
+        // 대상 앱은 스플래시 연출이 끝날 때까지 숨긴다.
+        // 이전에는 앱을 먼저 활성화해서 연출 뒤로 본체가 미리 보였다.
         if (isOpening)
             CancelOpening();
 
-        ActivateApp(type);
+        if (currentApp != null)
+        {
+            currentApp.SetActive(false);
+            currentApp = null;
+        }
+        CurrentAppType = null;
+        pendingAppType = type;
+        AppChanged?.Invoke(null);
         StartOpenRoutine(type);
     }
 
     private void ActivateApp(AppType type)
     {
-        if (currentApp != null)
-            currentApp.SetActive(false);
-
-        currentApp = null;
-        CurrentAppType = null;
-        AppChanged?.Invoke(null);
-
         if (!appDictionary.TryGetValue(type, out GameObject app))
             return;
+
+        if (currentApp != null && currentApp != app)
+            currentApp.SetActive(false);
 
         currentApp = app;
         currentApp.SetActive(true);
         CurrentAppType = type;
+        pendingAppType = null;
         if (type == AppType.Message)
         {
             DialogueManager dialogue = currentApp.GetComponentInChildren<DialogueManager>(true);
@@ -207,19 +214,18 @@ public class AppWindow : MonoBehaviour
             yield return null;
         }
 
-        // 앱은 이미 활성화되어 있고 스플래시만 잠깐 유지한다.
-
         yield return new WaitForSecondsRealtime(splashTime);
 
         //-------------------
-        // Splash 종료
+        // Splash 종료 직전에 앱 활성화
         //-------------------
 
+        if (pendingAppType == type)
+            ActivateApp(type);
         splash.SetActive(false);
 
         isOpening = false;
         openingRoutine = null;
-
         pendingAppType = null;
     }
 

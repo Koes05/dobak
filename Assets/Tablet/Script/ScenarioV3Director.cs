@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
@@ -71,6 +71,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private readonly List<string> dialogueLog = new List<string>();
     private readonly HashSet<string> deliveredOutgoingLineIds =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> deliveredIncomingLineIds =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     private GameFlowManager flow;
     private DialogueManager dialogue;
@@ -98,7 +100,20 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private int currentDialoguePageIndex;
     private bool isTyping;
     private bool sceneTransitionInProgress;
+    private bool waitingForIncomingMessageRead;
+    private SpeakerType waitingIncomingSpeaker = SpeakerType.Unknown;
+    private ScenarioV3Line waitingIncomingLine;
+    private Coroutine incomingMessageCoroutine;
+    private Coroutine unreadAttentionSyncCoroutine;
+    private bool waitingForMessageSceneClose;
+    private Action pendingAfterMessageClose;
+    private bool pendingLateWakeAfterGambling;
+    private bool pendingBorrowMorningAdvance;
     private bool activeSceneTransitionHandled;
+    private int lastHomeVisualPeriod = -1;
+    private bool bypassHomeTimeTransition;
+    private Coroutine homeTimeTransitionCoroutine;
+    private RawImage homeTransitionOverlay;
 
     private GameObject novelPanel;
     private RawImage novelBackground;
@@ -112,6 +127,9 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private Button choiceCButton;
     private GameObject historyPanel;
     private TMP_Text historyText;
+    private RectTransform historyViewportRect;
+    private RectTransform historyContentRect;
+    private ScrollRect historyScroll;
     private AudioSource sfxSource;
     private AudioSource typingSource;
     private AudioClip popupClip;
@@ -126,13 +144,17 @@ public sealed class ScenarioV3Director : MonoBehaviour
         : string.Empty;
     public IReadOnlyList<ScenarioV3Choice> CurrentChoices =>
         activeScene != null && activeLineIndex >= 0 && activeLineIndex < activeScene.lines.Count
-            ? activeScene.lines[activeLineIndex].Choices.ToList()
+            ? GetAvailableChoices(activeScene.lines[activeLineIndex])
             : Array.Empty<ScenarioV3Choice>();
     public bool CanRewind => checkpoints.Count > 0;
     public string RewindLabel => FindRewindCheckpoint()?.label ?? string.Empty;
     public bool HasPendingMessageAction => pendingOutgoingLine != null || waitingForMessageChoice || GetInt("unread_count") > 0;
+    public bool HasUnreadMessageAttention => GetInt("unread_count") > 0;
     public bool HasPendingGambleOffer => GetState("pending.gamble_attention") == "true";
     public bool IsGamblingAppUnlocked => GetState("flag.gambling_app_unlocked") == "true";
+    public bool HasCompletedInitialMessageIntro =>
+        GetState("flag.d1_mom_message_read") == "true" &&
+        GetState("flag.minjae_first_invite_read") == "true";
 
     private string SavePath => Path.Combine(Application.persistentDataPath, "scenario_v3_history.json");
 
@@ -159,6 +181,33 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (!IsReady || string.IsNullOrWhiteSpace(trigger))
             return;
 
+        bool scheduleAction = trigger == "homework_complete" || trigger == "school_complete" ||
+                              trigger == "job_complete" || trigger == "school_missed" || trigger == "job_missed";
+        if (scheduleAction)
+        {
+            // 메시지 답장을 미룬 채 실제 일정 행동을 선택했다면 그 답장이
+            // 학교/알바/공부 장면을 막지 않게 한다. 메시지는 '안 보냄'으로 남긴다.
+            if (pendingOutgoingLine != null)
+            {
+                dialogue?.DismissEventChoices(pendingOutgoingSpeaker);
+                ClearPendingOutgoingMessage();
+                activeScene = null;
+                activeLineIndex = 0;
+            }
+            if (waitingForMessageChoice)
+            {
+                dialogue?.DismissEventChoices(waitingMessageSpeaker);
+                if (waitingMessageSpeaker == SpeakerType.Friend)
+                    AddInt("counter.minjae_ignored", 1);
+                waitingForMessageChoice = false;
+                waitingMessageSpeaker = SpeakerType.Unknown;
+                waitingMessageScene = null;
+                waitingMessageLineIndex = -1;
+                activeScene = null;
+                activeLineIndex = 0;
+            }
+        }
+
         if (trigger == "homework_complete" || trigger == "school_complete" || trigger == "job_complete")
             ResolvePendingGambleAttentionAsDeclined();
 
@@ -166,6 +215,14 @@ public sealed class ScenarioV3Director : MonoBehaviour
             SetState("schedule.homework", "complete");
         else if (trigger == "school_complete")
             SetState("schedule.school", "complete");
+        else if (trigger == "school_missed")
+        {
+            if (GetState("schedule.school") == "pending")
+            {
+                SetState("schedule.school", "missed");
+                AddInt("counter.school_absences", 1);
+            }
+        }
         else if (trigger == "job_complete")
             SetState("schedule.job", "complete");
         else if (trigger == "job_missed")
@@ -183,10 +240,18 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     public void NotifyAppOpened(AppType? app)
     {
+        if (app == null && waitingForMessageSceneClose && (dialogue == null || !dialogue.IsDialogueOpen))
+        {
+            ResumeAfterMessageClose();
+            return;
+        }
+
         if (app == AppType.Message)
         {
             flow.V3HideTutorialHint(AppType.Message);
-            TryDeliverPendingOutgoingMessage();
+            SetState("unread_count", dialogue != null
+                ? dialogue.TotalUnreadCount.ToString(CultureInfo.InvariantCulture)
+                : "0");
             Save();
         }
         else if (app == AppType.Map)
@@ -204,10 +269,73 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (!IsReady || dialogue == null)
             return;
 
-        SetState("unread_count", dialogue.TotalUnreadCount.ToString(CultureInfo.InvariantCulture));
-        if (speaker == SpeakerType.Friend && waitingForMessageChoice)
+        // 채팅방을 실제로 열어 읽는 순간 unread와 홈의 빨간 점을 즉시 동기화한다.
+        // Unity UI/알림 오브젝트가 같은 프레임에 정리되는 경우가 있어 다음 프레임에도 한 번 더 맞춘다.
+        SynchronizeMessageAttention();
+        if (unreadAttentionSyncCoroutine != null)
+            StopCoroutine(unreadAttentionSyncCoroutine);
+        unreadAttentionSyncCoroutine = StartCoroutine(SynchronizeMessageAttentionNextFrame());
+
+        if (speaker == SpeakerType.Mom && GetState("flag.d1_mom_message_available") == "true")
+        {
+            SetState("flag.d1_mom_message_read", "true");
+        }
+        else if (speaker == SpeakerType.Friend)
+        {
             flow.V3HideTutorialHint(AppType.Message);
+            if (GetState("flag.minjae_first_invite_available") == "true")
+            {
+                SetState("flag.minjae_first_invite_read", "true");
+                if (!IsGamblingAppUnlocked)
+                    ApplyEffect("gamble:unlock");
+            }
+        }
+
+        // 알림만 본 상태에서는 시나리오 독백/다음 메시지로 진행하지 않는다.
+        // 실제 해당 채팅방을 열었을 때 비로소 읽은 것으로 보고 진행한다.
+        if (waitingForIncomingMessageRead && speaker == waitingIncomingSpeaker && waitingIncomingLine != null)
+        {
+            waitingForIncomingMessageRead = false;
+            if (incomingMessageCoroutine != null)
+                StopCoroutine(incomingMessageCoroutine);
+            incomingMessageCoroutine = StartCoroutine(ResumeAfterIncomingMessageRead(waitingIncomingLine));
+        }
         Save();
+    }
+
+    private void SynchronizeMessageAttention()
+    {
+        int unread = dialogue != null ? dialogue.TotalUnreadCount : 0;
+        SetState("unread_count", unread.ToString(CultureInfo.InvariantCulture));
+        if (unread <= 0)
+            flow?.V3ClearAppAttention(AppType.Message);
+        flow?.V3Refresh();
+    }
+
+    private IEnumerator SynchronizeMessageAttentionNextFrame()
+    {
+        yield return null;
+        SynchronizeMessageAttention();
+        unreadAttentionSyncCoroutine = null;
+        Save();
+    }
+
+    public void NotifyConversationClosed(SpeakerType speaker)
+    {
+        if (!waitingForMessageSceneClose)
+            return;
+        ResumeAfterMessageClose();
+    }
+
+    private void ResumeAfterMessageClose()
+    {
+        waitingForMessageSceneClose = false;
+        Action action = pendingAfterMessageClose;
+        pendingAfterMessageClose = null;
+        if (action != null)
+            action();
+        else
+            FinishScene();
     }
 
     public void TryStartGambleFromHome()
@@ -216,6 +344,12 @@ public sealed class ScenarioV3Director : MonoBehaviour
             waitingForMessageChoice || pendingOutgoingLine != null)
             return;
 
+        if (!flow.IsDailyScheduleComplete)
+        {
+            flow.V3ShowDialogue("나", "(아직 오늘 해야 할 일이 남아 있다. 다른 일정부터 하자.)", null);
+            return;
+        }
+
         SetState("pending.gamble_attention", "false");
         flow.V3SetGamblingAttention(false);
         ApplyEffect("gamble:advance");
@@ -223,6 +357,85 @@ public sealed class ScenarioV3Director : MonoBehaviour
         immediateRoute = string.Empty;
         if (!string.IsNullOrWhiteSpace(target))
             PlayScene(target);
+        Save();
+    }
+
+    public void ConfirmDeferredBorrowMessage(string target)
+    {
+        string normalized = (target ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized != "mom" && normalized != "seojun")
+            return;
+        if (!string.Equals(GetState("pending.borrow_target"), normalized, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        SpeakerType speaker = normalized == "mom" ? SpeakerType.Mom : SpeakerType.Joonho;
+        dialogue?.DismissEventChoices(speaker);
+        SetState("pending.borrow_target", "none");
+        flow.V3ClearAppAttention(AppType.Message);
+        Save();
+        PlayScene(normalized == "mom" ? "mom_loan_response" : "seojun_loan_response");
+    }
+
+    public void CancelDeferredBorrowMessage(string target)
+    {
+        string normalized = (target ?? string.Empty).Trim().ToLowerInvariant();
+        SpeakerType speaker = normalized == "mom" ? SpeakerType.Mom : SpeakerType.Joonho;
+        dialogue?.DismissEventChoices(speaker);
+        if (string.Equals(GetState("pending.borrow_target"), normalized, StringComparison.OrdinalIgnoreCase))
+            SetState("pending.borrow_target", "none");
+        flow.V3ClearAppAttention(AppType.Message);
+        flow.V3ShowDialogue("나", "(역시 지금은 부탁하지 말자. 다른 방법을 생각해 보자.)", null);
+        Save();
+    }
+
+    private void PrepareDeferredBorrowRequest(string target)
+    {
+        string normalized = (target ?? string.Empty).Trim().ToLowerInvariant();
+        SpeakerType speaker;
+        string contactName;
+        string replyText;
+
+        if (normalized == "mom")
+        {
+            speaker = SpeakerType.Mom;
+            contactName = "엄마";
+            replyText = "엄마. 교통카드 충전해야 하는데 오만 원만 보내주면 안 돼?";
+        }
+        else if (normalized == "seojun")
+        {
+            speaker = SpeakerType.Joonho;
+            contactName = "서준";
+            replyText = "서준아. 미안한데 지금 급하게 오만 원만 빌려줄 수 있어? 다음 주에 꼭 갚을게.";
+        }
+        else
+        {
+            return;
+        }
+
+        if (GetState("borrowed." + normalized) == "true")
+            return;
+
+        SetState("pending.borrow_target", normalized);
+        dialogue?.EnsureContact(speaker, contactName);
+        dialogue?.PreferConversation(speaker);
+        dialogue?.SetEventChoices(speaker, new List<Choice>
+        {
+            new Choice
+            {
+                choiceText = "돈을 빌려 달라고 메시지 보낸다",
+                replyText = replyText,
+                nextDialogueID = -1,
+                scenarioAction = "v3-borrow-send:" + normalized
+            },
+            new Choice
+            {
+                choiceText = "역시 보내지 않는다",
+                replyText = string.Empty,
+                nextDialogueID = -1,
+                scenarioAction = "v3-borrow-cancel:" + normalized
+            }
+        });
+        flow.V3MarkAppAttention(AppType.Message);
         Save();
     }
 
@@ -252,7 +465,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         waitingMessageScene = null;
         waitingMessageLineIndex = -1;
         flow.V3Refresh();
-        AppendDialogueLog("나", string.IsNullOrWhiteSpace(choice.replyText) ? choice.text : choice.replyText);
+        if (!string.Equals(line.delivery, "message", StringComparison.OrdinalIgnoreCase))
+            AppendDialogueLog("나", string.IsNullOrWhiteSpace(choice.replyText) ? choice.text : choice.replyText);
         string before = SnapshotState();
         reactiveTrigger = string.Empty;
         pendingDayAdvance = false;
@@ -272,6 +486,38 @@ public sealed class ScenarioV3Director : MonoBehaviour
         Save();
 
         string nextScene = choice.nextSceneId;
+        Action continueChoice = () => ContinueAfterResolvedChoice(nextScene);
+        if (string.Equals(line.delivery, "message", StringComparison.OrdinalIgnoreCase) &&
+            dialogue != null && dialogue.IsDialogueOpen && !WillContinueInsideMessage(nextScene))
+        {
+            waitingForMessageSceneClose = true;
+            pendingAfterMessageClose = continueChoice;
+            return;
+        }
+        continueChoice();
+    }
+
+    private bool WillContinueInsideMessage(string nextScene)
+    {
+        string target = !string.IsNullOrWhiteSpace(immediateRoute) ? immediateRoute : nextScene;
+        if (!string.IsNullOrWhiteSpace(target))
+        {
+            ScenarioV3Scene scene = database.GetScene(target);
+            if (scene != null && scene.lines.Any(candidate =>
+                    string.Equals(candidate.delivery, "message", StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(reactiveTrigger))
+        {
+            return database.GetByTrigger(reactiveTrigger).Any(scene => scene.lines.Any(candidate =>
+                string.Equals(candidate.delivery, "message", StringComparison.OrdinalIgnoreCase)));
+        }
+        return false;
+    }
+
+    private void ContinueAfterResolvedChoice(string nextScene)
+    {
         if (!string.IsNullOrWhiteSpace(immediateRoute))
         {
             string routedScene = immediateRoute;
@@ -282,10 +528,13 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
         if (pendingDayAdvance)
         {
-            FinalizeCurrentDayStatus();
+            // 시나리오 대사/메시지가 날짜를 강제로 넘기지 않는다.
+            // 날짜 변경은 취침 앱을 통해서만 처리한다.
+            pendingDayAdvance = false;
             activeScene = null;
-            QueueTrigger("day_end", AdvanceToNextDay);
-            StartQueuedScene();
+            HideNovel();
+            flow.V3MarkAppAttention(AppType.Sleep);
+            TryQueueBedtimeCue();
             return;
         }
 
@@ -320,6 +569,14 @@ public sealed class ScenarioV3Director : MonoBehaviour
             activeLineIndex = 0;
         }
 
+        if (pendingOutgoingLine != null)
+        {
+            dialogue?.DismissEventChoices(pendingOutgoingSpeaker);
+            ClearPendingOutgoingMessage();
+            activeScene = null;
+            activeLineIndex = 0;
+        }
+
         SetState("schedule.sleep", "complete");
         QueueTrigger("before_sleep", CompleteSleepDay);
         StartQueuedScene();
@@ -328,6 +585,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private void CompleteSleepDay()
     {
         FinalizeCurrentDayStatus();
+        if (GetState("schedule.school") == "missed")
+            QueueTrigger("school_missed", null);
         QueueTrigger("day_end", AdvanceToNextDay);
         StartQueuedScene();
     }
@@ -346,11 +605,20 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
         sceneQueue.Clear();
         queueCompleted = null;
+        waitingForIncomingMessageRead = false;
+        waitingIncomingSpeaker = SpeakerType.Unknown;
+        waitingIncomingLine = null;
+        if (incomingMessageCoroutine != null)
+            StopCoroutine(incomingMessageCoroutine);
+        incomingMessageCoroutine = null;
+        waitingForMessageSceneClose = false;
+        pendingAfterMessageClose = null;
         waitingForMessageChoice = false;
         waitingMessageScene = null;
         waitingMessageLineIndex = -1;
         ClearPendingOutgoingMessage();
         deliveredOutgoingLineIds.Clear();
+        deliveredIncomingLineIds.Clear();
         pendingDayAdvance = false;
         reactiveTrigger = string.Empty;
         immediateRoute = string.Empty;
@@ -401,6 +669,16 @@ public sealed class ScenarioV3Director : MonoBehaviour
         sceneQueue.Clear();
         sceneTransitionInProgress = false;
         activeSceneTransitionHandled = false;
+        waitingForIncomingMessageRead = false;
+        waitingIncomingSpeaker = SpeakerType.Unknown;
+        waitingIncomingLine = null;
+        if (incomingMessageCoroutine != null)
+            StopCoroutine(incomingMessageCoroutine);
+        incomingMessageCoroutine = null;
+        waitingForMessageSceneClose = false;
+        pendingAfterMessageClose = null;
+        pendingLateWakeAfterGambling = false;
+        pendingBorrowMorningAdvance = false;
         activeScene = null;
         activeLineIndex = 0;
         waitingForMessageChoice = false;
@@ -413,6 +691,15 @@ public sealed class ScenarioV3Director : MonoBehaviour
         checkpoints.Clear();
         dialogueLog.Clear();
         deliveredOutgoingLineIds.Clear();
+        deliveredIncomingLineIds.Clear();
+        lastHomeVisualPeriod = -1;
+        if (homeTimeTransitionCoroutine != null)
+        {
+            StopCoroutine(homeTimeTransitionCoroutine);
+            homeTimeTransitionCoroutine = null;
+        }
+        if (homeTransitionOverlay != null)
+            homeTransitionOverlay.gameObject.SetActive(false);
         state.Clear();
         state["schedule.school"] = "pending";
         state["schedule.homework"] = "pending";
@@ -430,7 +717,17 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["counter.job_attendance"] = "0";
         state["counter.gamble_sessions"] = "0";
         state["pending.gamble_attention"] = "false";
+        state["pending.borrow_menu"] = "false";
+        state["pending.borrow_target"] = "none";
+        state["flag.late_wake_today"] = "false";
+        state["flag.borrow_deferred"] = "false";
+        state["borrowed.mom"] = "false";
+        state["borrowed.seojun"] = "false";
+        state["borrowed.minjae"] = "false";
         state["flag.gambling_app_unlocked"] = "false";
+        state["flag.d1_mom_message_available"] = "false";
+        state["flag.d1_mom_message_read"] = "false";
+        state["flag.minjae_first_invite_read"] = "false";
         state["relation.seoyeon"] = "0";
         state["relation.manager"] = "0";
         flow.V3ResetRun(50000);
@@ -556,6 +853,13 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
 
         ScenarioV3Line line = activeScene.lines[activeLineIndex];
+        if (pendingLateWakeAfterGambling &&
+            string.Equals(activeScene.arc, "gambling", StringComparison.OrdinalIgnoreCase) &&
+            GetAvailableChoices(line).Count > 0)
+        {
+            BeginForcedLateMorningAdvance();
+            return;
+        }
         CaptureCheckpointIfNeeded(line);
         immediateRoute = string.Empty;
         ApplyEffects(line.enterEffects);
@@ -626,6 +930,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     private void ShowTabletOverlayLine(ScenarioV3Line line)
     {
+        HideNovel();
         string title = string.Equals(line.speaker, "Narrator", StringComparison.OrdinalIgnoreCase) ||
                        string.Equals(line.speaker, "System", StringComparison.OrdinalIgnoreCase)
             ? "안내"
@@ -644,14 +949,58 @@ public sealed class ScenarioV3Director : MonoBehaviour
             ? ContactName(line.speaker)
             : line.contact;
         string text = ExpandText(line.text);
+
         if (sentByPlayer)
         {
+            dialogue?.EnsureConversation(speaker, contact);
+            dialogue?.PreferConversation(speaker);
+            dialogue?.SetEventChoices(speaker, new List<Choice>
+            {
+                new Choice
+                {
+                    choiceText = "메시지 보낸다.",
+                    replyText = text,
+                    nextDialogueID = -1,
+                    scenarioAction = "v3-send-message:" + line.id
+                }
+            });
+            flow.V3MarkAppAttention(AppType.Message);
+
+            // 앱 밖에서 자동 전송하지 않는다. 해당 상대의 채팅방을 열고 전송 버튼을 눌러야 한다.
             pendingOutgoingLine = line;
             pendingOutgoingSpeaker = speaker;
             pendingOutgoingContact = contact;
             pendingOutgoingText = text;
-            flow.V3MarkAppAttention(AppType.Message);
-            TryDeliverPendingOutgoingMessage();
+
+            if (appWindow?.CurrentAppType != AppType.Message || dialogue == null || !dialogue.IsConversationOpen(speaker))
+            {
+                string prompt = $"({contact}에게 메시지를 보내야겠다.)";
+                flow.V3ShowDialogue("나", prompt, null);
+            }
+            Save();
+            return;
+        }
+
+        if (!deliveredIncomingLineIds.Add(line.id))
+        {
+            FinishLine(line);
+            return;
+        }
+
+        List<ScenarioV3Choice> choices = GetAvailableChoices(line);
+        bool conversationOpen = dialogue != null && dialogue.IsConversationOpen(speaker);
+        bool speakerChanged = activeLineIndex == 0 ||
+            !string.Equals(activeScene.lines[activeLineIndex - 1].speaker, line.speaker,
+                StringComparison.OrdinalIgnoreCase);
+        bool announce = line.sequence == 1 || speakerChanged;
+
+        // 이미 채팅방을 보고 있다면 상대가 입력하는 시간을 보여 준 뒤 실제 말풍선을 만든다.
+        if (conversationOpen)
+        {
+            if (incomingMessageCoroutine != null)
+                StopCoroutine(incomingMessageCoroutine);
+            incomingMessageCoroutine = StartCoroutine(
+                DeliverIncomingMessageWithTyping(line, speaker, contact, text, choices));
             return;
         }
 
@@ -662,30 +1011,36 @@ public sealed class ScenarioV3Director : MonoBehaviour
             appType = AppType.Message,
             speakerType = speaker
         };
-        bool speakerChanged = activeLineIndex == 0 ||
-            !string.Equals(activeScene.lines[activeLineIndex - 1].speaker, line.speaker,
-                StringComparison.OrdinalIgnoreCase);
-        bool announce = line.sequence == 1 || speakerChanged;
-        bool messageAppOpen = appWindow != null && appWindow.CurrentAppType == AppType.Message;
-        if (announce && notifications != null && !messageAppOpen)
+
+        if (announce && notifications != null)
             notifications.SendNotification(data);
         else
             dialogue?.ReceiveNotificationMessage(speaker, contact, text);
-        if (announce && !messageAppOpen)
+
+        if (announce)
         {
             PlaySfx(popupClip, 0.26f);
-            AddInt("unread_count", 1);
+            SetState("unread_count", dialogue != null
+                ? dialogue.TotalUnreadCount.ToString(CultureInfo.InvariantCulture)
+                : (GetInt("unread_count") + 1).ToString(CultureInfo.InvariantCulture));
             flow.V3Refresh();
+
+            // 첫 민재 권유는 알림만 보고 내용에 반응하지 않는다.
+            // 대신 메시지 앱을 직접 확인하도록 짧게 유도한다.
+            if (speaker == SpeakerType.Friend &&
+                string.Equals(line.id, "d1_minjae_invite_01", StringComparison.OrdinalIgnoreCase))
+            {
+                flow.V3ShowDialogue("나", "(민재한테 메시지가 왔다. 확인해 보자.)", null);
+            }
         }
 
-        List<ScenarioV3Choice> choices = line.Choices.ToList();
         if (choices.Count > 0)
         {
+            dialogue?.PreferConversation(speaker);
             waitingForMessageChoice = true;
             waitingMessageSpeaker = speaker;
             waitingMessageScene = activeScene;
             waitingMessageLineIndex = activeLineIndex;
-            flow.V3Refresh();
             var chatChoices = new List<Choice>();
             foreach (ScenarioV3Choice choice in choices)
             {
@@ -698,13 +1053,127 @@ public sealed class ScenarioV3Director : MonoBehaviour
                 });
             }
             dialogue?.SetEventChoices(speaker, chatChoices);
+            Save();
             return;
         }
 
-        bool isTerminalMessage = activeScene != null && activeLineIndex >= activeScene.lines.Count - 1;
-        bool nextLineIsMessage = activeScene != null && activeLineIndex + 1 < activeScene.lines.Count &&
-            string.Equals(activeScene.lines[activeLineIndex + 1].delivery, "message", StringComparison.OrdinalIgnoreCase);
-        StartCoroutine(AdvanceMessageLine(line, text, isTerminalMessage, nextLineIsMessage));
+        bool hasFollowingLine = activeScene != null && activeLineIndex + 1 < activeScene.lines.Count;
+        bool needsReadBeforeContinuing = hasFollowingLine || !string.IsNullOrWhiteSpace(line.autoNext);
+        if (!needsReadBeforeContinuing)
+        {
+            // 단독 안내 메시지는 알림으로 남기고 시나리오를 막지 않는다.
+            // 이후 플레이어가 메시지 앱에서 언제든 확인할 수 있다.
+            FinishLine(line);
+            return;
+        }
+
+        // 핵심: 알림이 도착했다는 이유만으로 다음 독백/다음 장면을 재생하지 않는다.
+        // 후속 대사/연출이 있는 메시지는 실제 채팅방을 열어 확인할 때까지 현재 줄에서 대기한다.
+        waitingForIncomingMessageRead = true;
+        waitingIncomingSpeaker = speaker;
+        waitingIncomingLine = line;
+        flow.V3MarkAppAttention(AppType.Message);
+        Save();
+    }
+
+    private IEnumerator ResumeAfterIncomingMessageRead(ScenarioV3Line line)
+    {
+        yield return new WaitForSecondsRealtime(0.45f);
+        incomingMessageCoroutine = null;
+        if (waitingIncomingLine != line)
+            yield break;
+        waitingIncomingLine = null;
+        waitingIncomingSpeaker = SpeakerType.Unknown;
+        FinishLine(line);
+    }
+
+    private IEnumerator DeliverIncomingMessageWithTyping(
+        ScenarioV3Line line,
+        SpeakerType speaker,
+        string contact,
+        string text,
+        List<ScenarioV3Choice> choices)
+    {
+        dialogue?.ShowTypingIndicator(speaker, contact);
+        float typingDelay = GetTypingIndicatorDelay(text);
+        yield return new WaitForSecondsRealtime(typingDelay);
+
+        // 입력 중에 채팅방을 닫았어도 메시지는 도착해야 하므로 알림으로 전환한다.
+        if (dialogue != null && dialogue.IsConversationOpen(speaker))
+        {
+            dialogue.ReceiveNotificationMessage(speaker, contact, text);
+        }
+        else if (notifications != null)
+        {
+            notifications.SendNotification(new NotificationData
+            {
+                title = contact,
+                message = text,
+                appType = AppType.Message,
+                speakerType = speaker
+            });
+            PlaySfx(popupClip, 0.22f);
+        }
+        else
+        {
+            dialogue?.ReceiveNotificationMessage(speaker, contact, text);
+        }
+
+        SetState("unread_count", dialogue != null
+            ? dialogue.TotalUnreadCount.ToString(CultureInfo.InvariantCulture)
+            : GetState("unread_count"));
+
+        if (choices.Count > 0)
+        {
+            dialogue?.PreferConversation(speaker);
+            waitingForMessageChoice = true;
+            waitingMessageSpeaker = speaker;
+            waitingMessageScene = activeScene;
+            waitingMessageLineIndex = activeLineIndex;
+            var chatChoices = new List<Choice>();
+            foreach (ScenarioV3Choice choice in choices)
+            {
+                chatChoices.Add(new Choice
+                {
+                    choiceText = choice.text,
+                    replyText = choice.replyText,
+                    nextDialogueID = -1,
+                    scenarioAction = "v3-choice:" + choice.id
+                });
+            }
+            dialogue?.SetEventChoices(speaker, chatChoices);
+            incomingMessageCoroutine = null;
+            Save();
+            yield break;
+        }
+
+        yield return new WaitForSecondsRealtime(GetMessageReadingDelay(text, false));
+        incomingMessageCoroutine = null;
+        FinishLine(line);
+    }
+
+    private static float GetTypingIndicatorDelay(string text)
+    {
+        int characters = string.IsNullOrWhiteSpace(text)
+            ? 0
+            : text.Count(character => !char.IsWhiteSpace(character));
+        return Mathf.Clamp(0.55f + characters * 0.028f, 0.8f, 1.8f);
+    }
+
+    public void ConfirmPendingOutgoingMessage(string lineId)
+    {
+        if (pendingOutgoingLine == null ||
+            !string.Equals(pendingOutgoingLine.id, lineId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        ScenarioV3Line line = pendingOutgoingLine;
+        deliveredOutgoingLineIds.Add(line.id);
+        ClearPendingOutgoingMessage(false);
+        SetState("unread_count", dialogue != null
+            ? dialogue.TotalUnreadCount.ToString(CultureInfo.InvariantCulture)
+            : "0");
+        Save();
+        FinishLine(line);
     }
 
     private void TryDeliverPendingOutgoingMessage()
@@ -826,6 +1295,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
             foreach (ScenarioV3Line line in scene.lines.Where(candidate =>
                          string.Equals(candidate.delivery, "message", StringComparison.OrdinalIgnoreCase)))
             {
+                if (!deliveredIncomingLineIds.Add(line.id))
+                    continue;
                 string contact = string.IsNullOrWhiteSpace(line.contact) ? "민재" : line.contact;
                 string text = ExpandText(line.text);
                 notifications?.SendNotification(new NotificationData
@@ -853,6 +1324,10 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (novelPanel == null)
             return;
 
+        string resolvedArc = visualArc ?? activeScene?.arc ?? "home";
+        if (!bypassHomeTimeTransition && TryStartHomeTimeTransition(line, completed, visualArc, resolvedArc))
+            return;
+
         notifications?.HidePopup();
         novelPanel.SetActive(true);
         novelPanel.transform.SetAsLastSibling();
@@ -861,18 +1336,26 @@ public sealed class ScenarioV3Director : MonoBehaviour
             ? string.Empty
             : ContactName(line.speaker);
         speakerText.text = displaySpeaker;
-        string expandedText = FormatProtagonistMonologue(line, ExpandText(line.text));
-        currentDialoguePages = PaginateDialogue(expandedText);
+        string rawText = ExpandText(line.text);
+        currentDialoguePages = PaginateDialogue(rawText);
+        if (IsProtagonistMonologue(line))
+        {
+            for (int i = 0; i < currentDialoguePages.Count; i++)
+                currentDialoguePages[i] = FormatProtagonistMonologue(line, currentDialoguePages[i]);
+        }
         currentDialoguePageIndex = 0;
         currentFullText = currentDialoguePages[0];
+        string expandedText = string.Join(" ", currentDialoguePages);
         string logSpeaker = string.Equals(line.speaker, "Narrator", StringComparison.OrdinalIgnoreCase)
             ? "내레이션"
             : string.IsNullOrWhiteSpace(displaySpeaker) ? "나" : displaySpeaker;
         AppendDialogueLog(logSpeaker, expandedText);
-        ApplyArcVisual(visualArc ?? activeScene?.arc ?? "home", line.delivery);
+        ApplyArcVisual(resolvedArc, line.delivery);
+        if (IsHomeVisualArc(resolvedArc))
+            lastHomeVisualPeriod = GetHomeVisualPeriod();
         ApplyCharacterPortrait(line);
 
-        List<ScenarioV3Choice> choices = line.Choices.ToList();
+        List<ScenarioV3Choice> choices = GetAvailableChoices(line);
         continueButton.gameObject.SetActive(false);
         ConfigureChoiceButton(choiceAButton, choices.Count > 0 ? choices[0] : null);
         ConfigureChoiceButton(choiceBButton, choices.Count > 1 ? choices[1] : null);
@@ -997,6 +1480,35 @@ public sealed class ScenarioV3Director : MonoBehaviour
                 button.gameObject.SetActive(visible);
     }
 
+    private List<ScenarioV3Choice> GetAvailableChoices(ScenarioV3Line line)
+    {
+        if (line == null)
+            return new List<ScenarioV3Choice>();
+
+        return line.Choices.Where(IsChoiceAvailable).ToList();
+    }
+
+    private bool IsChoiceAvailable(ScenarioV3Choice choice)
+    {
+        if (choice == null || string.IsNullOrWhiteSpace(choice.id))
+            return false;
+
+        if (choice.id.Equals("borrow_mom", StringComparison.OrdinalIgnoreCase))
+            return GetState("borrowed.mom") != "true";
+        if (choice.id.Equals("borrow_friend", StringComparison.OrdinalIgnoreCase))
+            return GetState("borrowed.seojun") != "true";
+        if (choice.id.Equals("minjae_loan_accept", StringComparison.OrdinalIgnoreCase))
+            return GetState("borrowed.minjae") != "true";
+        if (choice.id.Equals("no_funds_borrow_again", StringComparison.OrdinalIgnoreCase))
+        {
+            return GetState("borrowed.mom") != "true" ||
+                   GetState("borrowed.seojun") != "true" ||
+                   GetState("borrowed.minjae") != "true";
+        }
+
+        return true;
+    }
+
     private void ConfigureChoiceButton(Button button, ScenarioV3Choice choice)
     {
         button.gameObject.SetActive(choice != null);
@@ -1023,12 +1535,29 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
         string next = line.autoNext;
         activeLineIndex++;
+        if ((pendingLateWakeAfterGambling || pendingBorrowMorningAdvance) &&
+            (activeLineIndex >= activeScene.lines.Count || !string.IsNullOrWhiteSpace(next)))
+        {
+            BeginForcedLateMorningAdvance();
+            return;
+        }
         if (!database.ShouldReturnToTablet(activeScene?.id) && !string.IsNullOrWhiteSpace(next))
         {
-            if (TryReturnHomeBeforeNextScene(next, () => PlayScene(next)))
+            Action playNext = () =>
+            {
+                if (TryReturnHomeBeforeNextScene(next, () => PlayScene(next)))
+                    return;
+                activeScene = null;
+                PlayScene(next);
+            };
+            if (string.Equals(line.delivery, "message", StringComparison.OrdinalIgnoreCase) &&
+                dialogue != null && dialogue.IsDialogueOpen)
+            {
+                waitingForMessageSceneClose = true;
+                pendingAfterMessageClose = playNext;
                 return;
-            activeScene = null;
-            PlayScene(next);
+            }
+            playNext();
             return;
         }
         PresentLine();
@@ -1038,6 +1567,21 @@ public sealed class ScenarioV3Director : MonoBehaviour
     {
         if (waitingForMessageChoice)
             return;
+
+        if (pendingLateWakeAfterGambling || pendingBorrowMorningAdvance)
+        {
+            BeginForcedLateMorningAdvance();
+            return;
+        }
+
+        bool isMessageScene = activeScene != null && activeScene.lines.Any(candidate =>
+            string.Equals(candidate.delivery, "message", StringComparison.OrdinalIgnoreCase));
+        if (isMessageScene && dialogue != null && dialogue.IsDialogueOpen)
+        {
+            waitingForMessageSceneClose = true;
+            return;
+        }
+        waitingForMessageSceneClose = false;
 
         bool returnToTablet = activeScene != null && database.ShouldReturnToTablet(activeScene.id);
         bool hasQueuedScene = sceneQueue.Count > 0;
@@ -1049,9 +1593,9 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (pendingDayAdvance)
         {
             pendingDayAdvance = false;
-            FinalizeCurrentDayStatus();
-            QueueTrigger("day_end", AdvanceToNextDay);
-            StartQueuedScene();
+            HideNovel();
+            flow.V3MarkAppAttention(AppType.Sleep);
+            TryQueueBedtimeCue();
             return;
         }
         if (returnHome)
@@ -1191,7 +1735,24 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     private string FormatProtagonistMonologue(ScenarioV3Line line, string text)
     {
+        if (!IsProtagonistMonologue(line) || string.IsNullOrWhiteSpace(text))
+            return text;
+
+        string trimmed = text.Trim();
+        while (trimmed.StartsWith("(", StringComparison.Ordinal) &&
+               trimmed.EndsWith(")", StringComparison.Ordinal) && trimmed.Length >= 2)
+        {
+            trimmed = trimmed.Substring(1, trimmed.Length - 2).Trim();
+        }
+        return $"({trimmed})";
+    }
+
+    private bool IsProtagonistMonologue(ScenarioV3Line line)
+    {
         bool isProtagonist = string.Equals(line?.speaker, "Protagonist", StringComparison.OrdinalIgnoreCase);
+        if (!isProtagonist)
+            return false;
+
         bool isMonologue = string.Equals(line?.delivery, "narration", StringComparison.OrdinalIgnoreCase) ||
                            string.Equals(line?.delivery, "overlay", StringComparison.OrdinalIgnoreCase) ||
                            string.Equals(line?.delivery, "cinematic", StringComparison.OrdinalIgnoreCase);
@@ -1203,36 +1764,93 @@ public sealed class ScenarioV3Director : MonoBehaviour
                 !string.Equals(candidate.speaker, "Narrator", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(candidate.speaker, "System", StringComparison.OrdinalIgnoreCase));
         }
-        if (!isProtagonist || !isMonologue || string.IsNullOrWhiteSpace(text))
-            return text;
-
-        string trimmed = text.Trim();
-        if (trimmed.StartsWith("(", StringComparison.Ordinal) &&
-            trimmed.EndsWith(")", StringComparison.Ordinal))
-        {
-            trimmed = trimmed.Substring(1, trimmed.Length - 2).Trim();
-        }
-
-        string[] sentences = Regex.Split(trimmed, @"(?<=[.!?。！？])\s+");
-        var wrapped = new List<string>();
-        foreach (string rawSentence in sentences)
-        {
-            string sentence = rawSentence.Trim();
-            if (sentence.Length == 0)
-                continue;
-            if (sentence.StartsWith("(", StringComparison.Ordinal) &&
-                sentence.EndsWith(")", StringComparison.Ordinal))
-                wrapped.Add(sentence);
-            else
-                wrapped.Add($"({sentence})");
-        }
-        return wrapped.Count > 0 ? string.Join(" ", wrapped) : $"({trimmed})";
+        return isMonologue;
     }
 
     private static bool IsActivityArc(string arc)
     {
         return string.Equals(arc, "school", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(arc, "job", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void BeginForcedLateMorningAdvance()
+    {
+        bool explicitBorrowDeferral = pendingBorrowMorningAdvance ||
+                                      GetState("flag.borrow_deferred") == "true";
+        bool showBorrowMenu = explicitBorrowDeferral || GetState("pending.borrow_menu") == "true" ||
+                              (flow.V3BankCash <= 0 && GetInt("counter.gamble_sessions") >= 5);
+        bool wokeFromGambling = pendingLateWakeAfterGambling && !explicitBorrowDeferral;
+
+        pendingLateWakeAfterGambling = false;
+        pendingBorrowMorningAdvance = false;
+
+        FinalizeCurrentDayStatus();
+        if (flow.CurrentDay >= FinalDay)
+        {
+            activeScene = null;
+            activeLineIndex = 0;
+            HideNovel();
+            return;
+        }
+
+        sceneQueue.Clear();
+        queueCompleted = null;
+        activeScene = null;
+        activeLineIndex = 0;
+        waitingForMessageChoice = false;
+        waitingForMessageSceneClose = false;
+        pendingAfterMessageClose = null;
+        ClearPendingOutgoingMessage();
+        HideNovel();
+        appWindow?.CloseCurrentApp();
+
+        flow.V3BeginNextDay();
+        dialogueLog.Clear();
+        state["schedule.school"] = "pending";
+        state["schedule.homework"] = "pending";
+        state["schedule.job"] = "pending";
+        state["schedule.sleep"] = "pending";
+        state["evening_filled"] = "0";
+        state["bedtime_cued"] = "0";
+        state["day_finalized"] = "0";
+        state["pending.gamble_attention"] = "false";
+        state["pending.borrow_menu"] = showBorrowMenu ? "true" : "false";
+        state["flag.late_wake_today"] = "true";
+        state["flag.borrow_deferred"] = explicitBorrowDeferral ? "true" : "false";
+        state["flag.gambled_late"] = wokeFromGambling ? "true" : "false";
+        state["day_cash_start"] = flow.V3BankCash.ToString(CultureInfo.InvariantCulture);
+        flow.V3SetLocation("집");
+        flow.V3SetClock("10:00");
+        Save();
+
+        QueueTrigger("day_start", () =>
+        {
+            // 특수 기상 연출과 그 날의 부가 이벤트가 모두 끝난 뒤에만 차용을 이어 간다.
+            SetState("flag.late_wake_today", "false");
+            if (GetState("pending.borrow_menu") != "true")
+            {
+                Save();
+                return;
+            }
+
+            SetState("pending.borrow_menu", "false");
+            Save();
+            PlayScene("borrow_morning_cue");
+        });
+        StartQueuedScene();
+    }
+
+    private static bool CrossesClockHour(int startHour, int elapsedHours, int targetHour)
+    {
+        if (elapsedHours <= 0)
+            return false;
+
+        int normalizedStart = ((startHour % 24) + 24) % 24;
+        int normalizedTarget = ((targetHour % 24) + 24) % 24;
+        int distance = (normalizedTarget - normalizedStart + 24) % 24;
+        if (distance == 0)
+            distance = 24;
+        return elapsedHours >= distance;
     }
 
     private void AdvanceToNextDay()
@@ -1259,6 +1877,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["bedtime_cued"] = "0";
         state["day_finalized"] = "0";
         state["pending.gamble_attention"] = "false";
+        state["flag.late_wake_today"] = "false";
+        state["flag.borrow_deferred"] = "false";
         state["day_cash_start"] = flow.V3BankCash.ToString(CultureInfo.InvariantCulture);
         Save();
 
@@ -1353,7 +1973,10 @@ public sealed class ScenarioV3Director : MonoBehaviour
             if (session >= 6 && flow.V3BankCash <= 0)
             {
                 AddInt("counter.no_funds_attempts", 1);
-                immediateRoute = "gamble_no_funds";
+                bool allBorrowSourcesUsed = GetState("borrowed.mom") == "true" &&
+                                            GetState("borrowed.seojun") == "true" &&
+                                            GetState("borrowed.minjae") == "true";
+                immediateRoute = allBorrowSourcesUsed ? "gamble_no_funds_exhausted" : "gamble_no_funds";
                 return;
             }
             if (session > 6)
@@ -1366,6 +1989,21 @@ public sealed class ScenarioV3Director : MonoBehaviour
             SetState("flag.gambling_started", "true");
             immediateRoute = "gamble_" + session.ToString(CultureInfo.InvariantCulture);
             return;
+        }
+        if (key.Equals("borrow", StringComparison.OrdinalIgnoreCase))
+        {
+            if (operation.Equals("defer", StringComparison.OrdinalIgnoreCase))
+            {
+                SetState("pending.borrow_menu", "true");
+                SetState("flag.borrow_deferred", "true");
+                pendingBorrowMorningAdvance = true;
+                return;
+            }
+            if (operation.StartsWith("prepare=", StringComparison.OrdinalIgnoreCase))
+            {
+                PrepareDeferredBorrowRequest(operation.Substring("prepare=".Length));
+                return;
+            }
         }
         if (key.Equals("tutorial", StringComparison.OrdinalIgnoreCase) && operation.StartsWith("set="))
         {
@@ -1413,6 +2051,12 @@ public sealed class ScenarioV3Director : MonoBehaviour
                             break;
                         }
                     }
+
+                    if (GetState("flag.gambled_late") == "true" &&
+                        CrossesClockHour(startHour, elapsedHours, 8))
+                    {
+                        pendingLateWakeAfterGambling = true;
+                    }
                 }
             }
             else if (operation.StartsWith("advance_to_next_day=")) pendingDayAdvance = true;
@@ -1432,6 +2076,15 @@ public sealed class ScenarioV3Director : MonoBehaviour
         {
             if (operation.StartsWith("set=")) flow.V3SetDebt(ResolveInt(operation.Substring(4)));
             else if (operation.StartsWith("add=")) flow.V3AddDebt(ResolveInt(operation.Substring(4)));
+            return;
+        }
+        if (key.Equals("repay", StringComparison.OrdinalIgnoreCase) &&
+            operation.Equals("available", StringComparison.OrdinalIgnoreCase))
+        {
+            int repaid = flow.V3RepayAvailableDebt("서준에게 빌린 돈 상환");
+            SetState("last_repayment", repaid.ToString(CultureInfo.InvariantCulture));
+            if (flow.CurrentDebt <= 0)
+                SetState("debt_owner", "none");
             return;
         }
         if (key.Equals("location", StringComparison.OrdinalIgnoreCase) && operation.StartsWith("set="))
@@ -1792,45 +2445,143 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
         if (speakerText != null)
             speakerText.fontStyle |= FontStyles.Bold;
-        if (historyPanel != null)
-            Stretch(historyPanel.GetComponent<RectTransform>());
-        if (historyText == null)
+
+        if (historyPanel == null)
             return;
 
-        historyText.fontStyle |= FontStyles.Bold;
-        historyText.enableAutoSizing = false;
-        historyText.fontSize = 27f;
+        Stretch(historyPanel.GetComponent<RectTransform>());
+        Image historyBackground = historyPanel.GetComponent<Image>();
+        if (historyBackground == null)
+            historyBackground = historyPanel.AddComponent<Image>();
+        historyBackground.color = new Color(0.015f, 0.025f, 0.04f, 1f);
+        historyBackground.raycastTarget = true;
+
+        TMP_Text title = historyPanel.transform.Find("History Title")?.GetComponent<TMP_Text>();
+        if (title != null)
+        {
+            RectTransform titleRect = title.rectTransform;
+            titleRect.anchorMin = titleRect.anchorMax = new Vector2(0f, 1f);
+            titleRect.pivot = new Vector2(0f, 1f);
+            titleRect.anchoredPosition = new Vector2(72f, -44f);
+            titleRect.sizeDelta = new Vector2(520f, 64f);
+            title.alignment = TextAlignmentOptions.MidlineLeft;
+        }
+
+        RebuildHistoryViewport();
+    }
+
+    private void RebuildHistoryViewport()
+    {
+        if (historyPanel == null)
+            return;
+
+        // 이전 핫픽스에서 만든 런타임 복제 Viewport가 남아 있으면 제거한다.
+        Transform runtimeViewport = historyPanel.transform.Find("History Viewport Runtime");
+        if (runtimeViewport != null)
+            Destroy(runtimeViewport.gameObject);
+
+        Transform viewportTransform = historyPanel.transform.Find("History Viewport");
+        if (viewportTransform == null)
+            return;
+
+        viewportTransform.gameObject.SetActive(true);
+        historyViewportRect = viewportTransform.GetComponent<RectTransform>();
+        historyViewportRect.anchorMin = new Vector2(0.06f, 0.08f);
+        historyViewportRect.anchorMax = new Vector2(0.94f, 0.86f);
+        historyViewportRect.offsetMin = Vector2.zero;
+        historyViewportRect.offsetMax = Vector2.zero;
+        historyViewportRect.pivot = new Vector2(0.5f, 0.5f);
+
+        Image viewportImage = viewportTransform.GetComponent<Image>();
+        if (viewportImage == null)
+            viewportImage = viewportTransform.gameObject.AddComponent<Image>();
+        viewportImage.color = new Color(0.04f, 0.065f, 0.10f, 1f);
+        viewportImage.raycastTarget = true;
+
+        // RectMask2D가 실제 배치 씬에서 정상적으로 잘리지 않는 사례가 있어
+        // 메시지 Viewport와 같은 부모-자식 구조를 유지하면서 stencil Mask로 강제 클리핑한다.
+        RectMask2D rectMask = viewportTransform.GetComponent<RectMask2D>();
+        if (rectMask != null)
+            rectMask.enabled = false;
+        Mask stencilMask = viewportTransform.GetComponent<Mask>();
+        if (stencilMask == null)
+            stencilMask = viewportTransform.gameObject.AddComponent<Mask>();
+        stencilMask.showMaskGraphic = true;
+
+        Transform contentTransform = viewportTransform.Find("History Content");
+        if (contentTransform == null)
+        {
+            GameObject contentObject = new GameObject("History Content", typeof(RectTransform));
+            contentObject.layer = historyPanel.layer;
+            contentObject.transform.SetParent(viewportTransform, false);
+            contentTransform = contentObject.transform;
+        }
+        historyContentRect = contentTransform.GetComponent<RectTransform>();
+        historyContentRect.anchorMin = new Vector2(0f, 1f);
+        historyContentRect.anchorMax = new Vector2(1f, 1f);
+        historyContentRect.pivot = new Vector2(0.5f, 1f);
+        historyContentRect.anchoredPosition = Vector2.zero;
+
+        VerticalLayoutGroup layout = contentTransform.GetComponent<VerticalLayoutGroup>();
+        if (layout != null)
+            layout.enabled = false;
+        ContentSizeFitter contentFitter = contentTransform.GetComponent<ContentSizeFitter>();
+        if (contentFitter != null)
+            contentFitter.enabled = false;
+
+        TMP_Text boundText = contentTransform.Find("History Text")?.GetComponent<TMP_Text>();
+        if (boundText == null)
+            boundText = historyText;
+        if (boundText == null)
+        {
+            GameObject textObject = new GameObject("History Text", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+            textObject.layer = historyPanel.layer;
+            textObject.transform.SetParent(contentTransform, false);
+            TextMeshProUGUI created = textObject.GetComponent<TextMeshProUGUI>();
+            created.font = bodyText != null ? bodyText.font : null;
+            created.fontSize = 27f;
+            created.fontStyle = FontStyles.Bold;
+            created.color = new Color(0.9f, 0.93f, 0.98f);
+            boundText = created;
+        }
+        else if (boundText.transform.parent != contentTransform)
+        {
+            boundText.transform.SetParent(contentTransform, false);
+        }
+
+        historyText = boundText;
+        historyText.gameObject.SetActive(true);
+        historyText.alignment = TextAlignmentOptions.TopLeft;
         historyText.textWrappingMode = TextWrappingModes.Normal;
         historyText.overflowMode = TextOverflowModes.Overflow;
-        RectTransform textRect = historyText.rectTransform;
-        textRect.anchorMin = new Vector2(0.5f, 1f);
-        textRect.anchorMax = new Vector2(0.5f, 1f);
-        textRect.pivot = new Vector2(0.5f, 1f);
-        textRect.anchoredPosition = new Vector2(0f, -24f);
+        historyText.raycastTarget = false;
+        historyText.maskable = true;
         ContentSizeFitter textFitter = historyText.GetComponent<ContentSizeFitter>();
         if (textFitter != null)
             textFitter.enabled = false;
-        RectTransform contentRect = historyText.transform.parent as RectTransform;
-        if (contentRect != null)
+
+        // 혹시 다른 legacy History Text가 남아 있으면 반드시 숨긴다.
+        foreach (TMP_Text legacy in historyPanel.GetComponentsInChildren<TMP_Text>(true))
         {
-            VerticalLayoutGroup layout = contentRect.GetComponent<VerticalLayoutGroup>();
-            if (layout != null)
-                layout.enabled = false;
-            ContentSizeFitter contentFitter = contentRect.GetComponent<ContentSizeFitter>();
-            if (contentFitter != null)
-                contentFitter.enabled = false;
-            contentRect.anchorMin = new Vector2(0.5f, 1f);
-            contentRect.anchorMax = new Vector2(0.5f, 1f);
-            contentRect.pivot = new Vector2(0.5f, 1f);
-            contentRect.anchoredPosition = Vector2.zero;
-            RectTransform viewportRect = contentRect.parent as RectTransform;
-            if (viewportRect != null)
-            {
-                viewportRect.anchorMin = new Vector2(0.06f, 0.08f);
-                viewportRect.anchorMax = new Vector2(0.94f, 0.86f);
-                viewportRect.offsetMin = viewportRect.offsetMax = Vector2.zero;
-            }
+            if (legacy == historyText)
+                continue;
+            if (legacy.gameObject.name.StartsWith("History Text", StringComparison.OrdinalIgnoreCase))
+                legacy.gameObject.SetActive(false);
         }
+
+        historyScroll = viewportTransform.GetComponent<ScrollRect>();
+        if (historyScroll == null)
+            historyScroll = viewportTransform.gameObject.AddComponent<ScrollRect>();
+        historyScroll.viewport = historyViewportRect;
+        historyScroll.content = historyContentRect;
+        historyScroll.horizontal = false;
+        historyScroll.vertical = true;
+        historyScroll.movementType = ScrollRect.MovementType.Clamped;
+        historyScroll.scrollSensitivity = 45f;
+        historyScroll.inertia = true;
+        historyScroll.decelerationRate = 0.12f;
+
+        RefreshHistoryLayout();
     }
 
     private bool TryBindPlacedNovelUI()
@@ -1887,33 +2638,159 @@ public sealed class ScenarioV3Director : MonoBehaviour
         string sceneId = activeScene?.id ?? string.Empty;
         if (sceneId == "d1_intro")
             return "생활비";
+        if (sceneId == "d6_mom_allowance")
+            return "엄마 용돈";
         if (sceneId.StartsWith("gamble_", StringComparison.OrdinalIgnoreCase))
             return amount > 0 ? "포인트 환전" : "온라인 결제";
-        if (sceneId == "borrow_choice")
-        {
-            string owner = GetState("debt_owner");
-            if (owner == "mom")
-                return "엄마 송금";
-            if (owner == "seojun")
-                return "서준 송금";
-            if (owner == "minjae")
-                return "민재 송금";
-            return "빌린 돈 입금";
-        }
+        if (sceneId.Contains("mom_loan", StringComparison.OrdinalIgnoreCase))
+            return "엄마에게 빌린 돈";
+        if (sceneId.Contains("seojun_loan", StringComparison.OrdinalIgnoreCase))
+            return "서준에게 빌린 돈";
+        if (sceneId.Contains("minjae_loan", StringComparison.OrdinalIgnoreCase))
+            return "민재에게 빌린 돈";
         return amount >= 0 ? "입금" : "결제";
+    }
+
+    private bool TryStartHomeTimeTransition(ScenarioV3Line line, Action completed, string visualArc, string resolvedArc)
+    {
+        if (!IsHomeVisualArc(resolvedArc) || flow == null || flow.CurrentLocation != "집")
+            return false;
+
+        int targetPeriod = GetHomeVisualPeriod();
+        if (lastHomeVisualPeriod < 0 || targetPeriod <= lastHomeVisualPeriod)
+        {
+            lastHomeVisualPeriod = targetPeriod;
+            return false;
+        }
+
+        if (homeTimeTransitionCoroutine != null)
+            StopCoroutine(homeTimeTransitionCoroutine);
+        homeTimeTransitionCoroutine = StartCoroutine(
+            RunHomeTimeTransition(line, completed, visualArc, lastHomeVisualPeriod, targetPeriod));
+        return true;
+    }
+
+    private IEnumerator RunHomeTimeTransition(
+        ScenarioV3Line line, Action completed, string visualArc, int fromPeriod, int targetPeriod)
+    {
+        notifications?.HidePopup();
+        novelPanel.SetActive(true);
+        novelPanel.transform.SetAsLastSibling();
+
+        GameObject dialogueBox = bodyText != null && bodyText.transform.parent != null
+            ? bodyText.transform.parent.gameObject
+            : null;
+        bool dialogueWasActive = dialogueBox != null && dialogueBox.activeSelf;
+        if (dialogueBox != null)
+            dialogueBox.SetActive(false);
+        if (characterPortrait != null)
+            characterPortrait.gameObject.SetActive(false);
+
+        Texture2D startTexture = LoadHomeTexture(fromPeriod);
+        if (startTexture != null)
+        {
+            novelBackground.texture = startTexture;
+            novelBackground.color = Color.white;
+        }
+
+        // 낮에서 밤으로 크게 건너뛰어도 반드시 저녁을 거쳐 자연스럽게 바뀐다.
+        for (int period = fromPeriod + 1; period <= targetPeriod; period++)
+        {
+            Texture2D targetTexture = LoadHomeTexture(period);
+            if (targetTexture == null)
+                continue;
+            yield return CrossfadeHomeBackground(targetTexture, 0.65f);
+            if (period < targetPeriod)
+                yield return new WaitForSecondsRealtime(0.16f);
+        }
+
+        lastHomeVisualPeriod = targetPeriod;
+        homeTimeTransitionCoroutine = null;
+        if (dialogueBox != null && dialogueWasActive)
+            dialogueBox.SetActive(true);
+
+        bypassHomeTimeTransition = true;
+        ShowNovelLine(line, completed, visualArc);
+        bypassHomeTimeTransition = false;
+    }
+
+    private IEnumerator CrossfadeHomeBackground(Texture2D targetTexture, float duration)
+    {
+        if (homeTransitionOverlay == null)
+        {
+            homeTransitionOverlay = new GameObject("Home Time Crossfade", typeof(RectTransform),
+                typeof(CanvasRenderer), typeof(RawImage)).GetComponent<RawImage>();
+            homeTransitionOverlay.transform.SetParent(novelPanel.transform, false);
+            Stretch(homeTransitionOverlay.rectTransform);
+            homeTransitionOverlay.raycastTarget = false;
+        }
+
+        homeTransitionOverlay.transform.SetSiblingIndex(
+            Mathf.Min(novelBackground.transform.GetSiblingIndex() + 1, novelPanel.transform.childCount - 1));
+        homeTransitionOverlay.texture = targetTexture;
+        homeTransitionOverlay.color = new Color(1f, 1f, 1f, 0f);
+        homeTransitionOverlay.gameObject.SetActive(true);
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float alpha = Mathf.Clamp01(elapsed / duration);
+            homeTransitionOverlay.color = new Color(1f, 1f, 1f, alpha);
+            yield return null;
+        }
+
+        novelBackground.texture = targetTexture;
+        novelBackground.color = Color.white;
+        homeTransitionOverlay.color = new Color(1f, 1f, 1f, 0f);
+        homeTransitionOverlay.gameObject.SetActive(false);
+    }
+
+    private int GetHomeVisualPeriod()
+    {
+        if (flow == null)
+            return 0;
+        if (flow.CurrentHour >= 21 || flow.CurrentHour < 6)
+            return 2;
+        if (flow.CurrentHour >= 18)
+            return 1;
+        return 0;
+    }
+
+    private static bool IsHomeVisualArc(string arc)
+    {
+        string normalized = (arc ?? string.Empty).ToLowerInvariant();
+        // sleep 장면도 집에서 낮→저녁→밤 전환을 거치게 한다.
+        // debt는 별도 메시지/상환 장면이 있어 여기서는 기존 분리 정책을 유지한다.
+        return normalized != "school" && normalized != "homework" && normalized != "job" &&
+               normalized != "gambling" && normalized != "debt";
+    }
+
+    private static Texture2D LoadHomeTexture(int period)
+    {
+        string resource = period >= 2 ? "ScenarioArt/bedroom_night"
+            : period == 1 ? "ScenarioArt/bedroom_evening"
+            : "ScenarioArt/bedroom";
+        return Resources.Load<Texture2D>(resource);
     }
 
     private void ApplyArcVisual(string arc, string delivery)
     {
-        bool isNightAtHome = flow != null && flow.CurrentLocation == "집" &&
-                             (flow.CurrentHour >= 19 || flow.CurrentHour < 6);
+        bool isHome = flow != null && flow.CurrentLocation == "집";
+        bool isEveningAtHome = isHome && flow.CurrentHour >= 18 && flow.CurrentHour <= 20;
+        bool isNightAtHome = isHome && (flow.CurrentHour >= 21 || flow.CurrentHour < 6);
         string resource = arc switch
         {
             "school" or "homework" => "ScenarioArt/classroom",
             "job" => "ScenarioArt/cafe",
-            "gambling" or "debt" => "ScenarioArt/temptation",
+            "gambling" => "ScenarioArt/temptation",
+            "debt" => isEveningAtHome ? "ScenarioArt/bedroom_evening"
+                : isNightAtHome ? "ScenarioArt/bedroom_night"
+                : "ScenarioArt/bedroom",
             "sleep" => "ScenarioArt/bedroom_night",
-            _ => isNightAtHome ? "ScenarioArt/bedroom_night" : "ScenarioArt/bedroom"
+            _ => isEveningAtHome ? "ScenarioArt/bedroom_evening"
+                : isNightAtHome ? "ScenarioArt/bedroom_night"
+                : "ScenarioArt/bedroom"
         };
         novelBackground.texture = Resources.Load<Texture2D>(resource);
         novelBackground.color = novelBackground.texture == null ? ArcColor(arc) : Color.white;
@@ -1999,33 +2876,81 @@ public sealed class ScenarioV3Director : MonoBehaviour
     {
         if (historyPanel == null || historyText == null)
             return;
+
         historyText.text = dialogueLog.Count == 0
             ? "아직 기록된 대화가 없습니다."
             : string.Join("\n\n", dialogueLog);
         historyPanel.SetActive(true);
         historyPanel.transform.SetAsLastSibling();
         RefreshHistoryLayout();
+        StartCoroutine(ScrollHistoryToLatest());
     }
 
     private void RefreshHistoryLayout()
     {
-        RectTransform textRect = historyText?.rectTransform;
-        RectTransform contentRect = textRect?.parent as RectTransform;
-        RectTransform viewportRect = contentRect?.parent as RectTransform;
-        if (textRect == null || contentRect == null || viewportRect == null)
+        if (historyText == null || historyViewportRect == null || historyContentRect == null)
             return;
 
         Canvas.ForceUpdateCanvases();
-        float viewportWidth = Mathf.Max(480f, viewportRect.rect.width);
-        float viewportHeight = Mathf.Max(320f, viewportRect.rect.height);
-        float textWidth = viewportWidth - 56f;
-        float textHeight = Mathf.Max(80f, historyText.GetPreferredValues(historyText.text, textWidth, 0f).y + 8f);
+        float viewportWidth = Mathf.Max(480f, historyViewportRect.rect.width);
+        float viewportHeight = Mathf.Max(320f, historyViewportRect.rect.height);
 
-        contentRect.sizeDelta = new Vector2(viewportWidth, Mathf.Max(viewportHeight, textHeight + 48f));
-        contentRect.anchoredPosition = Vector2.zero;
-        textRect.sizeDelta = new Vector2(textWidth, textHeight);
-        textRect.anchoredPosition = new Vector2(0f, -24f);
-        LayoutRebuilder.ForceRebuildLayoutImmediate(contentRect);
+        const float sidePadding = 32f;
+        const float verticalPadding = 24f;
+        float textWidth = Mathf.Max(320f, viewportWidth - sidePadding * 2f);
+        float preferredHeight = Mathf.Max(80f,
+            historyText.GetPreferredValues(historyText.text, textWidth, 0f).y);
+        float contentHeight = Mathf.Max(viewportHeight, preferredHeight + verticalPadding * 2f);
+
+        // Content만 세로로 길어진다. Viewport와 텍스트 가로폭은 고정한다.
+        historyContentRect.anchorMin = new Vector2(0f, 1f);
+        historyContentRect.anchorMax = new Vector2(1f, 1f);
+        historyContentRect.pivot = new Vector2(0.5f, 1f);
+        historyContentRect.anchoredPosition = Vector2.zero;
+        historyContentRect.sizeDelta = new Vector2(0f, contentHeight);
+
+        RectTransform textRect = historyText.rectTransform;
+        textRect.anchorMin = new Vector2(0f, 0f);
+        textRect.anchorMax = new Vector2(1f, 0f);
+        textRect.pivot = new Vector2(0.5f, 0f);
+        textRect.anchoredPosition = new Vector2(0f, verticalPadding);
+        // 텍스트 가로폭 = Viewport 폭 - 좌우 여백.
+        textRect.sizeDelta = new Vector2(-sidePadding * 2f, preferredHeight);
+
+        historyText.textWrappingMode = TextWrappingModes.Normal;
+        historyText.overflowMode = TextOverflowModes.Overflow;
+        historyText.maskable = true;
+
+        if (historyScroll != null)
+        {
+            historyScroll.viewport = historyViewportRect;
+            historyScroll.content = historyContentRect;
+            historyScroll.horizontal = false;
+            historyScroll.vertical = true;
+            historyScroll.movementType = ScrollRect.MovementType.Clamped;
+            historyScroll.StopMovement();
+        }
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate(textRect);
+        LayoutRebuilder.ForceRebuildLayoutImmediate(historyContentRect);
+        Canvas.ForceUpdateCanvases();
+    }
+
+    private IEnumerator ScrollHistoryToLatest()
+    {
+        yield return null;
+        RefreshHistoryLayout();
+        yield return null;
+
+        if (historyScroll == null)
+            yield break;
+
+        Canvas.ForceUpdateCanvases();
+        historyScroll.StopMovement();
+        historyScroll.velocity = Vector2.zero;
+        historyScroll.verticalNormalizedPosition = 0f;
+        yield return null;
+        historyScroll.verticalNormalizedPosition = 0f;
     }
 
     private void Save()
