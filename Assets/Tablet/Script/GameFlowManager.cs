@@ -1676,22 +1676,25 @@ public sealed class GameFlowManager : MonoBehaviour
         string debtLine = debt > 0 ? $"빌린 돈  {debt:N0}원" : "";
         bool knowsProject = scenarioV3 == null || currentDay > 1 || schoolDone ||
                             string.Equals(scenarioV3.GetState("flag.project_introduced"), "true", StringComparison.OrdinalIgnoreCase);
+        string schoolMark = V3ScheduleMark("school", schoolDone);
+        string homeworkMark = V3ScheduleMark("homework", homeworkDone);
+        string jobMark = V3ScheduleMark("job", jobDone);
         string studyLine = !knowsProject
             ? ""
             : V3HasStudyToday
-                ? $"{Mark(homeworkDone)} {quizManager.CurrentActivityTitle}"
+                ? $"{homeworkMark} {quizManager.CurrentActivityTitle}"
                 : "오늘은 별도 과제 없음";
         string[] lines = IsWeekend
             ? new[]
             {
-                $"{Mark(jobDone)} 카페 알바  08:00~16:00",
+                $"{jobMark} 카페 알바  08:00~16:00",
                 goalLine,
                 debtLine,
                 ""
             }
             : new[]
             {
-                $"{Mark(schoolDone)} 학교 가기",
+                $"{schoolMark} 학교 가기",
                 studyLine,
                 goalLine,
                 debtLine
@@ -1699,6 +1702,21 @@ public sealed class GameFlowManager : MonoBehaviour
 
         for (int i = 0; i < homeChecklistLines.Count; i++)
             homeChecklistLines[i].text = i < lines.Length ? lines[i] : "";
+    }
+
+    // DOBak V13-G01: 행동 잠금용 resolved 불리언과 화면에 보여 줄 완료/놓침 상태를 분리한다.
+    private string V3ScheduleMark(string schedule, bool fallbackResolved)
+    {
+        if (scenarioV3 == null)
+            return Mark(fallbackResolved);
+
+        string status = scenarioV3.GetState("schedule." + schedule);
+        return status switch
+        {
+            "complete" => "[완료]",
+            "missed" => "[놓침]",
+            _ => "[  ]"
+        };
     }
 
     private void CreateRuntimeUI()

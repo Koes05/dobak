@@ -620,6 +620,9 @@ public sealed class ScenarioV3Director : MonoBehaviour
         deliveredOutgoingLineIds.Clear();
         deliveredIncomingLineIds.Clear();
         pendingDayAdvance = false;
+        // DOBak V13-D01: 되감기 뒤 런타임 전용 아침 전환 플래그가 미래 분기로 새지 않게 한다.
+        pendingLateWakeAfterGambling = false;
+        pendingBorrowMorningAdvance = false;
         reactiveTrigger = string.Empty;
         immediateRoute = string.Empty;
         state.Clear();
@@ -721,6 +724,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["pending.borrow_target"] = "none";
         state["flag.late_wake_today"] = "false";
         state["flag.borrow_deferred"] = "false";
+        // DOBak V13-D02: 새 게임은 이전 밤샘 상태를 절대 이어받지 않는다.
+        state["flag.gambled_late"] = "false";
         state["borrowed.mom"] = "false";
         state["borrowed.seojun"] = "false";
         state["borrowed.minjae"] = "false";
@@ -782,7 +787,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
             return;
         }
         sceneQueue.Clear();
-        queueCompleted = null;
+        // DOBak V13-D03: 직접 라우팅된 장면도 현재 트리거 체인의 완료 콜백을 보존한다.
+        // 새 게임/되감기/강제 날짜 전환처럼 체인을 폐기해야 하는 경로는 호출부에서 명시적으로 초기화한다.
         BeginScene(scene);
     }
 
@@ -1608,13 +1614,22 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (returnToTablet && !hasQueuedScene)
         {
             HideNovel();
-            sceneQueue.Clear();
-            queueCompleted = null;
             waitingForMessageChoice = false;
             waitingMessageSpeaker = SpeakerType.Unknown;
             waitingMessageScene = null;
             waitingMessageLineIndex = -1;
             appWindow?.CloseCurrentApp();
+
+            // DOBak V13-D04: 태블릿 복귀 장면이 day_start 뒤의 차용 안내 같은 예약 작업을 지우지 않게 한다.
+            // 먼저 남은 완료 콜백을 소진하고, 그 콜백이 새 장면/메시지를 시작했다면 저녁·취침 자동 진행을 막는다.
+            StartQueuedScene();
+            if (activeScene != null || sceneQueue.Count > 0 || queueCompleted != null ||
+                waitingForMessageChoice || pendingOutgoingLine != null || waitingForMessageSceneClose ||
+                sceneTransitionInProgress)
+            {
+                return;
+            }
+
             if (!TryQueueEveningFill())
                 TryQueueBedtimeCue();
             return;
@@ -1779,7 +1794,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
                                       GetState("flag.borrow_deferred") == "true";
         bool showBorrowMenu = explicitBorrowDeferral || GetState("pending.borrow_menu") == "true" ||
                               (flow.V3BankCash <= 0 && GetInt("counter.gamble_sessions") >= 5);
-        bool wokeFromGambling = pendingLateWakeAfterGambling && !explicitBorrowDeferral;
+        // DOBak V13-D05: 차용 연락을 아침으로 미룬 것과 실제 도박 밤샘을 분리한다.
+        bool wokeFromGambling = pendingLateWakeAfterGambling;
 
         pendingLateWakeAfterGambling = false;
         pendingBorrowMorningAdvance = false;
@@ -1815,18 +1831,22 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["day_finalized"] = "0";
         state["pending.gamble_attention"] = "false";
         state["pending.borrow_menu"] = showBorrowMenu ? "true" : "false";
-        state["flag.late_wake_today"] = "true";
-        state["flag.borrow_deferred"] = explicitBorrowDeferral ? "true" : "false";
+        // DOBak V13-D06: 실제 밤샘만 10시 늦잠으로 처리한다. 차용 예약만 있으면 7시에 정상 기상한다.
+        state["flag.late_wake_today"] = wokeFromGambling ? "true" : "false";
+        state["flag.borrow_deferred"] = wokeFromGambling && explicitBorrowDeferral ? "true" : "false";
         state["flag.gambled_late"] = wokeFromGambling ? "true" : "false";
         state["day_cash_start"] = flow.V3BankCash.ToString(CultureInfo.InvariantCulture);
         flow.V3SetLocation("집");
-        flow.V3SetClock("10:00");
+        flow.V3SetClock(wokeFromGambling ? "10:00" : "07:00");
         Save();
 
         QueueTrigger("day_start", () =>
         {
             // 특수 기상 연출과 그 날의 부가 이벤트가 모두 끝난 뒤에만 차용을 이어 간다.
             SetState("flag.late_wake_today", "false");
+            // DOBak V13-D07: 당일 아침 장면 선택이 끝난 뒤 임시 플래그를 정리해 다음 날 장면에 남기지 않는다.
+            SetState("flag.gambled_late", "false");
+            SetState("flag.borrow_deferred", "false");
             if (GetState("pending.borrow_menu") != "true")
             {
                 Save();
@@ -1879,6 +1899,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["pending.gamble_attention"] = "false";
         state["flag.late_wake_today"] = "false";
         state["flag.borrow_deferred"] = "false";
+        // DOBak V13-D08: 정상 취침으로 넘어간 날에도 전날 밤샘 표식을 정리한다.
+        state["flag.gambled_late"] = "false";
         state["day_cash_start"] = flow.V3BankCash.ToString(CultureInfo.InvariantCulture);
         Save();
 
@@ -1906,10 +1928,11 @@ public sealed class ScenarioV3Director : MonoBehaviour
             AddInt("counter.homework_failures", 1);
         }
         if (weekendDay && GetState("schedule.job") == "pending")
-        {
             SetState("schedule.job", "missed");
+        // DOBak V13-D09: 즉시 결근 처리로 이미 missed가 된 날도 하루 확정 시 정확히 한 번 집계한다.
+        // day_finalized 가드 덕분에 중복 호출되어도 같은 결근을 두 번 세지 않는다.
+        if (weekendDay && GetState("schedule.job") == "missed")
             AddInt("counter.job_failures", 1);
-        }
 
         bool requiredDone = weekendDay
             ? GetState("schedule.job") == "complete"
@@ -2052,8 +2075,9 @@ public sealed class ScenarioV3Director : MonoBehaviour
                         }
                     }
 
+                    // DOBak V13-D10: 게임의 하루 시작 시각(07:00)을 실제 밤샘 경계로 사용한다.
                     if (GetState("flag.gambled_late") == "true" &&
-                        CrossesClockHour(startHour, elapsedHours, 8))
+                        CrossesClockHour(startHour, elapsedHours, 7))
                     {
                         pendingLateWakeAfterGambling = true;
                     }

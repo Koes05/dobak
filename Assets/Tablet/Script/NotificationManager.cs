@@ -79,16 +79,16 @@ public class NotificationManager : MonoBehaviour
             return;
 
         NotificationItem item = Instantiate(itemPrefab, content);
-        
-        if (content.childCount >= maxNotificationCount)
-        {
-            Destroy(content.GetChild(content.childCount - 1).gameObject);
-        }
 
-        // 새로 추가된 알림을 맨 위로 이동
+        // 새로 추가된 알림을 먼저 맨 위로 이동한다.
         item.transform.SetAsFirstSibling();
 
-        // 데이터 연결 
+        // DOBak V13-N01: 최대 개수에 도달했을 때 방금 만든 최신 알림이 아니라 가장 오래된 항목을 제거한다.
+        int visibleLimit = Mathf.Max(1, maxNotificationCount);
+        for (int index = content.childCount - 1; index >= visibleLimit; index--)
+            Destroy(content.GetChild(index).gameObject);
+
+        // 데이터 연결
         item.SetData(data, this);
     }
 
