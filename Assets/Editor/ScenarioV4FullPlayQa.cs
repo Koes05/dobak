@@ -232,6 +232,12 @@ public static class ScenarioV4FullPlayQa
             nextDebugAt = EditorApplication.timeSinceStartup + 5d;
         }
 
+        if ((route == Route.Prevention || route == Route.NoGamble) &&
+            flow.CurrentDay == 14 && flow.IsSchoolDone && flow.CurrentLocation == "집")
+        {
+            preventedReturnHomeObserved = true;
+        }
+
         if (flow.IsGameEnded)
         {
             Capture($"ending-{route.ToString().ToLowerInvariant()}.png");

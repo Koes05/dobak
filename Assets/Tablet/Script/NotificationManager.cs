@@ -32,8 +32,21 @@ public class NotificationManager : MonoBehaviour
 
     public void OpenNotification(NotificationData data)
     {
+        if (data == null)
+            return;
+
         if (data.appType == AppType.Message)
+        {
+            // 메시지 앱이 이미 열려 있으면 OpenApp의 same-app guard 때문에
+            // PreferConversation만 남고 실제 대화방 전환이 일어나지 않았다.
+            if (appWindow != null && appWindow.CurrentAppType == AppType.Message)
+            {
+                dialogueManager?.OpenDialogue(data.speakerType);
+                return;
+            }
+
             dialogueManager?.PreferConversation(data.speakerType);
+        }
         appWindow?.OpenApp(data.appType);
     }
 

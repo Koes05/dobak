@@ -105,8 +105,8 @@ d14_prevented_home,,false
 ending_prevented,,false
 d14_recovery_followup,,false
 d14_recovery_goal_router,,false
-d14_recovery_goal_debt,,false
-d14_recovery_goal_no_debt,,false
+d14_recovery_goal_debt,,true
+d14_recovery_goal_no_debt,,true
 d14_recovery_seojun,,false
 d14_recovery_family,,false
 d13_no_help_school,,false

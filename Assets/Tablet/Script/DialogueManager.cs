@@ -97,6 +97,8 @@ public class DialogueManager : MonoBehaviour
     private ScrollRect contactScroll;
     private Scrollbar contactScrollbar;
 
+    public int TotalUnreadCount => channels.Values.Sum(channel => channel.unreadCount);
+
     private void Awake()
     {
         EnsureInitialized();
@@ -499,6 +501,7 @@ public class DialogueManager : MonoBehaviour
 
         // 채팅방 진입 시 해당 프로필의 배지 갱신 (0이 되었으므로 숨겨짐)
         UpdateProfileUI(speaker);
+        GameFlowManager.Instance?.V3NotifyConversationOpened(speaker);
     }
 
     public void PreferConversation(SpeakerType speaker)
@@ -636,7 +639,7 @@ public class DialogueManager : MonoBehaviour
     private IEnumerator CompleteChoiceAfterReply(Choice selectedChoice, SpeakerType selectedSpeaker)
     {
         yield return StartCoroutine(ScrollToBottom());
-        yield return new WaitForSecondsRealtime(0.9f);
+        yield return new WaitForSecondsRealtime(0.3f);
 
         currentSpeaker = selectedSpeaker;
 

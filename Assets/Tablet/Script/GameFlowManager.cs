@@ -109,6 +109,7 @@ public sealed class GameFlowManager : MonoBehaviour
     private bool invitationResolved;
     private bool gamblingUnlocked;
     private bool isTransitioning;
+    private bool v3LocationTransitionPlayed;
     private bool gameEnded;
     private bool momBorrowRequested;
     private bool friendBorrowRequested;
@@ -353,18 +354,36 @@ public sealed class GameFlowManager : MonoBehaviour
         RefreshUI();
         ShowNextNarration();
         if (completedTrigger != null)
+        {
+            // 실제 이동 연출이 이미 재생되었으므로, 바로 이어지는 V3 장면에서
+            // 같은 페이드 연출을 한 번 더 재생하지 않는다.
+            v3LocationTransitionPlayed = true;
             DispatchTravelCompletion(completedTrigger);
+            // 동기적으로 이어진 장면이 이 값을 소비하지 않았다면
+            // 이후 사용자가 앱을 열 때까지 남기지 않는다.
+            v3LocationTransitionPlayed = false;
+        }
     }
 
-    public void V3ReturnHomeAfterActivity(Action completed)
+    public void V3ReturnHomeAfterActivity(Action completed, Action atBlack = null)
     {
         if (currentLocation == "집")
         {
+            atBlack?.Invoke();
             completed?.Invoke();
             return;
         }
 
-        StartCoroutine(ReturnHomeAfterActivity(completed));
+        StartCoroutine(ReturnHomeAfterActivity(completed, atBlack));
+    }
+
+    public bool V3ConsumeLocationTransition()
+    {
+        if (!v3LocationTransitionPlayed)
+            return false;
+
+        v3LocationTransitionPlayed = false;
+        return true;
     }
 
     public bool V3TransitionScene(Action midpoint)
@@ -372,21 +391,24 @@ public sealed class GameFlowManager : MonoBehaviour
         if (fadeGroup == null || isTransitioning)
             return false;
 
-        isTransitioning = true;
-        fadeGroup.blocksRaycasts = true;
-        fadeCaption.text = string.Empty;
-        fadeGroup.alpha = 1f;
-        fadeGroup.transform.SetAsLastSibling();
-        midpoint?.Invoke();
-        fadeGroup.transform.SetAsLastSibling();
-        StartCoroutine(FadeSceneIn());
+        StartCoroutine(V3SceneTransition(midpoint));
         return true;
     }
 
-    private IEnumerator FadeSceneIn()
+    private IEnumerator V3SceneTransition(Action midpoint)
     {
-        yield return new WaitForSecondsRealtime(0.08f);
-        yield return FadeTo(0f, 0.3f);
+        isTransitioning = true;
+        fadeGroup.blocksRaycasts = true;
+        fadeCaption.text = string.Empty;
+        fadeGroup.transform.SetAsLastSibling();
+
+        // 장면이 갑자기 검게 끊기지 않도록 현재 화면을 먼저 자연스럽게 닫는다.
+        yield return FadeTo(1f, 0.18f);
+        midpoint?.Invoke();
+        fadeGroup.transform.SetAsLastSibling();
+        yield return new WaitForSecondsRealtime(0.06f);
+        yield return FadeTo(0f, 0.24f);
+
         fadeGroup.blocksRaycasts = false;
         isTransitioning = false;
         RefreshUI();
@@ -417,28 +439,36 @@ public sealed class GameFlowManager : MonoBehaviour
             V3ReturnHomeAfterActivity(completed);
     }
 
-    private IEnumerator ReturnHomeAfterActivity(Action completed)
+    private IEnumerator ReturnHomeAfterActivity(Action completed, Action atBlack)
     {
         isTransitioning = true;
+        bool playedTransition = fadeGroup != null;
         if (fadeGroup != null)
         {
             fadeGroup.blocksRaycasts = true;
             fadeCaption.text = "집으로 돌아가는 중...";
             yield return FadeTo(1f, 0.3f);
-            yield return new WaitForSecondsRealtime(0.35f);
         }
 
+        // 화면이 완전히 가려진 뒤에만 VN/앱 UI를 교체한다.
+        // 이전에는 VN을 먼저 숨겨 태블릿 홈이 잠깐 비치는 현상이 있었다.
+        atBlack?.Invoke();
         currentLocation = "집";
         appWindow?.CloseCurrentApp();
         RefreshUI();
 
         if (fadeGroup != null)
         {
+            yield return new WaitForSecondsRealtime(0.2f);
             yield return FadeTo(0f, 0.35f);
             fadeGroup.blocksRaycasts = false;
         }
         isTransitioning = false;
+        v3LocationTransitionPlayed = playedTransition;
         completed?.Invoke();
+        // 귀가 직후 바로 이어진 장면에서만 중복 페이드를 억제한다.
+        // 자유 행동까지 이 상태가 남으면 다음 앱/도박 연출의 전환이 빠질 수 있다.
+        v3LocationTransitionPlayed = false;
         ShowNextNarration();
     }
 
@@ -1130,6 +1160,7 @@ public sealed class GameFlowManager : MonoBehaviour
         debt = 0;
         gameEnded = false;
         isTransitioning = false;
+        v3LocationTransitionPlayed = false;
         scheduleFailureDays = 0;
         consecutiveShortSleepDays = 0;
         schoolDone = homeworkDone = jobDone = sleepDone = false;
@@ -1148,6 +1179,7 @@ public sealed class GameFlowManager : MonoBehaviour
         debt = Mathf.Max(0, restoredDebt);
         gameEnded = false;
         isTransitioning = false;
+        v3LocationTransitionPlayed = false;
         schoolDone = homeworkDone = jobDone = sleepDone = false;
         coinManager?.SetBankCash(cash, "분기점 복원");
         quizManager?.ConfigureForDay(currentDay, !IsWeekend);
@@ -1235,6 +1267,12 @@ public sealed class GameFlowManager : MonoBehaviour
     public void V3Refresh()
     {
         RefreshUI();
+    }
+
+    public void V3NotifyConversationOpened(SpeakerType speaker)
+    {
+        scenarioV3?.NotifyConversationOpened(speaker);
+        RefreshAttentionDots();
     }
 
     public void V3ShowTutorialHint(AppType target, string text)
@@ -1472,7 +1510,8 @@ public sealed class GameFlowManager : MonoBehaviour
             if (pair.Key == AppType.Map)
                 visible |= currentLocation == "집" && (IsWeekend ? !jobDone : !schoolDone);
             else if (pair.Key == AppType.Message)
-                visible |= scenarioV3 != null && scenarioV3.HasPendingMessageAction;
+                visible |= (scenarioV3 != null && scenarioV3.HasPendingMessageAction) ||
+                           (dialogueManager != null && dialogueManager.TotalUnreadCount > 0);
             else if (pair.Key == AppType.Study)
                 visible |= !IsWeekend && schoolDone && V3HasStudyToday && !homeworkDone;
             else if (pair.Key == AppType.Sleep)
@@ -1842,7 +1881,7 @@ public sealed class GameFlowManager : MonoBehaviour
         SetRect(title.rectTransform, new Vector2(100f, -115f), new Vector2(520f, 70f));
 
         TMP_Text info = CreateText("Settings Info", settings.transform, font, 28, FontStyles.Normal, new Color(0.18f, 0.21f, 0.27f));
-        info.text = "공짜 5천원\n청소년 도박 예방 시뮬레이션\n\n플레이 기록은 기기에 저장되지 않습니다.\n도박 문제 예방·상담 1336";
+        info.text = "도박예방게임\n청소년 도박 예방 시뮬레이션\n\n플레이 기록은 기기에 저장되지 않습니다.\n도박 문제 예방·상담 1336";
         info.textWrappingMode = TextWrappingModes.Normal;
         SetRect(info.rectTransform, new Vector2(100f, -230f), new Vector2(1100f, 360f));
 

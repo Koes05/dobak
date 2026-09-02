@@ -98,6 +98,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private int currentDialoguePageIndex;
     private bool isTyping;
     private bool sceneTransitionInProgress;
+    private bool activeSceneTransitionHandled;
 
     private GameObject novelPanel;
     private RawImage novelBackground;
@@ -184,7 +185,6 @@ public sealed class ScenarioV3Director : MonoBehaviour
     {
         if (app == AppType.Message)
         {
-            SetState("unread_count", "0");
             flow.V3HideTutorialHint(AppType.Message);
             TryDeliverPendingOutgoingMessage();
             Save();
@@ -197,6 +197,17 @@ public sealed class ScenarioV3Director : MonoBehaviour
         {
             flow.V3HideTutorialHint(AppType.Study);
         }
+    }
+
+    public void NotifyConversationOpened(SpeakerType speaker)
+    {
+        if (!IsReady || dialogue == null)
+            return;
+
+        SetState("unread_count", dialogue.TotalUnreadCount.ToString(CultureInfo.InvariantCulture));
+        if (speaker == SpeakerType.Friend && waitingForMessageChoice)
+            flow.V3HideTutorialHint(AppType.Message);
+        Save();
     }
 
     public void TryStartGambleFromHome()
@@ -389,6 +400,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
     {
         sceneQueue.Clear();
         sceneTransitionInProgress = false;
+        activeSceneTransitionHandled = false;
         activeScene = null;
         activeLineIndex = 0;
         waitingForMessageChoice = false;
@@ -516,15 +528,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     private void BeginScene(ScenarioV3Scene scene)
     {
-        sceneTransitionInProgress = true;
-        if (flow != null && flow.V3TransitionScene(() =>
-            {
-                sceneTransitionInProgress = false;
-                BeginSceneImmediate(scene);
-            }))
-            return;
-
         sceneTransitionInProgress = false;
+        activeSceneTransitionHandled = false;
         BeginSceneImmediate(scene);
     }
 
@@ -575,13 +580,45 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
         if (delivery == "overlay")
         {
+            // 실제 이동 직후 태블릿 오버레이가 이어지는 경우에는
+            // 이동 연출을 여기서 소비해 이후 장면까지 남지 않게 한다.
+            flow?.V3ConsumeLocationTransition();
             ShowTabletOverlayLine(line);
             return;
         }
         if (delivery == "message")
         {
+            // 메시지 수신 자체에는 화면 전환 연출을 재생하지 않는다.
+            flow?.V3ConsumeLocationTransition();
             PresentMessage(line);
             return;
+        }
+
+        // 메시지/오버레이/라우터에는 장면 페이드를 재생하지 않는다.
+        // 실제 VN 화면이 나타나는 첫 순간에만 한 번 전환한다.
+        if (!activeSceneTransitionHandled)
+        {
+            if (flow != null && flow.V3ConsumeLocationTransition())
+            {
+                activeSceneTransitionHandled = true;
+            }
+            else if (flow != null)
+            {
+                sceneTransitionInProgress = true;
+                if (flow.V3TransitionScene(() =>
+                    {
+                        sceneTransitionInProgress = false;
+                        activeSceneTransitionHandled = true;
+                        ShowNovelLine(line);
+                    }))
+                    return;
+                sceneTransitionInProgress = false;
+                activeSceneTransitionHandled = true;
+            }
+            else
+            {
+                activeSceneTransitionHandled = true;
+            }
         }
 
         ShowNovelLine(line);
@@ -701,7 +738,9 @@ public sealed class ScenarioV3Director : MonoBehaviour
         string contact = pendingOutgoingContact;
         string text = pendingOutgoingText;
 
-        yield return new WaitForSecondsRealtime(0.65f);
+        // 앱은 AppWindow에서 먼저 활성화되므로 고정 1초 대기 대신
+        // 레이아웃이 한두 프레임 안정된 뒤 바로 메시지를 보여 준다.
+        yield return null;
         if (!IsMessageAppReady())
         {
             pendingOutgoingCoroutine = null;
@@ -709,7 +748,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
 
         dialogue.OpenDialogue(speaker);
-        yield return new WaitForSecondsRealtime(0.35f);
+        yield return null;
 
         if (pendingOutgoingLine != line || !IsMessageUiReady())
         {
@@ -764,10 +803,10 @@ public sealed class ScenarioV3Director : MonoBehaviour
         int readableCharacters = string.IsNullOrWhiteSpace(text)
             ? 0
             : text.Count(character => !char.IsWhiteSpace(character));
-        float baseDelay = sentByPlayer ? 0.85f : 1.05f;
-        float perCharacter = sentByPlayer ? 0.022f : 0.032f;
-        float minimum = sentByPlayer ? 1.0f : 1.2f;
-        float maximum = sentByPlayer ? 1.8f : 2.6f;
+        float baseDelay = sentByPlayer ? 0.22f : 0.28f;
+        float perCharacter = sentByPlayer ? 0.008f : 0.012f;
+        float minimum = sentByPlayer ? 0.35f : 0.45f;
+        float maximum = sentByPlayer ? 0.8f : 1.1f;
         return Mathf.Clamp(baseDelay + readableCharacters * perCharacter, minimum, maximum);
     }
 
@@ -826,7 +865,10 @@ public sealed class ScenarioV3Director : MonoBehaviour
         currentDialoguePages = PaginateDialogue(expandedText);
         currentDialoguePageIndex = 0;
         currentFullText = currentDialoguePages[0];
-        AppendDialogueLog(string.IsNullOrWhiteSpace(displaySpeaker) ? "나" : displaySpeaker, expandedText);
+        string logSpeaker = string.Equals(line.speaker, "Narrator", StringComparison.OrdinalIgnoreCase)
+            ? "내레이션"
+            : string.IsNullOrWhiteSpace(displaySpeaker) ? "나" : displaySpeaker;
+        AppendDialogueLog(logSpeaker, expandedText);
         ApplyArcVisual(visualArc ?? activeScene?.arc ?? "home", line.delivery);
         ApplyCharacterPortrait(line);
 
@@ -1141,8 +1183,9 @@ public sealed class ScenarioV3Director : MonoBehaviour
         };
         ShowNovelLine(line, () =>
         {
-            HideNovel();
-            flow.V3ReturnHomeAfterActivity(completed);
+            // VN을 먼저 숨기면 귀가 페이드가 시작되기 전에 태블릿 홈이 비친다.
+            // 화면이 완전히 검어진 시점에 VN을 숨긴다.
+            flow.V3ReturnHomeAfterActivity(completed, HideNovel);
         }, activityArc);
     }
 
@@ -1164,9 +1207,26 @@ public sealed class ScenarioV3Director : MonoBehaviour
             return text;
 
         string trimmed = text.Trim();
-        return trimmed.StartsWith("(", StringComparison.Ordinal) && trimmed.EndsWith(")", StringComparison.Ordinal)
-            ? trimmed
-            : $"({trimmed})";
+        if (trimmed.StartsWith("(", StringComparison.Ordinal) &&
+            trimmed.EndsWith(")", StringComparison.Ordinal))
+        {
+            trimmed = trimmed.Substring(1, trimmed.Length - 2).Trim();
+        }
+
+        string[] sentences = Regex.Split(trimmed, @"(?<=[.!?。！？])\s+");
+        var wrapped = new List<string>();
+        foreach (string rawSentence in sentences)
+        {
+            string sentence = rawSentence.Trim();
+            if (sentence.Length == 0)
+                continue;
+            if (sentence.StartsWith("(", StringComparison.Ordinal) &&
+                sentence.EndsWith(")", StringComparison.Ordinal))
+                wrapped.Add(sentence);
+            else
+                wrapped.Add($"({sentence})");
+        }
+        return wrapped.Count > 0 ? string.Join(" ", wrapped) : $"({trimmed})";
     }
 
     private static bool IsActivityArc(string arc)
