@@ -19,7 +19,7 @@ using UnityEngine.UI;
 public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 {
     private const string TabletSceneName = "TabletUI";
-    private const string PatchVersion = "V21.1-InputSystem";
+    private const string PatchVersion = "V22.2-CanvasGroup";
 
     private GameFlowManager flow;
     private ScenarioV3Director director;
@@ -48,6 +48,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     private int lastDay = -1;
     private int lastCheckpointCount = -1;
     private bool explicitBorrowPending;
+    private int explicitBorrowRequestDay = -1;
     private bool borrowOverlayShownForCurrentDay;
     private bool restoringCheckpoint;
     private List<string> preservedDialogueLog = new List<string>();
@@ -59,6 +60,12 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     private bool observedBorrowedMom;
     private bool observedBorrowedSeojun;
     private bool observedBorrowedMinjae;
+
+    private Button novelTapAdvanceSurface;
+    private Button tabletTapAdvanceSurface;
+    private CanvasGroup novelContinueCanvasGroup;
+    private CanvasGroup tabletContinueCanvasGroup;
+    private float nextDialogueTapAt;
 
     private static readonly BindingFlags PrivateInstance =
         BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
@@ -120,6 +127,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
         PatchScenarioDatabase();
         CreateChoiceOverlay();
+        InstallTouchDialogueControls();
         InitializeLenderDebtState();
         InvokePrivate(director, "Save");
         PatchButtons(true);
@@ -146,6 +154,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         HandleQaShortcuts();
 #endif
         TrackExplicitBorrowRequest();
+        ExpireBorrowActionsOutsideMorning();
         KeepMinjaeLoanOfferRepeatableUntilAccepted();
         SynchronizeLenderDebtState();
         HandleDayChangeAndDialogueLog();
@@ -154,6 +163,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         TryShowDeferredBorrowChoice();
         TryReplaceDebtChatChoicesWithDialogue();
         TryOfferPostJobRepayment();
+        MaintainTouchDialogueControls();
     }
 
     private void LateUpdate()
@@ -162,6 +172,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             return;
 
         ApplyExactAttentionDots();
+        ApplyRightSideChoiceLayout();
         if (choiceOverlay != null && choiceOverlay.activeSelf)
             choiceOverlay.transform.SetAsLastSibling();
     }
@@ -293,6 +304,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         PatchD8EveningTiming();
         PatchManagerNarrative();
         PatchSeoyeonRecoveryContext();
+        PatchRepeatedLanguage();
         PatchMultiLenderEndingChain();
         AddExtendedGamblingScenes();
 
@@ -513,7 +525,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
                 "아니에요.... 그냥 잠을 좀 못 자서 그래요. 괜찮아요.",
                 string.Empty, string.Empty),
             CreateLine("v21_manager_hide_02", 2, "CafeManager", "점장님", "dialogue", "manager_worried",
-                "그래. 지금 말하기 싫으면 안 해도 돼. 그래도 혼자 감당하기 어렵다 싶으면 선생님이나 부모님께는 꼭 말해.",
+                "그래. 지금 설명하기 어렵다면 더 묻지는 않을게. 다만 몸 상태가 계속 이러면 부모님이나 선생님께는 알려.",
                 "relation.manager:add=1|flag.manager_advice:set=true", string.Empty)));
 
         ScenarioV3Line d12Reflection = FindLine("d12_evening_01");
@@ -521,7 +533,14 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             d12Reflection.text = "집에 돌아와서도 점장님의 말이 계속 걸렸다. 지금은 넘겼지만, 나도 요즘 달라졌다는 건 알고 있었다.";
         ScenarioV3Line d12Decision = FindLine("d12_evening_02");
         if (d12Decision != null)
-            d12Decision.text = "내일 학교에 가면 선생님한테는 말해볼까.... 혼자 계속 숨기는 것보단 낫겠지.";
+            d12Decision.text = "내일 학교에 가면 선생님한테는 물어볼까.... 적어도 어디서부터 정리해야 할지는 알 수 있겠지.";
+
+        ScenarioV3Line distantWarning = FindLine("d12_manager_distant_01");
+        if (distantWarning != null)
+            distantWarning.text = "오늘 나온 건 다행이야. 다만 연락 없이 빠진 날이 있어서, 다음에도 같은 일이 생기면 근무를 계속 맡기기 어려워.";
+        ScenarioV3Line distantResult = FindLine("d12_manager_distant_02");
+        if (distantResult != null)
+            distantResult.text = "오늘 근무는 그대로 마쳤다. 다음 일정이 생기면 점장님과 먼저 시간을 확인하기로 했다.";
     }
 
     private void PatchSeoyeonRecoveryContext()
@@ -549,6 +568,56 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         scene.lines.Add(original);
     }
 
+    private void PatchRepeatedLanguage()
+    {
+        ScenarioV3Line seoyeonCheck = FindLine("d10_school_checkin_03");
+        if (seoyeonCheck != null)
+            seoyeonCheck.text = "알바 때문만은 아닌 것 같은데.... 지금 말하기 싫으면 괜찮아. 정말 힘들면 나한테 한마디만 해.";
+
+        ScenarioV3Line missedSchool = FindLine("d10_school_missed_message_01");
+        if (missedSchool != null)
+            missedSchool.text = "오늘 학교 안 왔더라. 주말 알바 있다 했지? 자세히 말하기 싫으면 괜찮아. 무슨 일 없는지만 알려줘.";
+
+        ScenarioV3Line missedJob = FindLine("d11_job_missed_now_01");
+        if (missedJob != null)
+        {
+            missedJob.text = "지난주부터 상태가 안 좋아 보였어. 오늘 못 올 것 같으면 미리 알려줘. 무슨 일 있는 건 아니지?";
+            if (missedJob.choiceA != null)
+            {
+                missedJob.choiceA.text = "다음 근무 전엔 먼저 말씀드린다";
+                missedJob.choiceA.replyText = "죄송해요. 지금은 설명하기 어려운데.... 다음 근무 전에는 제가 먼저 말씀드릴게요.";
+            }
+        }
+
+        ScenarioV3Line seojunFollowup = FindLine("d10_seojun_followup_01");
+        if (seojunFollowup?.choiceB != null)
+            seojunFollowup.choiceB.text = "주말 알바비까지 기다려 달라고 한다";
+        ScenarioV3Line seojunDelay = FindLine("d10_seojun_followup_02");
+        if (seojunDelay != null)
+            seojunDelay.text = "답장은 금방 쓸 수 있는데, 보낼 날짜를 또 바꾸려니 손이 멈췄다.";
+        ScenarioV3Line seojunCannot = FindLine("d10_seojun_cannot_repay_01");
+        if (seojunCannot != null)
+            seojunCannot.text = "갚고 싶지만 지금은 보낼 돈이 없다.... 주말 알바비가 들어오면 먼저 보내겠다고 해야겠다.";
+
+        ScenarioV3Line minjaeDebtChoice = FindLine("d10_minjae_debt_02");
+        if (minjaeDebtChoice?.choiceB != null)
+            minjaeDebtChoice.choiceB.text = "알바비가 들어오면 보내겠다고 한다";
+        ScenarioV3Line minjaeDelay = FindLine("d10_minjae_delay_thought_01");
+        if (minjaeDelay != null)
+            minjaeDelay.text = "지금 돈이 없다는 말을 다시 쓰려니 손이 멈췄다.... 그래도 답은 해야 한다.";
+
+        ScenarioV3Line noHelpSeojunFirst = FindLine("d14_no_help_seojun_01");
+        if (noHelpSeojunFirst != null)
+            noHelpSeojunFirst.text = "미안한데 나도 이제는 이유를 알아야 할 것 같아. 약속한 날짜가 지났는데 아무 설명도 없으면 나도 곤란해.";
+        ScenarioV3Line noHelpSeojunReply = FindLine("d14_no_help_seojun_03");
+        if (noHelpSeojunReply != null)
+            noHelpSeojunReply.text = "미안해. 지금은 사실대로 말할 용기가 없어. 언제 보낼 수 있는지 확인해서 다시 말할게.";
+
+        ScenarioV3Line projectApology = FindLine("d14_seoyeon_bad_02");
+        if (projectApology != null)
+            projectApology.text = "내 부분을 제때 못 보내서 네가 대신 했잖아. 미안해.";
+    }
+
     private void PatchMultiLenderEndingChain()
     {
         // Recovery: every person the player actually borrowed from must receive the required
@@ -574,8 +643,21 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         AddOrReplaceScene(CreateScene(
             "v21_recovery_zero_debt_router", "debt", "14", "epilogue", 176,
             CreateLine("v21_recovery_zero_debt_router_01", 1, "System", string.Empty, "router", string.Empty,
-                string.Empty,
-                "route:v21_recovery_repaid if borrowed.seojun=true|borrowed.minjae=true|borrowed.mom=true else d14_recovery_no_debt",
+                string.Empty, "route:v22_recovery_repaid_check_seojun", string.Empty)));
+        AddOrReplaceScene(CreateScene(
+            "v22_recovery_repaid_check_seojun", "debt", "14", "epilogue", 176,
+            CreateLine("v22_recovery_repaid_check_seojun_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty, "route:v21_recovery_repaid if borrowed.seojun=true else v22_recovery_repaid_check_minjae",
+                string.Empty)));
+        AddOrReplaceScene(CreateScene(
+            "v22_recovery_repaid_check_minjae", "debt", "14", "epilogue", 176,
+            CreateLine("v22_recovery_repaid_check_minjae_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty, "route:v21_recovery_repaid if borrowed.minjae=true else v22_recovery_repaid_check_mom",
+                string.Empty)));
+        AddOrReplaceScene(CreateScene(
+            "v22_recovery_repaid_check_mom", "debt", "14", "epilogue", 176,
+            CreateLine("v22_recovery_repaid_check_mom_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty, "route:v21_recovery_repaid if borrowed.mom=true else d14_recovery_no_debt",
                 string.Empty)));
         AddOrReplaceScene(CreateScene(
             "v21_recovery_repaid", "main", "14", "epilogue", 175,
@@ -624,8 +706,21 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         AddOrReplaceScene(CreateScene(
             "v21_no_help_zero_debt_router", "debt", "14", "morning", 205,
             CreateLine("v21_no_help_zero_debt_router_01", 1, "System", string.Empty, "router", string.Empty,
-                string.Empty,
-                "route:v21_no_help_repaid_home if borrowed.seojun=true|borrowed.minjae=true|borrowed.mom=true else d14_no_help_no_debt",
+                string.Empty, "route:v22_no_help_repaid_check_seojun", string.Empty)));
+        AddOrReplaceScene(CreateScene(
+            "v22_no_help_repaid_check_seojun", "debt", "14", "morning", 205,
+            CreateLine("v22_no_help_repaid_check_seojun_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty, "route:v21_no_help_repaid_home if borrowed.seojun=true else v22_no_help_repaid_check_minjae",
+                string.Empty)));
+        AddOrReplaceScene(CreateScene(
+            "v22_no_help_repaid_check_minjae", "debt", "14", "morning", 205,
+            CreateLine("v22_no_help_repaid_check_minjae_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty, "route:v21_no_help_repaid_home if borrowed.minjae=true else v22_no_help_repaid_check_mom",
+                string.Empty)));
+        AddOrReplaceScene(CreateScene(
+            "v22_no_help_repaid_check_mom", "debt", "14", "morning", 205,
+            CreateLine("v22_no_help_repaid_check_mom_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty, "route:v21_no_help_repaid_home if borrowed.mom=true else d14_no_help_no_debt",
                 string.Empty)));
         AddOrReplaceScene(CreateScene(
             "v21_no_help_repaid_home", "main", "14", "night", 200,
@@ -1014,13 +1109,88 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     {
         bool pending = string.Equals(GetDirectorState("pending.borrow_menu"), "true", StringComparison.OrdinalIgnoreCase);
         bool deferred = string.Equals(GetDirectorState("flag.borrow_deferred"), "true", StringComparison.OrdinalIgnoreCase);
-        if (pending && deferred)
-            explicitBorrowPending = true;
+        int rememberedDay = GetDirectorInt("v22.borrow_requested_day");
+        if (pending && (deferred || rememberedDay > 0))
+        {
+            if (!explicitBorrowPending)
+            {
+                int storedDay = rememberedDay;
+                if (storedDay <= 0)
+                {
+                    // A fresh request is made during the night. When loading a save already at the
+                    // next morning, infer the previous day. A leftover request first discovered in
+                    // the middle of the day is stale and must not suddenly open at noon.
+                    if (flow.CurrentHour >= 18)
+                        storedDay = flow.CurrentDay;
+                    else if (flow.CurrentHour <= 10)
+                        storedDay = Mathf.Max(0, flow.CurrentDay - 1);
+                    else
+                    {
+                        ClearDeferredBorrowRequest();
+                        return;
+                    }
+                    SetDirectorState("v22.borrow_requested_day", storedDay.ToString(CultureInfo.InvariantCulture));
+                }
+                explicitBorrowRequestDay = storedDay;
+                explicitBorrowPending = true;
+            }
+        }
 
         // Old source contains an emergency flag that used to force the day forward.
         // The data patch no longer sets it, and this guard prevents stale values from an older save/run.
         if (GetField<bool>(director, "pendingBorrowMorningAdvance"))
             SetField(director, "pendingBorrowMorningAdvance", false);
+    }
+
+    private void ExpireBorrowActionsOutsideMorning()
+    {
+        if (flow == null || dialogue == null)
+            return;
+
+        string target = (GetDirectorState("pending.borrow_target") ?? "none").Trim();
+        bool hasPreparedMessage = !string.Equals(target, "none", StringComparison.OrdinalIgnoreCase) ||
+                                  HasBorrowActionChoices();
+
+        // A deferred request is only actionable from 07:00 through 10:00 on the following day.
+        // Before 07:00 the intention is kept silently for the coming morning. After 10:00, both
+        // the request and any unsent borrow-message buttons expire so they cannot reappear at noon.
+        if (flow.CurrentHour > 10)
+        {
+            if (explicitBorrowPending || hasPreparedMessage ||
+                string.Equals(GetDirectorState("pending.borrow_menu"), "true", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(GetDirectorState("flag.borrow_deferred"), "true", StringComparison.OrdinalIgnoreCase))
+            {
+                ClearDeferredBorrowRequest();
+            }
+            return;
+        }
+
+        if (flow.CurrentHour < 7 && hasPreparedMessage)
+        {
+            SetDirectorState("pending.borrow_target", "none");
+            RemoveBorrowActionChoices();
+            InvokePrivate(director, "Save");
+        }
+    }
+
+    private bool HasBorrowActionChoices()
+    {
+        Dictionary<SpeakerType, ChatChannel> channels =
+            GetField<Dictionary<SpeakerType, ChatChannel>>(dialogue, "channels");
+        if (channels == null)
+            return false;
+
+        foreach (ChatChannel channel in channels.Values)
+        {
+            if (channel == null)
+                continue;
+            if (channel.eventChoices != null && channel.eventChoices.Any(IsBorrowActionChoice))
+                return true;
+            if (channel.pendingChoiceSets != null && channel.pendingChoiceSets.Any(set =>
+                    set != null && set.Any(IsBorrowActionChoice)))
+                return true;
+        }
+        return false;
     }
 
     private void KeepMinjaeLoanOfferRepeatableUntilAccepted()
@@ -1081,10 +1251,22 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (borrowOverlayShownForCurrentDay || choiceOverlay == null || choiceOverlay.activeSelf)
             return;
 
-        // 잔액이 0원이라는 사실만으로 차용 화면을 띄우지 않는다. 이 플래그는
-        // 플레이어가 전날 실제로 '돈을 빌린다'를 고른 경우에만 설정된다.
+        // The choice belongs to the morning after the player explicitly deferred borrowing.
+        // It must never surface on the same night or later at noon/afternoon. A real late wake
+        // still uses 10:00, so the valid window is 07:00 through 10:00 inclusive.
         if (!explicitBorrowPending)
             return;
+        if (explicitBorrowRequestDay < 0)
+            explicitBorrowRequestDay = GetDirectorInt("v22.borrow_requested_day");
+        if (flow.CurrentDay <= explicitBorrowRequestDay)
+            return;
+        if (flow.CurrentHour < 7)
+            return;
+        if (flow.CurrentHour > 10)
+        {
+            ClearDeferredBorrowRequest();
+            return;
+        }
         if (!IsDirectorIdle() || flow.CurrentLocation != "집")
             return;
 
@@ -1094,6 +1276,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
         borrowOverlayShownForCurrentDay = true;
         explicitBorrowPending = false;
+        explicitBorrowRequestDay = -1;
+        SetDirectorState("v22.borrow_requested_day", "0");
         SetDirectorState("pending.borrow_menu", "false");
         SetDirectorState("flag.borrow_deferred", "false");
         SetField(director, "activeScene", scene);
@@ -1101,9 +1285,58 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         appWindow?.CloseCurrentApp();
 
         ScenarioV3Line line = scene.lines[0];
-        ShowChoiceOverlay(line, "어젯밤 미뤄 둔 연락을 지금 정해야 한다. 누구에게 부탁할까.",
+        ShowChoiceOverlay(line, "어젯밤 생각해 둔 연락을 정해야 한다. 누구에게 부탁할까.",
             SpeakerType.Unknown);
         InvokePrivate(director, "Save");
+    }
+
+    private void ClearDeferredBorrowRequest()
+    {
+        explicitBorrowPending = false;
+        explicitBorrowRequestDay = -1;
+        SetDirectorState("v22.borrow_requested_day", "0");
+        SetDirectorState("pending.borrow_menu", "false");
+        SetDirectorState("flag.borrow_deferred", "false");
+        SetDirectorState("pending.borrow_target", "none");
+        RemoveBorrowActionChoices();
+        InvokePrivate(director, "Save");
+    }
+
+    private void RemoveBorrowActionChoices()
+    {
+        if (dialogue == null)
+            return;
+        Dictionary<SpeakerType, ChatChannel> channels =
+            GetField<Dictionary<SpeakerType, ChatChannel>>(dialogue, "channels");
+        if (channels == null)
+            return;
+
+        foreach (ChatChannel channel in channels.Values)
+        {
+            if (channel == null)
+                continue;
+            channel.eventChoices?.RemoveAll(choice => IsBorrowActionChoice(choice));
+            if (channel.pendingChoiceSets == null || channel.pendingChoiceSets.Count == 0)
+                continue;
+            var rebuilt = new Queue<List<Choice>>();
+            foreach (List<Choice> set in channel.pendingChoiceSets)
+            {
+                List<Choice> kept = set == null
+                    ? new List<Choice>()
+                    : set.Where(choice => !IsBorrowActionChoice(choice)).ToList();
+                if (kept.Count > 0)
+                    rebuilt.Enqueue(kept);
+            }
+            channel.pendingChoiceSets = rebuilt;
+        }
+        InvokePrivate(dialogue, "ClearChoices");
+        dialogue.UpdateAllProfileUI();
+    }
+
+    private static bool IsBorrowActionChoice(Choice choice)
+    {
+        return choice != null && !string.IsNullOrWhiteSpace(choice.scenarioAction) &&
+               choice.scenarioAction.StartsWith("v3-borrow-", StringComparison.OrdinalIgnoreCase);
     }
 
     private bool IsDirectorIdle()
@@ -1467,28 +1700,29 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     private void PlaceChoiceOverlayButtons(int visibleCount)
     {
         visibleCount = Mathf.Clamp(visibleCount, 1, choiceOverlayButtons.Count);
+        float height = visibleCount == 1 ? 0.36f : visibleCount == 2 ? 0.29f : 0.23f;
+        float gap = visibleCount == 3 ? 0.035f : 0.055f;
+        float top = 0.86f;
+
         for (int index = 0; index < choiceOverlayButtons.Count; index++)
         {
             RectTransform rect = choiceOverlayButtons[index].GetComponent<RectTransform>();
-            if (visibleCount == 1)
+            float yMax = top - index * (height + gap);
+            float yMin = yMax - height;
+            rect.anchorMin = new Vector2(0.63f, yMin);
+            rect.anchorMax = new Vector2(0.96f, yMax);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            TMP_Text label = choiceOverlayButtons[index].GetComponentInChildren<TMP_Text>(true);
+            if (label != null)
             {
-                rect.anchorMin = new Vector2(0.32f, 0.08f);
-                rect.anchorMax = new Vector2(0.68f, 0.34f);
+                label.enableAutoSizing = true;
+                label.fontSizeMin = 23f;
+                label.fontSizeMax = 31f;
+                label.textWrappingMode = TextWrappingModes.Normal;
+                label.alignment = TextAlignmentOptions.Center;
             }
-            else if (visibleCount == 2)
-            {
-                float center = index == 0 ? 0.32f : 0.68f;
-                rect.anchorMin = new Vector2(center - 0.16f, 0.08f);
-                rect.anchorMax = new Vector2(center + 0.16f, 0.34f);
-            }
-            else
-            {
-                float center = 0.18f + 0.32f * index;
-                rect.anchorMin = new Vector2(center - 0.145f, 0.08f);
-                rect.anchorMax = new Vector2(center + 0.145f, 0.34f);
-            }
-            rect.offsetMin = new Vector2(8f, 0f);
-            rect.offsetMax = new Vector2(-8f, 0f);
         }
     }
 
@@ -1603,7 +1837,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             new Color(0.025f, 0.045f, 0.075f, 0.985f));
         RectTransform boxRect = box.GetComponent<RectTransform>();
         boxRect.anchorMin = new Vector2(0.12f, 0.08f);
-        boxRect.anchorMax = new Vector2(0.88f, 0.43f);
+        boxRect.anchorMax = new Vector2(0.88f, 0.50f);
         boxRect.offsetMin = boxRect.offsetMax = Vector2.zero;
 
         choiceOverlaySpeaker = CreateText("Speaker", box.transform, font, 27f, FontStyles.Bold,
@@ -1619,10 +1853,10 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         choiceOverlayBody.alignment = TextAlignmentOptions.TopLeft;
         choiceOverlayBody.textWrappingMode = TextWrappingModes.Normal;
         RectTransform bodyRect = choiceOverlayBody.rectTransform;
-        bodyRect.anchorMin = new Vector2(0f, 0.48f);
-        bodyRect.anchorMax = new Vector2(1f, 1f);
-        bodyRect.offsetMin = new Vector2(34f, 0f);
-        bodyRect.offsetMax = new Vector2(-34f, -72f);
+        bodyRect.anchorMin = new Vector2(0f, 0.12f);
+        bodyRect.anchorMax = new Vector2(0.60f, 1f);
+        bodyRect.offsetMin = new Vector2(34f, 20f);
+        bodyRect.offsetMax = new Vector2(-18f, -72f);
 
         for (int index = 0; index < 3; index++)
         {
@@ -1639,6 +1873,186 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         }
 
         choiceOverlay.SetActive(false);
+    }
+
+    // ---------------------------------------------------------------------
+    // Tablet-first dialogue input and right-side choices
+    // ---------------------------------------------------------------------
+
+    private void InstallTouchDialogueControls()
+    {
+        GameObject novelPanel = GetField<GameObject>(director, "novelPanel");
+        if (novelPanel != null)
+            novelTapAdvanceSurface = EnsurePanelTapButton(novelPanel, HandleNovelTap);
+
+        GameObject narrationPanel = GetField<GameObject>(flow, "narrationPanel");
+        if (narrationPanel != null)
+            tabletTapAdvanceSurface = EnsurePanelTapButton(narrationPanel, HandleTabletNarrationTap);
+
+        MaintainTouchDialogueControls();
+        ApplyRightSideChoiceLayout();
+    }
+
+    private static Button EnsurePanelTapButton(GameObject panel, UnityEngine.Events.UnityAction action)
+    {
+        if (panel == null)
+            return null;
+
+        Image graphic = panel.GetComponent<Image>();
+        if (graphic == null)
+            graphic = panel.AddComponent<Image>();
+        graphic.raycastTarget = true;
+
+        Button button = panel.GetComponent<Button>();
+        if (button == null)
+            button = panel.AddComponent<Button>();
+        button.transition = Selectable.Transition.None;
+        button.targetGraphic = graphic;
+        button.onClick.RemoveAllListeners();
+        button.onClick.AddListener(action);
+        return button;
+    }
+
+    private void MaintainTouchDialogueControls()
+    {
+        if (novelTapAdvanceSurface == null)
+        {
+            GameObject novelPanel = GetField<GameObject>(director, "novelPanel");
+            if (novelPanel != null)
+                novelTapAdvanceSurface = EnsurePanelTapButton(novelPanel, HandleNovelTap);
+        }
+        if (tabletTapAdvanceSurface == null)
+        {
+            GameObject narrationPanel = GetField<GameObject>(flow, "narrationPanel");
+            if (narrationPanel != null)
+                tabletTapAdvanceSurface = EnsurePanelTapButton(narrationPanel, HandleTabletNarrationTap);
+        }
+
+        Button novelContinue = GetField<Button>(director, "continueButton");
+        Button tabletContinue = GetField<Button>(flow, "narrationContinueButton");
+        HideContinueButton(novelContinue, ref novelContinueCanvasGroup);
+        HideContinueButton(tabletContinue, ref tabletContinueCanvasGroup);
+    }
+
+    private static void HideContinueButton(Button button, ref CanvasGroup group)
+    {
+        if (button == null)
+        {
+            group = null;
+            return;
+        }
+
+        // UnityEngine.Object has a special "destroyed object == null" rule, while the C# ??
+        // operator only checks the raw CLR reference. A cached CanvasGroup from a rebuilt Continue
+        // button can therefore look non-null to ?? but still throw MissingComponentException.
+        // Re-resolve the component against the current button every time the cache is stale.
+        if (group == null || group.gameObject != button.gameObject)
+        {
+            group = button.gameObject.GetComponent<CanvasGroup>();
+            if (group == null)
+                group = button.gameObject.AddComponent<CanvasGroup>();
+        }
+
+        if (group == null)
+            return;
+
+        group.alpha = 0f;
+        group.blocksRaycasts = false;
+        group.interactable = false;
+    }
+
+    private void HandleNovelTap()
+    {
+        if (Time.unscaledTime < nextDialogueTapAt || director == null)
+            return;
+        GameObject historyPanel = GetField<GameObject>(director, "historyPanel");
+        if (historyPanel != null && historyPanel.activeInHierarchy)
+            return;
+        if (choiceOverlay != null && choiceOverlay.activeInHierarchy)
+            return;
+
+        Button choiceA = GetField<Button>(director, "choiceAButton");
+        Button choiceB = GetField<Button>(director, "choiceBButton");
+        Button choiceC = GetField<Button>(director, "choiceCButton");
+        if (IsVisibleChoice(choiceA) || IsVisibleChoice(choiceB) || IsVisibleChoice(choiceC))
+            return;
+
+        Button continueButton = GetField<Button>(director, "continueButton");
+        if (continueButton == null || !continueButton.gameObject.activeInHierarchy)
+            return;
+        nextDialogueTapAt = Time.unscaledTime + 0.16f;
+        continueButton.onClick.Invoke();
+    }
+
+    private void HandleTabletNarrationTap()
+    {
+        if (Time.unscaledTime < nextDialogueTapAt || flow == null)
+            return;
+        if (choiceOverlay != null && choiceOverlay.activeInHierarchy)
+            return;
+        Button continueButton = GetField<Button>(flow, "narrationContinueButton");
+        if (continueButton == null || !continueButton.gameObject.activeInHierarchy)
+            return;
+        nextDialogueTapAt = Time.unscaledTime + 0.16f;
+        continueButton.onClick.Invoke();
+    }
+
+    private static bool IsVisibleChoice(Button button)
+    {
+        return button != null && button.gameObject.activeInHierarchy &&
+               !string.IsNullOrWhiteSpace(button.GetComponentInChildren<TMP_Text>(true)?.text);
+    }
+
+    private void ApplyRightSideChoiceLayout()
+    {
+        Button[] buttons =
+        {
+            GetField<Button>(director, "choiceAButton"),
+            GetField<Button>(director, "choiceBButton"),
+            GetField<Button>(director, "choiceCButton")
+        };
+        List<Button> visible = buttons.Where(IsVisibleChoice).ToList();
+        if (visible.Count > 0)
+        {
+            float height = visible.Count == 1 ? 0.36f : visible.Count == 2 ? 0.29f : 0.23f;
+            float gap = visible.Count == 3 ? 0.035f : 0.055f;
+            float top = 0.88f;
+            for (int i = 0; i < visible.Count; i++)
+            {
+                RectTransform rect = visible[i].GetComponent<RectTransform>();
+                float yMax = top - i * (height + gap);
+                rect.anchorMin = new Vector2(0.64f, yMax - height);
+                rect.anchorMax = new Vector2(0.96f, yMax);
+                rect.offsetMin = Vector2.zero;
+                rect.offsetMax = Vector2.zero;
+                TMP_Text label = visible[i].GetComponentInChildren<TMP_Text>(true);
+                if (label != null)
+                {
+                    label.enableAutoSizing = true;
+                    label.fontSizeMin = 22f;
+                    label.fontSizeMax = 31f;
+                    label.textWrappingMode = TextWrappingModes.Normal;
+                    label.alignment = TextAlignmentOptions.Center;
+                }
+            }
+        }
+
+        TMP_Text body = GetField<TMP_Text>(director, "bodyText");
+        if (body != null)
+        {
+            RectTransform rect = body.rectTransform;
+            rect.anchorMin = new Vector2(0f, 0.12f);
+            rect.anchorMax = new Vector2(visible.Count > 0 ? 0.61f : 1f, 1f);
+            rect.offsetMin = new Vector2(34f, 20f);
+            rect.offsetMax = new Vector2(visible.Count > 0 ? -18f : -34f, -72f);
+        }
+
+        if (choiceOverlay != null && choiceOverlay.activeInHierarchy)
+        {
+            int manualVisible = choiceOverlayButtons.Count(button => button != null && button.gameObject.activeInHierarchy);
+            if (manualVisible > 0)
+                PlaceChoiceOverlayButtons(manualVisible);
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -1720,6 +2134,9 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         manualChoiceActions.Clear();
         explicitBorrowPending = string.Equals(GetDirectorState("pending.borrow_menu"), "true",
             StringComparison.OrdinalIgnoreCase);
+        explicitBorrowRequestDay = GetDirectorInt("v22.borrow_requested_day");
+        if (explicitBorrowPending && explicitBorrowRequestDay <= 0 && flow.CurrentHour <= 10)
+            explicitBorrowRequestDay = Mathf.Max(0, flow.CurrentDay - 1);
         borrowOverlayShownForCurrentDay = false;
         postJobRepaymentPromptedDay = -1;
         lenderDebtStateInitialized = false;
@@ -1898,6 +2315,12 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         // F9: 10일차 금요일 06:00 -> 한 판 뒤 11일차 주말 아침 검증
         int targetDay = weekendMorning ? 10 : 2;
         appWindow?.CloseCurrentApp();
+        choiceOverlay?.SetActive(false);
+        dialogue.ResetScenarioConversations();
+        notifications?.Clear();
+        explicitBorrowPending = false;
+        explicitBorrowRequestDay = -1;
+        borrowOverlayShownForCurrentDay = false;
         flow.V3RestoreRun(targetDay, 6, "집", 100000, 0);
 
         SetDirectorState("schedule.school", "complete");
@@ -1908,6 +2331,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         SetDirectorState("counter.gamble_sessions", "0");
         SetDirectorState("pending.gamble_attention", "true");
         SetDirectorState("pending.borrow_menu", "false");
+        SetDirectorState("v22.borrow_requested_day", "0");
         SetDirectorState("pending.borrow_target", "none");
         SetDirectorState("flag.borrow_deferred", "false");
         SetDirectorState("flag.gambled_late", "false");
