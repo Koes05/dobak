@@ -36,7 +36,7 @@ d9_school,,true
 d10_start,,false
 d10_minjae_router,,false
 d10_minjae,,true
-d10_minjae_debt,,true
+d10_minjae_debt,,false
 d11_start,,true
 d11_job,,true
 d11_minjae_debt_cafe,,true
@@ -89,7 +89,7 @@ sys_late_gamble_morning,,false
 sys_borrow_late_morning,,false
 d6_mom_concern,,false
 d9_mom_dinner,,false
-d10_seojun_followup,,true
+d10_seojun_followup,,false
 d10_school_checkin,,false
 d14_no_help_messages,,true
 d14_no_help_seojun,,false

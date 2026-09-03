@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+using System.Collections;
+using UnityEngine;
 using Dobak.Manager;
 using TMPro;
 using UnityEngine.UI;
@@ -6,24 +7,23 @@ using UnityEngine.UI;
 namespace Dobak.App.Bank
 {
     // BankPanel에 부착.
-    // Hierarchy 예시:
-    // BankPanel
-    //  ├─ CashText (Text)
-    //  └─ ScrollView
-    //      └─ Viewport
-    //          └─ Content (Vertical Layout Group) <- entryContainer로 연결
+    // 최신 거래를 항상 최상단에 두고, 메시지 대화창과 같은
+    // RectMask2D + ScrollRect 구조로 터치/마우스 스크롤을 지원한다.
     public class BankUI : MonoBehaviour
     {
         [SerializeField] private TMP_Text cashText;
-        [SerializeField] private Transform entryContainer;       // Content 오브젝트
-        [SerializeField] private TransactionEntryUI entryPrefab; // 거래 1건 표시용 프리팹
+        [SerializeField] private Transform entryContainer;
+        [SerializeField] private TransactionEntryUI entryPrefab;
+
+        private ScrollRect historyScroll;
+        private Coroutine scrollToNewestCoroutine;
 
         private void OnEnable()
         {
-            if (CoinManager.Instance == null) return;
+            if (CoinManager.Instance == null)
+                return;
 
             ApplyKoreanStyle();
-
             CoinManager.Instance.OnBankCashChanged += UpdateCash;
             CoinManager.Instance.OnTransactionAdded += HandleTransactionAdded;
 
@@ -33,53 +33,79 @@ namespace Dobak.App.Bank
 
         private void OnDisable()
         {
-            if (CoinManager.Instance == null) return;
+            if (CoinManager.Instance != null)
+            {
+                CoinManager.Instance.OnBankCashChanged -= UpdateCash;
+                CoinManager.Instance.OnTransactionAdded -= HandleTransactionAdded;
+            }
 
-            CoinManager.Instance.OnBankCashChanged -= UpdateCash;
-            CoinManager.Instance.OnTransactionAdded -= HandleTransactionAdded;
+            if (scrollToNewestCoroutine != null)
+            {
+                StopCoroutine(scrollToNewestCoroutine);
+                scrollToNewestCoroutine = null;
+            }
         }
 
         private void UpdateCash(int bankCash)
         {
+            if (cashText == null)
+                return;
             cashText.text = $"<size=27><b>생활 통장</b></size>\n<size=21><color=#B8CBE4>현재 잔액</color></size>\n<size=56><b>{bankCash:N0}원</b></size>";
         }
 
         private void RefreshFullList()
         {
-            foreach (Transform child in entryContainer)
-                Destroy(child.gameObject);
+            if (entryContainer == null || CoinManager.Instance == null)
+                return;
 
-            // 뱅크 화면에는 "뱅크 -> 카지노 충전" 기록만 표시 (카지노 내부 베팅/당첨은 표시 안 함)
+            foreach (Transform child in entryContainer)
+            {
+                child.gameObject.SetActive(false);
+                Destroy(child.gameObject);
+            }
+
             int visibleCount = 0;
+            // History는 오래된 순서로 저장된다. 끝에서 앞으로 읽어
+            // 첫 번째 자식부터 최신 거래가 되도록 만든다.
             for (int index = CoinManager.Instance.History.Count - 1; index >= 0; index--)
             {
-                var record = CoinManager.Instance.History[index];
-                if (IsVisibleBankRecord(record.scope))
-                {
-                    CreateEntry(record, false);
-                    visibleCount++;
-                }
+                TransactionRecord record = CoinManager.Instance.History[index];
+                if (!IsVisibleBankRecord(record.scope))
+                    continue;
+
+                CreateEntry(record, false);
+                visibleCount++;
             }
 
             if (visibleCount == 0)
                 CreateEmptyState();
+
+            RequestScrollToNewest();
         }
 
         private void HandleTransactionAdded(TransactionRecord record)
         {
-            if (IsVisibleBankRecord(record.scope))
-            {
-                RemoveEmptyState();
-                CreateEntry(record, true);
-            }
+            if (!IsVisibleBankRecord(record.scope))
+                return;
+
+            RemoveEmptyState();
+            CreateEntry(record, true);
+            RequestScrollToNewest();
         }
 
         private void CreateEntry(TransactionRecord record, bool newestLive)
         {
-            var entry = Instantiate(entryPrefab, entryContainer);
-            foreach (TMP_Text text in entry.GetComponentsInChildren<TMP_Text>(true))
-                text.font = cashText.font;
+            if (entryPrefab == null || entryContainer == null)
+                return;
+
+            TransactionEntryUI entry = Instantiate(entryPrefab, entryContainer);
+            if (cashText != null)
+            {
+                foreach (TMP_Text text in entry.GetComponentsInChildren<TMP_Text>(true))
+                    text.font = cashText.font;
+            }
             entry.Set(record);
+
             if (newestLive)
                 entry.transform.SetAsFirstSibling();
             else
@@ -96,6 +122,9 @@ namespace Dobak.App.Bank
 
         private void ApplyKoreanStyle()
         {
+            if (entryContainer == null)
+                return;
+
             TMP_FontAsset koreanFont = FindKoreanFont();
             Image rootBackground = GetComponent<Image>();
             if (rootBackground != null)
@@ -115,108 +144,166 @@ namespace Dobak.App.Bank
                 }
             }
 
-            cashText.fontSize = 27f;
-            cashText.fontStyle = FontStyles.Normal;
-            cashText.color = Color.white;
-            cashText.alignment = TextAlignmentOptions.MidlineLeft;
-            cashText.lineSpacing = 4f;
-            cashText.raycastTarget = false;
-            cashText.rectTransform.offsetMin = new Vector2(48f, 20f);
-            cashText.rectTransform.offsetMax = new Vector2(-48f, -18f);
-            Image accountPanel = cashText.transform.parent != null
-                ? cashText.transform.parent.GetComponent<Image>()
-                : null;
-            if (accountPanel != null)
+            if (cashText != null)
             {
-                accountPanel.sprite = Resources.Load<Sprite>("BankUI/account_card");
-                accountPanel.color = Color.white;
-                Outline outline = accountPanel.GetComponent<Outline>();
-                if (outline != null)
-                    outline.enabled = false;
-            }
+                cashText.fontSize = 27f;
+                cashText.fontStyle = FontStyles.Normal;
+                cashText.color = Color.white;
+                cashText.alignment = TextAlignmentOptions.MidlineLeft;
+                cashText.lineSpacing = 4f;
+                cashText.raycastTarget = false;
+                cashText.rectTransform.offsetMin = new Vector2(48f, 20f);
+                cashText.rectTransform.offsetMax = new Vector2(-48f, -18f);
 
-            RectTransform accountCard = cashText.transform.parent?.parent as RectTransform;
-            if (accountCard != null)
-            {
-                accountCard.anchorMin = new Vector2(0f, 1f);
-                accountCard.anchorMax = new Vector2(1f, 1f);
-                accountCard.pivot = new Vector2(0.5f, 1f);
-                accountCard.anchoredPosition = new Vector2(0f, -48f);
-                accountCard.sizeDelta = new Vector2(-140f, 230f);
-            }
+                Image accountPanel = cashText.transform.parent != null
+                    ? cashText.transform.parent.GetComponent<Image>()
+                    : null;
+                if (accountPanel != null)
+                {
+                    accountPanel.sprite = Resources.Load<Sprite>("BankUI/account_card");
+                    accountPanel.color = Color.white;
+                    Outline outline = accountPanel.GetComponent<Outline>();
+                    if (outline != null)
+                        outline.enabled = false;
+                }
 
-            RectTransform transactionArea = accountCard != null && accountCard.parent != null && accountCard.parent.childCount > 1
-                ? accountCard.parent.GetChild(1) as RectTransform
-                : null;
-            if (transactionArea != null)
-            {
-                transactionArea.anchorMin = new Vector2(0f, 1f);
-                transactionArea.anchorMax = new Vector2(1f, 1f);
-                transactionArea.pivot = new Vector2(0.5f, 1f);
-                transactionArea.anchoredPosition = new Vector2(0f, -305f);
-                transactionArea.sizeDelta = new Vector2(-140f, 665f);
-                Image transactionBackground = transactionArea.GetComponent<Image>();
-                if (transactionBackground != null)
-                    transactionBackground.color = new Color(1f, 1f, 1f, 0.96f);
+                RectTransform accountCard = cashText.transform.parent?.parent as RectTransform;
+                if (accountCard != null)
+                {
+                    accountCard.anchorMin = new Vector2(0f, 1f);
+                    accountCard.anchorMax = new Vector2(1f, 1f);
+                    accountCard.pivot = new Vector2(0.5f, 1f);
+                    accountCard.anchoredPosition = new Vector2(0f, -48f);
+                    accountCard.sizeDelta = new Vector2(-140f, 230f);
+
+                    RectTransform transactionArea = accountCard.parent != null && accountCard.parent.childCount > 1
+                        ? accountCard.parent.GetChild(1) as RectTransform
+                        : null;
+                    if (transactionArea != null)
+                    {
+                        transactionArea.anchorMin = new Vector2(0f, 1f);
+                        transactionArea.anchorMax = new Vector2(1f, 1f);
+                        transactionArea.pivot = new Vector2(0.5f, 1f);
+                        transactionArea.anchoredPosition = new Vector2(0f, -305f);
+                        transactionArea.sizeDelta = new Vector2(-140f, 665f);
+                        Image transactionBackground = transactionArea.GetComponent<Image>();
+                        if (transactionBackground != null)
+                            transactionBackground.color = new Color(1f, 1f, 1f, 0.96f);
+                    }
+                }
             }
 
             Transform current = entryContainer;
             while (current != null && current != transform)
             {
                 Image background = current.GetComponent<Image>();
-                if (background != null && Mathf.Max(background.color.r, background.color.g, background.color.b) < 0.25f)
+                if (background != null &&
+                    Mathf.Max(background.color.r, background.color.g, background.color.b) < 0.25f)
+                {
                     background.color = Color.white;
+                }
                 current = current.parent;
             }
 
-            ScrollRect scroll = entryContainer.GetComponentInParent<ScrollRect>(true);
-            if (scroll != null)
+            historyScroll = entryContainer.GetComponentInParent<ScrollRect>(true);
+            if (historyScroll == null)
+                return;
+
+            RectTransform content = entryContainer as RectTransform;
+            if (content != null)
             {
-                RectTransform content = entryContainer as RectTransform;
-                if (content != null)
-                {
-                    content.anchorMin = new Vector2(0f, 1f);
-                    content.anchorMax = new Vector2(1f, 1f);
-                    content.pivot = new Vector2(0.5f, 1f);
-                    content.anchoredPosition = Vector2.zero;
-                    scroll.content = content;
-                }
+                content.anchorMin = new Vector2(0f, 1f);
+                content.anchorMax = new Vector2(1f, 1f);
+                content.pivot = new Vector2(0.5f, 1f);
+                content.anchoredPosition = Vector2.zero;
+                historyScroll.content = content;
+            }
 
-                VerticalLayoutGroup layout = entryContainer.GetComponent<VerticalLayoutGroup>();
-                if (layout == null)
-                    layout = entryContainer.gameObject.AddComponent<VerticalLayoutGroup>();
-                layout.padding = new RectOffset(12, 12, 10, 18);
-                layout.spacing = 10f;
-                layout.childAlignment = TextAnchor.UpperCenter;
-                layout.childControlWidth = true;
-                layout.childControlHeight = true;
-                layout.childForceExpandWidth = true;
-                layout.childForceExpandHeight = false;
+            VerticalLayoutGroup layout = entryContainer.GetComponent<VerticalLayoutGroup>();
+            if (layout == null)
+                layout = entryContainer.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(12, 12, 10, 18);
+            layout.spacing = 10f;
+            layout.childAlignment = TextAnchor.UpperCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
 
-                ContentSizeFitter fitter = entryContainer.GetComponent<ContentSizeFitter>();
-                if (fitter == null)
-                    fitter = entryContainer.gameObject.AddComponent<ContentSizeFitter>();
-                fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
-                fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            ContentSizeFitter fitter = entryContainer.GetComponent<ContentSizeFitter>();
+            if (fitter == null)
+                fitter = entryContainer.gameObject.AddComponent<ContentSizeFitter>();
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-                scroll.horizontal = false;
-                scroll.vertical = true;
-                scroll.movementType = ScrollRect.MovementType.Clamped;
-                scroll.scrollSensitivity = 36f;
-                scroll.inertia = true;
-                scroll.decelerationRate = 0.12f;
-                if (scroll.viewport != null)
-                {
-                    Image viewportImage = scroll.viewport.GetComponent<Image>();
-                    if (viewportImage != null)
-                        viewportImage.raycastTarget = true;
-                }
+            historyScroll.horizontal = false;
+            historyScroll.vertical = true;
+            historyScroll.movementType = ScrollRect.MovementType.Clamped;
+            historyScroll.scrollSensitivity = 45f;
+            historyScroll.inertia = true;
+            historyScroll.decelerationRate = 0.12f;
+
+            if (historyScroll.viewport != null)
+            {
+                Mask legacyMask = historyScroll.viewport.GetComponent<Mask>();
+                if (legacyMask != null)
+                    legacyMask.enabled = false;
+
+                RectMask2D rectMask = historyScroll.viewport.GetComponent<RectMask2D>();
+                if (rectMask == null)
+                    rectMask = historyScroll.viewport.gameObject.AddComponent<RectMask2D>();
+                rectMask.enabled = true;
+                rectMask.padding = Vector4.zero;
+
+                Image viewportImage = historyScroll.viewport.GetComponent<Image>();
+                if (viewportImage == null)
+                    viewportImage = historyScroll.viewport.gameObject.AddComponent<Image>();
+                if (viewportImage.color.a <= 0.001f)
+                    viewportImage.color = new Color(1f, 1f, 1f, 0.001f);
+                viewportImage.raycastTarget = true;
             }
         }
 
         public void ApplyVisualDesign()
         {
             ApplyKoreanStyle();
+            RequestScrollToNewest();
+        }
+
+        private void RequestScrollToNewest()
+        {
+            if (!isActiveAndEnabled || historyScroll == null)
+                return;
+            if (scrollToNewestCoroutine != null)
+                StopCoroutine(scrollToNewestCoroutine);
+            scrollToNewestCoroutine = StartCoroutine(ScrollToNewestAfterLayout());
+        }
+
+        private IEnumerator ScrollToNewestAfterLayout()
+        {
+            yield return null;
+            RebuildTransactionLayout();
+            historyScroll.StopMovement();
+            historyScroll.velocity = Vector2.zero;
+            historyScroll.verticalNormalizedPosition = 1f;
+
+            // ContentSizeFitter가 한 프레임 늦게 확정되는 경우까지 보정한다.
+            yield return null;
+            RebuildTransactionLayout();
+            historyScroll.StopMovement();
+            historyScroll.velocity = Vector2.zero;
+            historyScroll.verticalNormalizedPosition = 1f;
+            scrollToNewestCoroutine = null;
+        }
+
+        private void RebuildTransactionLayout()
+        {
+            Canvas.ForceUpdateCanvases();
+            if (entryContainer is RectTransform content)
+                LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            if (historyScroll != null && historyScroll.viewport != null)
+                LayoutRebuilder.ForceRebuildLayoutImmediate(historyScroll.viewport);
+            Canvas.ForceUpdateCanvases();
         }
 
         private static TMP_FontAsset FindKoreanFont()
@@ -230,29 +317,35 @@ namespace Dobak.App.Bank
                 if (font.name.Contains("NotoSansKR-Regular"))
                     return font;
             }
-
             return fallback;
         }
 
         private void CreateEmptyState()
         {
-            GameObject empty = new GameObject("Empty History", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+            GameObject empty = new GameObject("Empty History", typeof(RectTransform),
+                typeof(CanvasRenderer), typeof(TextMeshProUGUI), typeof(LayoutElement));
+            empty.layer = entryContainer.gameObject.layer;
             empty.transform.SetParent(entryContainer, false);
+
             TMP_Text text = empty.GetComponent<TextMeshProUGUI>();
-            text.font = cashText.font;
+            if (cashText != null)
+                text.font = cashText.font;
             text.fontSize = 28f;
             text.color = new Color(0.48f, 0.53f, 0.61f);
             text.alignment = TextAlignmentOptions.Center;
             text.text = "아직 거래 내역이 없습니다.";
-            text.rectTransform.sizeDelta = new Vector2(1000f, 120f);
+            text.raycastTarget = false;
+
+            LayoutElement element = empty.GetComponent<LayoutElement>();
+            element.preferredHeight = 120f;
+            element.minHeight = 120f;
         }
 
         private void RemoveEmptyState()
         {
-            Transform empty = entryContainer.Find("Empty History");
+            Transform empty = entryContainer != null ? entryContainer.Find("Empty History") : null;
             if (empty != null)
                 Destroy(empty.gameObject);
         }
     }
 }
-
