@@ -1,5 +1,7 @@
+using System;
 using System.Collections;
 using System.Reflection;
+using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -8,53 +10,55 @@ using Dobak.Manager;
 namespace Dobak.App.Bank
 {
     /// <summary>
-    /// 기존 BankUI의 데이터/환전 로직은 건드리지 않고 거래내역 표시 구조만 보정한다.
-    /// 씬에 ScrollRect가 없어도 실행 시 표준 ScrollRect + Viewport + RectMask2D 구조를 만든다.
+    /// Builds one standard ScrollRect for the bank transaction list and fixes the two layout issues
+    /// seen in QA: the white image behind the blue account card and the narrow/clipped transaction
+    /// viewport. Bank balances, automatic cash-out and transaction ordering stay in BankUI/CoinManager.
     /// </summary>
-    [DefaultExecutionOrder(10000)]
+    [DefaultExecutionOrder(20000)]
     public sealed class BankHistoryScrollFix : MonoBehaviour
     {
-        private const string ScrollRootName = "Bank History Scroll";
-        private const string ViewportName = "Viewport";
+        private const string TabletSceneName = "TabletUI";
+        private const string ScrollRootName = "Transaction Scroll View V21";
+        private static readonly BindingFlags Fields =
+            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 
-        private static readonly FieldInfo EntryContainerField = typeof(BankUI).GetField(
-            "entryContainer",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-
-        private static readonly MethodInfo RefreshFullListMethod = typeof(BankUI).GetMethod(
-            "RefreshFullList",
-            BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo EntryContainerField = typeof(BankUI).GetField("entryContainer", Fields);
+        private static readonly FieldInfo CashTextField = typeof(BankUI).GetField("cashText", Fields);
+        private static readonly MethodInfo RefreshFullListMethod = typeof(BankUI).GetMethod("RefreshFullList", Fields);
 
         private BankUI bankUI;
-        private RectTransform content;
+        private TMP_Text cashText;
+        private RectTransform transactionArea;
+        private RectTransform scrollRoot;
         private RectTransform viewport;
+        private RectTransform content;
         private ScrollRect scrollRect;
         private Coroutine repairRoutine;
+        private bool applyingLayout;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Install()
         {
             SceneManager.sceneLoaded -= HandleSceneLoaded;
             SceneManager.sceneLoaded += HandleSceneLoaded;
-            AttachToBankPanels();
+            AttachToBankPanels(SceneManager.GetActiveScene());
         }
 
         private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            AttachToBankPanels();
+            AttachToBankPanels(scene);
         }
 
-        private static void AttachToBankPanels()
+        private static void AttachToBankPanels(Scene scene)
         {
-            BankUI[] banks = Object.FindObjectsByType<BankUI>(
-                FindObjectsInactive.Include,
-                FindObjectsSortMode.None);
+            if (!string.Equals(scene.name, TabletSceneName, StringComparison.Ordinal))
+                return;
 
+            BankUI[] banks = FindObjectsByType<BankUI>(FindObjectsInactive.Include);
             foreach (BankUI bank in banks)
             {
                 if (bank == null || bank.GetComponent<BankHistoryScrollFix>() != null)
                     continue;
-
                 bank.gameObject.AddComponent<BankHistoryScrollFix>();
             }
         }
@@ -68,15 +72,13 @@ namespace Dobak.App.Bank
         {
             if (CoinManager.Instance != null)
                 CoinManager.Instance.OnTransactionAdded += HandleTransactionAdded;
-
-            StartRepair();
+            QueueRepair(true);
         }
 
         private void OnDisable()
         {
             if (CoinManager.Instance != null)
                 CoinManager.Instance.OnTransactionAdded -= HandleTransactionAdded;
-
             if (repairRoutine != null)
             {
                 StopCoroutine(repairRoutine);
@@ -86,163 +88,255 @@ namespace Dobak.App.Bank
 
         private void OnRectTransformDimensionsChange()
         {
-            if (isActiveAndEnabled && scrollRect != null)
-                StartRepair(false);
+            if (isActiveAndEnabled && !applyingLayout)
+                QueueRepair(false);
         }
 
         private void HandleTransactionAdded(TransactionRecord record)
         {
-            StartRepair(false);
+            QueueRepair(false);
         }
 
-        private void StartRepair(bool rebuildEntries = true)
+        private void QueueRepair(bool rebuildEntries)
         {
             if (!isActiveAndEnabled)
                 return;
-
             if (repairRoutine != null)
                 StopCoroutine(repairRoutine);
-
-            repairRoutine = StartCoroutine(RepairAfterLayout(rebuildEntries));
+            repairRoutine = StartCoroutine(RepairNextFrames(rebuildEntries));
         }
 
-        private IEnumerator RepairAfterLayout(bool rebuildEntries)
+        private IEnumerator RepairNextFrames(bool rebuildEntries)
         {
             yield return null;
-
-            if (!ResolveContent())
+            if (!ResolveReferences())
             {
                 repairRoutine = null;
                 yield break;
             }
 
-            EnsureScrollHierarchy();
-            ConfigureLayout();
+            applyingLayout = true;
+            BuildStandardHierarchy();
+            ApplyCardAndPanelLayout();
+            ConfigureScrollRect();
 
-            // 첫 오픈 때 BankUI가 ScrollRect를 찾지 못하고 반환했더라도
-            // 구조를 만든 뒤 다시 스타일/목록 갱신을 실행한다.
-            if (bankUI != null)
-            {
-                bankUI.ApplyVisualDesign();
-
-                if (rebuildEntries && RefreshFullListMethod != null)
-                    RefreshFullListMethod.Invoke(bankUI, null);
-            }
+            if (rebuildEntries && RefreshFullListMethod != null)
+                RefreshFullListMethod.Invoke(bankUI, null);
+            applyingLayout = false;
 
             yield return null;
+            applyingLayout = true;
             RebuildAndSnapTop();
-
+            applyingLayout = false;
             yield return new WaitForEndOfFrame();
+            applyingLayout = true;
             RebuildAndSnapTop();
+            applyingLayout = false;
             repairRoutine = null;
         }
 
-        private bool ResolveContent()
+        private bool ResolveReferences()
         {
-            if (content != null)
-                return true;
-
             if (bankUI == null)
                 bankUI = GetComponent<BankUI>();
             if (bankUI == null || EntryContainerField == null)
                 return false;
 
             content = EntryContainerField.GetValue(bankUI) as RectTransform;
-            return content != null;
+            cashText = CashTextField?.GetValue(bankUI) as TMP_Text;
+            if (content == null)
+                return false;
+
+            transactionArea = FindTransactionArea();
+            return transactionArea != null;
         }
 
-        private void EnsureScrollHierarchy()
+        private RectTransform FindTransactionArea()
         {
-            ScrollRect existing = content.GetComponentInParent<ScrollRect>(true);
-            if (existing != null && existing.content == content)
+            if (cashText != null)
             {
-                scrollRect = existing;
-                viewport = existing.viewport != null
-                    ? existing.viewport
-                    : content.parent as RectTransform;
-                return;
+                RectTransform accountCard = cashText.transform.parent?.parent as RectTransform;
+                Transform commonParent = accountCard != null ? accountCard.parent : null;
+                if (commonParent != null)
+                {
+                    foreach (RectTransform child in commonParent)
+                    {
+                        if (child == null || child == accountCard)
+                            continue;
+                        if (ContainsTransactionTitle(child) || content.IsChildOf(child))
+                            return child;
+                    }
+                }
             }
 
-            RectTransform originalParent = content.parent as RectTransform;
-            if (originalParent == null)
-                return;
+            Transform current = content.parent;
+            while (current != null && current != transform)
+            {
+                if (ContainsTransactionTitle(current))
+                    return current as RectTransform;
+                current = current.parent;
+            }
+            return transform as RectTransform;
+        }
 
-            int siblingIndex = content.GetSiblingIndex();
+        private static bool ContainsTransactionTitle(Transform root)
+        {
+            if (root == null)
+                return false;
+            foreach (TMP_Text text in root.GetComponentsInChildren<TMP_Text>(true))
+            {
+                string value = (text.text ?? string.Empty).Trim();
+                if (value == "거래 내역" || value == "Transaction History")
+                    return true;
+            }
+            return false;
+        }
 
-            Vector2 anchorMin = content.anchorMin;
-            Vector2 anchorMax = content.anchorMax;
-            Vector2 pivotValue = content.pivot;
-            Vector2 anchoredPosition = content.anchoredPosition;
-            Vector2 sizeDelta = content.sizeDelta;
-            Quaternion localRotation = content.localRotation;
-            Vector3 localScale = content.localScale;
+        private void BuildStandardHierarchy()
+        {
+            Transform existing = transactionArea.Find(ScrollRootName);
+            if (existing != null)
+            {
+                scrollRoot = existing as RectTransform;
+                viewport = scrollRoot != null ? scrollRoot.Find("Viewport") as RectTransform : null;
+                scrollRect = scrollRoot != null ? scrollRoot.GetComponent<ScrollRect>() : null;
+            }
 
-            GameObject rootObject = new GameObject(
-                ScrollRootName,
-                typeof(RectTransform),
-                typeof(ScrollRect));
-            rootObject.layer = content.gameObject.layer;
+            Transform oldParent = content.parent;
+            DisableLegacyScrollComponents(oldParent);
 
-            RectTransform root = rootObject.GetComponent<RectTransform>();
-            root.SetParent(originalParent, false);
-            root.SetSiblingIndex(siblingIndex);
-            root.anchorMin = anchorMin;
-            root.anchorMax = anchorMax;
-            root.pivot = pivotValue;
-            root.anchoredPosition = anchoredPosition;
-            root.sizeDelta = sizeDelta;
-            root.localRotation = localRotation;
-            root.localScale = localScale;
+            if (scrollRoot == null)
+            {
+                GameObject rootObject = new GameObject(ScrollRootName, typeof(RectTransform), typeof(ScrollRect));
+                rootObject.layer = transactionArea.gameObject.layer;
+                rootObject.transform.SetParent(transactionArea, false);
+                scrollRoot = rootObject.GetComponent<RectTransform>();
+                scrollRect = rootObject.GetComponent<ScrollRect>();
+            }
 
-            GameObject viewportObject = new GameObject(
-                ViewportName,
-                typeof(RectTransform),
-                typeof(CanvasRenderer),
-                typeof(Image),
-                typeof(RectMask2D));
-            viewportObject.layer = content.gameObject.layer;
+            // Leave room for the grey "거래 내역" header, while using almost the full panel width.
+            scrollRoot.anchorMin = Vector2.zero;
+            scrollRoot.anchorMax = Vector2.one;
+            scrollRoot.pivot = new Vector2(0.5f, 0.5f);
+            scrollRoot.offsetMin = new Vector2(24f, 20f);
+            scrollRoot.offsetMax = new Vector2(-24f, -92f);
+            scrollRoot.SetAsLastSibling();
 
-            viewport = viewportObject.GetComponent<RectTransform>();
-            viewport.SetParent(root, false);
-            viewport.anchorMin = Vector2.zero;
-            viewport.anchorMax = Vector2.one;
-            viewport.pivot = new Vector2(0.5f, 0.5f);
-            viewport.anchoredPosition = Vector2.zero;
-            viewport.sizeDelta = Vector2.zero;
+            if (viewport == null)
+            {
+                GameObject viewportObject = new GameObject("Viewport", typeof(RectTransform),
+                    typeof(CanvasRenderer), typeof(Image), typeof(RectMask2D));
+                viewportObject.layer = transactionArea.gameObject.layer;
+                viewportObject.transform.SetParent(scrollRoot, false);
+                viewport = viewportObject.GetComponent<RectTransform>();
+            }
+            Stretch(viewport);
 
-            Image viewportImage = viewportObject.GetComponent<Image>();
+            Image viewportImage = viewport.GetComponent<Image>();
+            if (viewportImage == null)
+                viewportImage = viewport.gameObject.AddComponent<Image>();
             viewportImage.color = new Color(1f, 1f, 1f, 0.001f);
             viewportImage.raycastTarget = true;
 
-            RectMask2D mask = viewportObject.GetComponent<RectMask2D>();
-            mask.padding = Vector4.zero;
+            Mask legacyMask = viewport.GetComponent<Mask>();
+            if (legacyMask != null)
+                legacyMask.enabled = false;
+            RectMask2D rectMask = viewport.GetComponent<RectMask2D>();
+            if (rectMask == null)
+                rectMask = viewport.gameObject.AddComponent<RectMask2D>();
+            rectMask.enabled = true;
+            rectMask.padding = Vector4.zero;
 
-            content.SetParent(viewport, false);
+            if (content.parent != viewport)
+                content.SetParent(viewport, false);
             content.anchorMin = new Vector2(0f, 1f);
             content.anchorMax = new Vector2(1f, 1f);
             content.pivot = new Vector2(0.5f, 1f);
             content.anchoredPosition = Vector2.zero;
             content.sizeDelta = Vector2.zero;
-            content.localRotation = Quaternion.identity;
             content.localScale = Vector3.one;
-
-            scrollRect = rootObject.GetComponent<ScrollRect>();
-            scrollRect.content = content;
-            scrollRect.viewport = viewport;
         }
 
-        private void ConfigureLayout()
+        private void DisableLegacyScrollComponents(Transform from)
         {
-            if (content == null || scrollRect == null)
+            Transform current = from;
+            while (current != null && current != transactionArea)
+            {
+                ScrollRect oldScroll = current.GetComponent<ScrollRect>();
+                if (oldScroll != null && oldScroll != scrollRect)
+                    oldScroll.enabled = false;
+                Mask oldMask = current.GetComponent<Mask>();
+                if (oldMask != null)
+                    oldMask.enabled = false;
+                RectMask2D oldRectMask = current.GetComponent<RectMask2D>();
+                if (oldRectMask != null)
+                    oldRectMask.enabled = false;
+                current = current.parent;
+            }
+        }
+
+        private void ApplyCardAndPanelLayout()
+        {
+            if (cashText != null)
+            {
+                // The blue account-card image is on the inner object. The outer "Cash" Image caused
+                // the visible white rectangle around it, so only that outer image becomes transparent.
+                Transform innerCard = cashText.transform.parent;
+                RectTransform outerCash = innerCard?.parent as RectTransform;
+                Image outerImage = outerCash != null ? outerCash.GetComponent<Image>() : null;
+                if (outerImage != null)
+                {
+                    Color color = outerImage.color;
+                    color.a = 0f;
+                    outerImage.color = color;
+                    outerImage.raycastTarget = false;
+                }
+
+                Image innerImage = innerCard != null ? innerCard.GetComponent<Image>() : null;
+                if (innerImage != null)
+                {
+                    innerImage.color = Color.white;
+                    innerImage.raycastTarget = false;
+                }
+
+                if (outerCash != null)
+                {
+                    outerCash.anchorMin = new Vector2(0f, 1f);
+                    outerCash.anchorMax = new Vector2(1f, 1f);
+                    outerCash.pivot = new Vector2(0.5f, 1f);
+                    outerCash.anchoredPosition = new Vector2(0f, -38f);
+                    outerCash.sizeDelta = new Vector2(-72f, 230f);
+                }
+            }
+
+            transactionArea.anchorMin = new Vector2(0f, 1f);
+            transactionArea.anchorMax = new Vector2(1f, 1f);
+            transactionArea.pivot = new Vector2(0.5f, 1f);
+            transactionArea.anchoredPosition = new Vector2(0f, -292f);
+            transactionArea.sizeDelta = new Vector2(-72f, 680f);
+
+            foreach (TMP_Text title in transactionArea.GetComponentsInChildren<TMP_Text>(true))
+            {
+                string value = (title.text ?? string.Empty).Trim();
+                if (value != "거래 내역" && value != "Transaction History")
+                    continue;
+                title.text = "거래 내역";
+                RectTransform rect = title.rectTransform;
+                rect.anchorMin = new Vector2(0f, 1f);
+                rect.anchorMax = new Vector2(1f, 1f);
+                rect.pivot = new Vector2(0.5f, 1f);
+                rect.anchoredPosition = Vector2.zero;
+                rect.sizeDelta = new Vector2(0f, 86f);
+            }
+        }
+
+        private void ConfigureScrollRect()
+        {
+            if (content == null || viewport == null || scrollRect == null)
                 return;
 
-            if (viewport == null)
-                viewport = scrollRect.viewport != null
-                    ? scrollRect.viewport
-                    : content.parent as RectTransform;
-
-            scrollRect.content = content;
             scrollRect.viewport = viewport;
+            scrollRect.content = content;
             scrollRect.horizontal = false;
             scrollRect.vertical = true;
             scrollRect.movementType = ScrollRect.MovementType.Clamped;
@@ -251,35 +345,10 @@ namespace Dobak.App.Bank
             scrollRect.scrollSensitivity = 45f;
             scrollRect.enabled = true;
 
-            if (viewport != null)
-            {
-                Mask legacyMask = viewport.GetComponent<Mask>();
-                if (legacyMask != null)
-                    legacyMask.enabled = false;
-
-                RectMask2D rectMask = viewport.GetComponent<RectMask2D>();
-                if (rectMask == null)
-                    rectMask = viewport.gameObject.AddComponent<RectMask2D>();
-                rectMask.enabled = true;
-                rectMask.padding = Vector4.zero;
-
-                Image image = viewport.GetComponent<Image>();
-                if (image == null)
-                    image = viewport.gameObject.AddComponent<Image>();
-                if (image.color.a <= 0.001f)
-                    image.color = new Color(1f, 1f, 1f, 0.001f);
-                image.raycastTarget = true;
-            }
-
-            content.anchorMin = new Vector2(0f, 1f);
-            content.anchorMax = new Vector2(1f, 1f);
-            content.pivot = new Vector2(0.5f, 1f);
-
             VerticalLayoutGroup layout = content.GetComponent<VerticalLayoutGroup>();
             if (layout == null)
                 layout = content.gameObject.AddComponent<VerticalLayoutGroup>();
-
-            layout.padding = new RectOffset(12, 12, 10, 18);
+            layout.padding = new RectOffset(0, 0, 8, 20);
             layout.spacing = 10f;
             layout.childAlignment = TextAnchor.UpperCenter;
             layout.childControlWidth = true;
@@ -297,30 +366,44 @@ namespace Dobak.App.Bank
 
         private void RebuildAndSnapTop()
         {
-            if (content == null || scrollRect == null)
+            if (content == null || viewport == null || scrollRect == null)
                 return;
+
+            foreach (RectTransform child in content)
+            {
+                if (child == null)
+                    continue;
+                child.anchorMin = new Vector2(0f, child.anchorMin.y);
+                child.anchorMax = new Vector2(1f, child.anchorMax.y);
+                child.sizeDelta = new Vector2(0f, child.sizeDelta.y);
+                child.localScale = Vector3.one;
+
+                LayoutElement element = child.GetComponent<LayoutElement>();
+                if (element == null)
+                    element = child.gameObject.AddComponent<LayoutElement>();
+                float height = Mathf.Max(82f, child.rect.height, child.sizeDelta.y);
+                element.minHeight = height;
+                element.preferredHeight = height;
+                element.flexibleWidth = 1f;
+            }
 
             Canvas.ForceUpdateCanvases();
             LayoutRebuilder.ForceRebuildLayoutImmediate(content);
-
-            float preferredHeight = LayoutUtility.GetPreferredHeight(content);
-            if (preferredHeight > 0f)
-                content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, preferredHeight);
-
-            if (viewport != null)
-                LayoutRebuilder.ForceRebuildLayoutImmediate(viewport);
-
-            if (scrollRect.transform is RectTransform scrollTransform)
-                LayoutRebuilder.ForceRebuildLayoutImmediate(scrollTransform);
-
+            LayoutRebuilder.ForceRebuildLayoutImmediate(viewport);
+            LayoutRebuilder.ForceRebuildLayoutImmediate(scrollRoot);
             Canvas.ForceUpdateCanvases();
+
             scrollRect.StopMovement();
             scrollRect.velocity = Vector2.zero;
             scrollRect.verticalNormalizedPosition = 1f;
+        }
 
-            Vector2 position = content.anchoredPosition;
-            position.y = 0f;
-            content.anchoredPosition = position;
+        private static void Stretch(RectTransform rect)
+        {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
         }
     }
 }

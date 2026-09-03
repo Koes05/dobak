@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using UnityEngine;
 using Dobak.Manager;
 using TMPro;
@@ -170,11 +170,22 @@ namespace Dobak.App.Bank
                 RectTransform accountCard = cashText.transform.parent?.parent as RectTransform;
                 if (accountCard != null)
                 {
+                    // The blue card is rendered by the inner accountPanel above. The outer Cash Image
+                    // caused the white rectangle seen in QA, so keep its layout but make only it transparent.
+                    Image outerCashImage = accountCard.GetComponent<Image>();
+                    if (outerCashImage != null)
+                    {
+                        Color outerColor = outerCashImage.color;
+                        outerColor.a = 0f;
+                        outerCashImage.color = outerColor;
+                        outerCashImage.raycastTarget = false;
+                    }
+
                     accountCard.anchorMin = new Vector2(0f, 1f);
                     accountCard.anchorMax = new Vector2(1f, 1f);
                     accountCard.pivot = new Vector2(0.5f, 1f);
-                    accountCard.anchoredPosition = new Vector2(0f, -48f);
-                    accountCard.sizeDelta = new Vector2(-140f, 230f);
+                    accountCard.anchoredPosition = new Vector2(0f, -38f);
+                    accountCard.sizeDelta = new Vector2(-72f, 230f);
 
                     RectTransform transactionArea = accountCard.parent != null && accountCard.parent.childCount > 1
                         ? accountCard.parent.GetChild(1) as RectTransform
@@ -184,8 +195,8 @@ namespace Dobak.App.Bank
                         transactionArea.anchorMin = new Vector2(0f, 1f);
                         transactionArea.anchorMax = new Vector2(1f, 1f);
                         transactionArea.pivot = new Vector2(0.5f, 1f);
-                        transactionArea.anchoredPosition = new Vector2(0f, -305f);
-                        transactionArea.sizeDelta = new Vector2(-140f, 665f);
+                        transactionArea.anchoredPosition = new Vector2(0f, -292f);
+                        transactionArea.sizeDelta = new Vector2(-72f, 680f);
                         Image transactionBackground = transactionArea.GetComponent<Image>();
                         if (transactionBackground != null)
                             transactionBackground.color = new Color(1f, 1f, 1f, 0.96f);

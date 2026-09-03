@@ -19,7 +19,7 @@ using UnityEngine.UI;
 public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 {
     private const string TabletSceneName = "TabletUI";
-    private const string PatchVersion = "V20.3-0903";
+    private const string PatchVersion = "V21.1-InputSystem";
 
     private GameFlowManager flow;
     private ScenarioV3Director director;
@@ -30,8 +30,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
     private readonly Dictionary<ScenarioV3CheckpointData, CheckpointRuntimeSnapshot> checkpointSnapshots =
         new Dictionary<ScenarioV3CheckpointData, CheckpointRuntimeSnapshot>();
-    private readonly HashSet<int> patchedSchoolButtons = new HashSet<int>();
-    private readonly HashSet<int> patchedDebounceButtons = new HashSet<int>();
+    private readonly HashSet<Button> patchedSchoolButtons = new HashSet<Button>();
+    private readonly HashSet<Button> patchedDebounceButtons = new HashSet<Button>();
 
     private GameObject choiceOverlay;
     private TMP_Text choiceOverlaySpeaker;
@@ -40,6 +40,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     private ScenarioV3Line choiceOverlayLine;
     private SpeakerType choiceOverlayMessageSpeaker = SpeakerType.Unknown;
     private bool choiceOverlayBusy;
+    private bool manualChoiceMode;
+    private readonly List<Action> manualChoiceActions = new List<Action>();
 
     private Button gamblingLauncherButton;
     private Button rewindButton;
@@ -52,6 +54,11 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     private float nextButtonScanAt;
     private AppType? lastObservedApp;
     private int lateMapCueShownDay = -1;
+    private int postJobRepaymentPromptedDay = -1;
+    private bool lenderDebtStateInitialized;
+    private bool observedBorrowedMom;
+    private bool observedBorrowedSeojun;
+    private bool observedBorrowedMinjae;
 
     private static readonly BindingFlags PrivateInstance =
         BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
@@ -113,7 +120,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
         PatchScenarioDatabase();
         CreateChoiceOverlay();
-        PatchHistoryViewport();
+        InitializeLenderDebtState();
+        InvokePrivate(director, "Save");
         PatchButtons(true);
 
         lastDay = flow.CurrentDay;
@@ -134,13 +142,18 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             PatchButtons(false);
         }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        HandleQaShortcuts();
+#endif
         TrackExplicitBorrowRequest();
         KeepMinjaeLoanOfferRepeatableUntilAccepted();
+        SynchronizeLenderDebtState();
         HandleDayChangeAndDialogueLog();
         TrackLateMapCue();
         CaptureNewCheckpointSnapshots();
         TryShowDeferredBorrowChoice();
         TryReplaceDebtChatChoicesWithDialogue();
+        TryOfferPostJobRepayment();
     }
 
     private void LateUpdate()
@@ -277,6 +290,10 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
         PatchSeojunRepaymentScene();
         PatchMinjaeRepaymentScene();
+        PatchD8EveningTiming();
+        PatchManagerNarrative();
+        PatchSeoyeonRecoveryContext();
+        PatchMultiLenderEndingChain();
         AddExtendedGamblingScenes();
 
         HashSet<string> returnToTablet = GetField<HashSet<string>>(database, "returnToTabletScenes");
@@ -289,7 +306,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         ScenarioV3Scene scene = database.GetScene("d10_seojun_followup");
         ScenarioV3Line line = FindLine("d10_seojun_followup_01");
         if (scene != null)
-            scene.condition = "borrowed.seojun=true;debt_owner=seojun;debt>0";
+            scene.condition = "borrowed.seojun=true;debt.seojun>0";
         if (line == null)
             return;
 
@@ -323,9 +340,14 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
     private void PatchMinjaeRepaymentScene()
     {
+        ScenarioV3Line dayRouter = FindLine("d10_minjae_router_01");
+        if (dayRouter != null)
+            dayRouter.enterEffects = "route:d10_minjae_debt if debt.minjae>0 else d10_minjae";
+
         ScenarioV3Scene scene = database.GetScene("d10_minjae_debt");
         if (scene == null || scene.lines.Count == 0)
             return;
+        scene.condition = "debt.minjae>0";
 
         ScenarioV3Line first = FindLine("d10_minjae_debt_01");
         ScenarioV3Line second = FindLine("d10_minjae_debt_02");
@@ -370,7 +392,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         AddOrReplaceScene(CreateScene(
             "d10_minjae_repaid_message_router", "debt", "10", "morning", 132,
             CreateLine("d10_minjae_repaid_message_router_01", 1, "System", string.Empty, "router", string.Empty,
-                string.Empty, "route:d10_minjae_repaid_full_message if debt=0 else d10_minjae_repaid_partial_message",
+                string.Empty, "route:d10_minjae_repaid_full_message if debt.minjae=0 else d10_minjae_repaid_partial_message",
                 string.Empty)));
 
         AddOrReplaceScene(CreateScene(
@@ -401,6 +423,241 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             CreateLine("d10_minjae_delay_message_01", 1, "Protagonist", "민재", "message", string.Empty,
                 "지금은 보낼 돈이 없어. 주말 알바비가 들어오면 먼저 갚을게.",
                 string.Empty, string.Empty)));
+    }
+
+    private void PatchD8EveningTiming()
+    {
+        ScenarioV3Scene scene = database.GetScene("d8_evening");
+        if (scene == null || scene.lines.Count == 0)
+            return;
+
+        foreach (ScenarioV3Line line in scene.lines)
+            line.enterEffects = RemoveEffect(line.enterEffects, "clock:set=21:00");
+
+        ScenarioV3Line first = scene.lines[0];
+        first.enterEffects = AppendEffect(first.enterEffects, "clock:set=18:00");
+
+        ScenarioV3Line last = scene.lines[scene.lines.Count - 1];
+        string originalNext = string.Equals(last.autoNext, "v21_d8_evening_to_night", StringComparison.OrdinalIgnoreCase)
+            ? string.Empty
+            : last.autoNext;
+        last.autoNext = "v21_d8_evening_to_night";
+
+        AddOrReplaceScene(CreateScene(
+            "v21_d8_evening_to_night", "main", "8", "evening", 91,
+            CreateLine("v21_d8_evening_to_night_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty, "clock:set=21:00", originalNext)));
+    }
+
+    private void PatchManagerNarrative()
+    {
+        ScenarioV3Line d11Reflection = FindLine("d11_evening_01");
+        if (d11Reflection != null)
+            d11Reflection.text = "집에 돌아와서도 점장님이 괜찮냐고 묻던 말이 계속 걸렸다. 괜찮다고 했지만, 나도 요즘 달라졌다는 건 알고 있었다.";
+        ScenarioV3Line d11Decision = FindLine("d11_evening_02");
+        if (d11Decision != null)
+            d11Decision.text = "내일 또 마주치면 뭐라고 해야 하지.... 일단 오늘은 쉬자.";
+
+        ScenarioV3Line d12Start = FindLine("d12_start_02");
+        if (d12Start != null)
+            d12Start.text = "지난주에도 걱정 끼쳤는데 오늘까지 빠질 순 없다.... 일단 카페로 가자.";
+
+        ScenarioV3Scene managerScene = database.GetScene("d12_manager_help");
+        if (managerScene != null)
+        {
+            managerScene.lines.Clear();
+            managerScene.purpose = "점장이 이상 징후를 묻고, 도박 사실을 말할지는 플레이어가 직접 정한다.";
+            managerScene.lines.Add(CreateLine(
+                "d12_manager_help_00a", 1, "CafeManager", "점장님", "dialogue", "manager_worried",
+                "어제 네 친구랑 돈 얘기하던데.... 요즘 계속 피곤해 보이고. 무슨 일 있는 건 아니지?",
+                "counter.job_attendance:add=1", string.Empty));
+
+            ScenarioV3Line decision = CreateLine(
+                "d12_manager_help_00b", 2, "Protagonist", "나", "dialogue", string.Empty,
+                "어디까지 말해야 하지....",
+                string.Empty, string.Empty);
+            decision.choiceA = new ScenarioV3Choice
+            {
+                id = "v21_manager_tell_truth",
+                text = "사실대로 말한다",
+                replyText = string.Empty,
+                effects = string.Empty,
+                nextSceneId = "v21_manager_tell_truth"
+            };
+            decision.choiceB = new ScenarioV3Choice
+            {
+                id = "v21_manager_hide",
+                text = "아무 일 아니라고 넘긴다",
+                replyText = string.Empty,
+                effects = string.Empty,
+                nextSceneId = "v21_manager_hide"
+            };
+            managerScene.lines.Add(decision);
+        }
+
+        AddOrReplaceScene(CreateScene(
+            "v21_manager_tell_truth", "job", "12", "job", 150,
+            CreateLine("v21_manager_tell_truth_01", 1, "Protagonist", "나", "dialogue", string.Empty,
+                "사실.... 도박하다 돈을 잃었어요. 친구한테 돈도 좀 빌렸고요.",
+                string.Empty, string.Empty),
+            CreateLine("v21_manager_tell_truth_02", 2, "CafeManager", "점장님", "dialogue", "manager_worried",
+                "그랬구나. 나도 예전에 잃은 돈만 찾으면 끝낼 수 있을 줄 알았어. 그런데 숨길수록 더 오래 갔어.",
+                string.Empty, string.Empty),
+            CreateLine("v21_manager_tell_truth_03", 3, "CafeManager", "점장님", "dialogue", "manager_worried",
+                "내일 학교 가면 선생님한테 먼저 말해. 누구한테 얼마를 빌렸는지부터 같이 정리해 달라고 하고.",
+                "relation.manager:add=3|flag.manager_advice:set=true", string.Empty)));
+
+        AddOrReplaceScene(CreateScene(
+            "v21_manager_hide", "job", "12", "job", 149,
+            CreateLine("v21_manager_hide_01", 1, "Protagonist", "나", "dialogue", string.Empty,
+                "아니에요.... 그냥 잠을 좀 못 자서 그래요. 괜찮아요.",
+                string.Empty, string.Empty),
+            CreateLine("v21_manager_hide_02", 2, "CafeManager", "점장님", "dialogue", "manager_worried",
+                "그래. 지금 말하기 싫으면 안 해도 돼. 그래도 혼자 감당하기 어렵다 싶으면 선생님이나 부모님께는 꼭 말해.",
+                "relation.manager:add=1|flag.manager_advice:set=true", string.Empty)));
+
+        ScenarioV3Line d12Reflection = FindLine("d12_evening_01");
+        if (d12Reflection != null)
+            d12Reflection.text = "집에 돌아와서도 점장님의 말이 계속 걸렸다. 지금은 넘겼지만, 나도 요즘 달라졌다는 건 알고 있었다.";
+        ScenarioV3Line d12Decision = FindLine("d12_evening_02");
+        if (d12Decision != null)
+            d12Decision.text = "내일 학교에 가면 선생님한테는 말해볼까.... 혼자 계속 숨기는 것보단 낫겠지.";
+    }
+
+    private void PatchSeoyeonRecoveryContext()
+    {
+        ScenarioV3Scene scene = database.GetScene("d14_seoyeon_good");
+        ScenarioV3Line original = FindLine("d14_seoyeon_good_01");
+        if (scene == null || original == null)
+            return;
+
+        string effects = original.enterEffects;
+        string next = original.autoNext;
+        original.sequence = 3;
+        original.text = "그래서 그랬구나.... 그래도 네 역할은 끝까지 했잖아. 선생님한테 말한 것도 잘했어.";
+        original.enterEffects = effects;
+        original.autoNext = next;
+
+        scene.lines.Clear();
+        scene.lines.Add(CreateLine(
+            "d14_seoyeon_good_00a", 1, "Seoyeon", "서연", "dialogue", "seoyeon_worried",
+            "요즘 계속 힘들어 보였는데.... 무슨 일 있었어?", string.Empty, string.Empty));
+        scene.lines.Add(CreateLine(
+            "d14_seoyeon_good_00b", 2, "Protagonist", "나", "dialogue", string.Empty,
+            "사실 도박 때문에 돈을 잃었어. 혼자 해결해 보려다가 더 꼬여서.... 어제 선생님한테 말했어.",
+            string.Empty, string.Empty));
+        scene.lines.Add(original);
+    }
+
+    private void PatchMultiLenderEndingChain()
+    {
+        // Recovery: every person the player actually borrowed from must receive the required
+        // message before the ending card. Outstanding debt and "ever borrowed" are separate.
+        ScenarioV3Line recoveryRouter = FindLine("d14_recovery_followup_04");
+        if (recoveryRouter != null)
+        {
+            recoveryRouter.enterEffects =
+                "route:d14_recovery_seojun if borrowed.seojun=true else v21_recovery_minjae_router";
+            recoveryRouter.autoNext = string.Empty;
+        }
+
+        AddOrReplaceScene(CreateScene(
+            "v21_recovery_minjae_router", "debt", "14", "epilogue", 177,
+            CreateLine("v21_recovery_minjae_router_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty, "route:d14_recovery_minjae if borrowed.minjae=true else v21_recovery_after_lenders",
+                string.Empty)));
+        AddOrReplaceScene(CreateScene(
+            "v21_recovery_after_lenders", "debt", "14", "epilogue", 176,
+            CreateLine("v21_recovery_after_lenders_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty, "route:d14_recovery_family if debt>0 else v21_recovery_zero_debt_router",
+                string.Empty)));
+        AddOrReplaceScene(CreateScene(
+            "v21_recovery_zero_debt_router", "debt", "14", "epilogue", 176,
+            CreateLine("v21_recovery_zero_debt_router_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty,
+                "route:v21_recovery_repaid if borrowed.seojun=true|borrowed.minjae=true|borrowed.mom=true else d14_recovery_no_debt",
+                string.Empty)));
+        AddOrReplaceScene(CreateScene(
+            "v21_recovery_repaid", "main", "14", "epilogue", 175,
+            CreateLine("v21_recovery_repaid_01", 1, "Mom", "엄마", "dialogue", string.Empty,
+                "빌린 돈은 다 갚았어도 여기까지 오면서 숨긴 일은 남아 있잖아. 상담은 계속 받아보자.",
+                string.Empty, string.Empty),
+            CreateLine("v21_recovery_repaid_02", 2, "Protagonist", "나", "dialogue", string.Empty,
+                "응. 돈을 갚았다고 다 끝난 척하지 않고, 처음부터 같이 정리해볼게.",
+                "relation.mom:add=2", string.Empty),
+            CreateLine("v21_recovery_repaid_03", 3, "Protagonist", "나", "narration", string.Empty,
+                "갚을 돈은 정리했지만 다시 같은 선택을 하지 않으려면 더 시간이 필요했다.",
+                string.Empty, "ending_recovery")));
+
+        ScenarioV3Scene seojunRecovery = database.GetScene("d14_recovery_seojun");
+        if (seojunRecovery != null && seojunRecovery.lines.Count > 0)
+            seojunRecovery.lines[seojunRecovery.lines.Count - 1].autoNext = "v21_recovery_minjae_router";
+        ScenarioV3Scene minjaeRecovery = database.GetScene("d14_recovery_minjae");
+        if (minjaeRecovery != null && minjaeRecovery.lines.Count > 0)
+            minjaeRecovery.lines[minjaeRecovery.lines.Count - 1].autoNext = "v21_recovery_after_lenders";
+
+        // No-help ending: the same all-lenders requirement applies. If loans were repaid earlier,
+        // do not use the old "never borrowed" text; use a neutral repaid-but-still-hiding scene.
+        ScenarioV3Line noHelpRouter = FindLine("d14_no_help_messages_04");
+        if (noHelpRouter != null)
+        {
+            noHelpRouter.enterEffects =
+                "route:d14_no_help_seojun if borrowed.seojun=true else v21_no_help_minjae_router";
+            noHelpRouter.autoNext = string.Empty;
+        }
+
+        AddOrReplaceScene(CreateScene(
+            "v21_no_help_minjae_router", "debt", "14", "morning", 207,
+            CreateLine("v21_no_help_minjae_router_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty, "route:d14_no_help_minjae if borrowed.minjae=true else v21_no_help_mom_router",
+                string.Empty)));
+        AddOrReplaceScene(CreateScene(
+            "v21_no_help_mom_router", "debt", "14", "morning", 206,
+            CreateLine("v21_no_help_mom_router_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty, "route:d14_no_help_mom if borrowed.mom=true else v21_no_help_after_lenders",
+                string.Empty)));
+        AddOrReplaceScene(CreateScene(
+            "v21_no_help_after_lenders", "debt", "14", "morning", 205,
+            CreateLine("v21_no_help_after_lenders_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty, "route:d14_no_help_home if debt>0 else v21_no_help_zero_debt_router",
+                string.Empty)));
+        AddOrReplaceScene(CreateScene(
+            "v21_no_help_zero_debt_router", "debt", "14", "morning", 205,
+            CreateLine("v21_no_help_zero_debt_router_01", 1, "System", string.Empty, "router", string.Empty,
+                string.Empty,
+                "route:v21_no_help_repaid_home if borrowed.seojun=true|borrowed.minjae=true|borrowed.mom=true else d14_no_help_no_debt",
+                string.Empty)));
+        AddOrReplaceScene(CreateScene(
+            "v21_no_help_repaid_home", "main", "14", "night", 200,
+            CreateLine("v21_no_help_repaid_home_01", 1, "Protagonist", "나", "narration", string.Empty,
+                "빌린 돈은 갚았지만, 왜 그런 선택을 했는지는 누구에게도 제대로 말하지 못했다.",
+                string.Empty, string.Empty),
+            CreateLine("v21_no_help_repaid_home_02", 2, "Protagonist", "나", "narration", string.Empty,
+                "계좌의 빚은 사라졌는데도 잃은 돈 생각은 남아 있었다. 결국 그 앱을 다시 열었다.",
+                string.Empty, "ending_no_help")));
+
+        ScenarioV3Scene seojunNoHelp = database.GetScene("d14_no_help_seojun");
+        if (seojunNoHelp != null && seojunNoHelp.lines.Count > 0)
+            seojunNoHelp.lines[seojunNoHelp.lines.Count - 1].autoNext = "v21_no_help_minjae_router";
+        ScenarioV3Scene minjaeNoHelp = database.GetScene("d14_no_help_minjae");
+        if (minjaeNoHelp != null && minjaeNoHelp.lines.Count > 0)
+            minjaeNoHelp.lines[minjaeNoHelp.lines.Count - 1].autoNext = "v21_no_help_mom_router";
+    }
+
+    private static string RemoveEffect(string effects, string target)
+    {
+        if (string.IsNullOrWhiteSpace(effects))
+            return string.Empty;
+        return string.Join("|", effects.Split('|')
+            .Select(value => value.Trim())
+            .Where(value => value.Length > 0 &&
+                            !string.Equals(value, target, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static string AppendEffect(string effects, string addition)
+    {
+        string cleaned = RemoveEffect(effects, addition);
+        return string.IsNullOrWhiteSpace(cleaned) ? addition : cleaned + "|" + addition;
     }
 
     private void AddExtendedGamblingScenes()
@@ -490,6 +747,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     private void PatchButtons(bool force)
     {
         PatchGamblingLauncher();
+        PatchSchoolTravelButtons();
         PatchRewindButton();
         PatchSimpleButtonDebounce();
     }
@@ -500,7 +758,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (launcher == null)
             return;
 
-        Transform existingProxy = launcher.transform.Find("V20 Gambling Guard");
+        Transform existingProxy = launcher.transform.Find("V21 Gambling Guard");
         if (existingProxy != null)
         {
             gamblingLauncherButton = existingProxy.GetComponent<Button>();
@@ -510,7 +768,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
         // Inspector에 영구 등록된 클릭 이벤트는 RemoveAllListeners로 지워지지 않는다.
         // 투명한 자식 버튼이 먼저 입력을 받아, 제한 상태에서 도박 앱이 함께 열리는 일을 막는다.
-        GameObject proxyObject = new GameObject("V20 Gambling Guard", typeof(RectTransform),
+        GameObject proxyObject = new GameObject("V21 Gambling Guard", typeof(RectTransform),
             typeof(CanvasRenderer), typeof(Image), typeof(Button));
         proxyObject.layer = launcher.layer;
         proxyObject.transform.SetParent(launcher.transform, false);
@@ -596,6 +854,13 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             return;
         }
 
+        ShowManualChoiceOverlay("한 판 해볼까....",
+            new ManualChoiceOption("한다", BeginConfirmedGamble),
+            new ManualChoiceOption("하지 않는다", () => { }));
+    }
+
+    private void BeginConfirmedGamble()
+    {
         int nextSession = GetDirectorInt("counter.gamble_sessions") + 1;
         if ((nextSession == 7 || nextSession == 8) && flow.V3BankCash > 0)
         {
@@ -618,8 +883,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         {
             if (button == null || !button.gameObject.scene.IsValid())
                 continue;
-            int id = button.GetInstanceID();
-            if (patchedSchoolButtons.Contains(id))
+            if (patchedSchoolButtons.Contains(button))
                 continue;
 
             string label = button.GetComponentInChildren<TMP_Text>(true)?.text ?? string.Empty;
@@ -630,16 +894,16 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             if (!looksLikeSchool || (!strongSchoolName && !HasMapAncestor(button.transform)))
                 continue;
 
-            patchedSchoolButtons.Add(id);
+            patchedSchoolButtons.Add(button);
 
             // Inspector-persistent UnityEvent listeners cannot be removed reliably at runtime.
             // Put a transparent child button over the original map button so the old TravelTo call
             // never fires before the player closes the late-arrival dialogue.
-            Transform existingProxy = button.transform.Find("V17 School Travel Proxy");
+            Transform existingProxy = button.transform.Find("V21 School Travel Proxy");
             if (existingProxy != null)
                 continue;
 
-            GameObject proxyObject = new GameObject("V17 School Travel Proxy", typeof(RectTransform),
+            GameObject proxyObject = new GameObject("V21 School Travel Proxy", typeof(RectTransform),
                 typeof(CanvasRenderer), typeof(Image), typeof(Button));
             proxyObject.layer = button.gameObject.layer;
             proxyObject.transform.SetParent(button.transform, false);
@@ -651,7 +915,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             proxyButton.transition = Selectable.Transition.None;
             proxyButton.targetGraphic = proxyImage;
             proxyButton.onClick.AddListener(HandleSchoolTravelButton);
-            patchedSchoolButtons.Add(proxyButton.GetInstanceID());
+            patchedSchoolButtons.Add(proxyButton);
         }
     }
 
@@ -673,32 +937,17 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (flow == null || flow.IsGameEnded || GetField<bool>(flow, "isTransitioning"))
             return;
 
-        int travelHours = flow.GetTravelHours("학교");
-        int arrivalHour = flow.CurrentHour + travelHours;
-        if (!flow.IsWeekend && !flow.IsSchoolDone && flow.CurrentHour < 16 && arrivalHour > 10)
+        int arrivalHour = flow.CurrentHour + flow.GetTravelHours("학교");
+        bool late = !flow.IsWeekend && !flow.IsSchoolDone && flow.CurrentHour < 16 && arrivalHour > 10;
+        if (late && lateMapCueShownDay != flow.CurrentDay)
         {
-            appWindow?.CloseCurrentApp();
-            flow.V3ShowDialogue("나", "(늦었지만 지금이라도 학교에 가는 편이 낫겠다.)",
-                BeginLateSchoolTravelDirectly);
+            lateMapCueShownDay = flow.CurrentDay;
+            // Keep the map open. After closing this dialogue the player presses the school button again.
+            flow.V3ShowDialogue("나", "(늦었지만 지금이라도 학교에 가는 편이 낫겠다.)", null);
             return;
         }
 
         flow.TravelTo("학교");
-    }
-
-    private void BeginLateSchoolTravelDirectly()
-    {
-        MethodInfo method = typeof(GameFlowManager).GetMethod("TravelTransition", PrivateInstance);
-        AudioClip clip = GetField<AudioClip>(flow, "schoolArrivalClip");
-        if (method == null)
-        {
-            Debug.LogError("[Scenario V3 Final Fix] 학교 이동 코루틴을 찾지 못했습니다.");
-            return;
-        }
-
-        object result = method.Invoke(flow, new object[] { "학교", flow.GetTravelHours("학교"), clip, 0.28f });
-        if (result is IEnumerator routine)
-            flow.StartCoroutine(routine);
     }
 
     private void PatchRewindButton()
@@ -720,7 +969,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         {
             GameObject target = FindSceneObject(name);
             Button button = target != null ? target.GetComponent<Button>() : null;
-            if (button == null || !patchedDebounceButtons.Add(button.GetInstanceID()))
+            if (button == null || !patchedDebounceButtons.Add(button))
                 continue;
             button.onClick.AddListener(() => StartCoroutine(DebounceButton(button)));
         }
@@ -801,6 +1050,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         {
             borrowOverlayShownForCurrentDay = false;
             lateMapCueShownDay = -1;
+            postJobRepaymentPromptedDay = -1;
 
             // 최신 Director는 날짜 전환 때 이미 VN 로그를 비운다. 구버전에서 남아 있으면
             // 직전 날짜의 접두 구간만 제거하고 새 날짜 첫 대사는 보존한다.
@@ -869,6 +1119,247 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     }
 
     // ---------------------------------------------------------------------
+    // Per-lender debt and voluntary repayment after a completed weekend shift
+    // ---------------------------------------------------------------------
+
+    private void InitializeLenderDebtState()
+    {
+        if (flow == null || director == null)
+            return;
+
+        bool alreadyInitialized = string.Equals(GetDirectorState("v21.debt_state_initialized"), "true",
+            StringComparison.OrdinalIgnoreCase);
+        if (!alreadyInitialized)
+        {
+            bool mom = IsBorrowedFrom("mom");
+            bool seojun = IsBorrowedFrom("seojun");
+            bool minjae = IsBorrowedFrom("minjae");
+            var borrowed = new List<string>();
+            if (mom) borrowed.Add("mom");
+            if (seojun) borrowed.Add("seojun");
+            if (minjae) borrowed.Add("minjae");
+
+            int remaining = Mathf.Max(0, flow.CurrentDebt);
+            var assigned = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["mom"] = 0,
+                ["seojun"] = 0,
+                ["minjae"] = 0
+            };
+
+            // A fresh V21 run always has 50,000 won per accepted loan. For an older save, allocate
+            // the currently recorded owner first, then the other accepted lenders without changing
+            // the total debt shown by GameFlowManager.
+            string owner = (GetDirectorState("debt_owner") ?? string.Empty).Trim().ToLowerInvariant();
+            if (borrowed.Remove(owner))
+                borrowed.Insert(0, owner);
+            foreach (string key in borrowed)
+            {
+                int amount = Mathf.Min(50000, remaining);
+                assigned[key] = amount;
+                remaining -= amount;
+            }
+
+            SetDirectorState("debt.mom", assigned["mom"].ToString(CultureInfo.InvariantCulture));
+            SetDirectorState("debt.seojun", assigned["seojun"].ToString(CultureInfo.InvariantCulture));
+            SetDirectorState("debt.minjae", assigned["minjae"].ToString(CultureInfo.InvariantCulture));
+            SetDirectorState("v21.debt_state_initialized", "true");
+        }
+
+        lenderDebtStateInitialized = true;
+        observedBorrowedMom = IsBorrowedFrom("mom");
+        observedBorrowedSeojun = IsBorrowedFrom("seojun");
+        observedBorrowedMinjae = IsBorrowedFrom("minjae");
+    }
+
+    private void SynchronizeLenderDebtState()
+    {
+        if (!lenderDebtStateInitialized ||
+            !string.Equals(GetDirectorState("v21.debt_state_initialized"), "true",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            InitializeLenderDebtState();
+        }
+
+        bool mom = IsBorrowedFrom("mom");
+        bool seojun = IsBorrowedFrom("seojun");
+        bool minjae = IsBorrowedFrom("minjae");
+
+        bool changed = false;
+        if (mom && !observedBorrowedMom)
+        {
+            AddLenderDebt("mom", 50000);
+            changed = true;
+        }
+        if (seojun && !observedBorrowedSeojun)
+        {
+            AddLenderDebt("seojun", 50000);
+            changed = true;
+        }
+        if (minjae && !observedBorrowedMinjae)
+        {
+            AddLenderDebt("minjae", 50000);
+            changed = true;
+        }
+
+        observedBorrowedMom = mom;
+        observedBorrowedSeojun = seojun;
+        observedBorrowedMinjae = minjae;
+        if (changed)
+        {
+            SelectRemainingDebtOwner();
+            InvokePrivate(director, "Save");
+        }
+    }
+
+    private bool IsBorrowedFrom(string key)
+    {
+        return string.Equals(GetDirectorState("borrowed." + key), "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private int GetLenderDebt(string key)
+    {
+        return Mathf.Max(0, GetDirectorInt("debt." + key));
+    }
+
+    private void AddLenderDebt(string key, int amount)
+    {
+        SetDirectorState("debt." + key,
+            Mathf.Max(0, GetLenderDebt(key) + amount).ToString(CultureInfo.InvariantCulture));
+    }
+
+    private int RepaySpecificLender(string key, string displayName)
+    {
+        int lenderDebt = GetLenderDebt(key);
+        if (lenderDebt <= 0 || flow.V3BankCash <= 0 || flow.CurrentDebt <= 0)
+            return 0;
+
+        int totalBefore = flow.CurrentDebt;
+        int otherDebt = Mathf.Max(0, totalBefore - lenderDebt);
+
+        // GameFlowManager's public repayment method pays against its single total-debt field. Limit
+        // that field to the selected lender for the duration of the call, then restore the others.
+        SetField(flow, "debt", lenderDebt);
+        int repaid = flow.V3RepayAvailableDebt(displayName + "에게 빌린 돈 상환");
+        int lenderRemaining = Mathf.Max(0, lenderDebt - repaid);
+        SetDirectorState("debt." + key, lenderRemaining.ToString(CultureInfo.InvariantCulture));
+        SetField(flow, "debt", otherDebt + lenderRemaining);
+
+        SelectRemainingDebtOwner();
+        flow.V3Refresh();
+        InvokePrivate(director, "Save");
+        return repaid;
+    }
+
+    private void SelectRemainingDebtOwner()
+    {
+        string next = GetLenderDebt("seojun") > 0 ? "seojun"
+            : GetLenderDebt("minjae") > 0 ? "minjae"
+            : GetLenderDebt("mom") > 0 ? "mom"
+            : "none";
+        SetDirectorState("debt_owner", next);
+    }
+
+    private List<LenderInfo> GetOutstandingLenders()
+    {
+        var result = new List<LenderInfo>();
+        if (IsBorrowedFrom("seojun") && GetLenderDebt("seojun") > 0)
+            result.Add(new LenderInfo("seojun", "서준", SpeakerType.Joonho));
+        if (IsBorrowedFrom("minjae") && GetLenderDebt("minjae") > 0)
+            result.Add(new LenderInfo("minjae", "민재", SpeakerType.Friend));
+        if (IsBorrowedFrom("mom") && GetLenderDebt("mom") > 0)
+            result.Add(new LenderInfo("mom", "엄마", SpeakerType.Mom));
+        return result;
+    }
+
+    private void TryOfferPostJobRepayment()
+    {
+        string promptStateKey = "v21.post_job_repay_prompted." + flow.CurrentDay.ToString(CultureInfo.InvariantCulture);
+        if (postJobRepaymentPromptedDay == flow.CurrentDay ||
+            string.Equals(GetDirectorState(promptStateKey), "true", StringComparison.OrdinalIgnoreCase) ||
+            choiceOverlay == null || choiceOverlay.activeSelf)
+            return;
+        if (!flow.IsWeekend || flow.CurrentLocation != "집" || flow.CurrentHour < 21)
+            return;
+        if (!string.Equals(GetDirectorState("schedule.job"), "complete", StringComparison.OrdinalIgnoreCase))
+            return;
+        if (flow.CurrentDebt <= 0 || flow.V3BankCash <= 0 || !IsDirectorIdle() ||
+            director.HasPendingMessageAction || dialogue.TotalUnreadCount > 0 || HasChatActionChoices())
+            return;
+
+        List<LenderInfo> lenders = GetOutstandingLenders();
+        if (lenders.Count == 0)
+            return;
+
+        postJobRepaymentPromptedDay = flow.CurrentDay;
+        SetDirectorState(promptStateKey, "true");
+        InvokePrivate(director, "Save");
+        ShowManualChoiceOverlay("알바비가 들어왔다. 빌린 돈부터 갚을까?",
+            new ManualChoiceOption("갚는다", () => ShowPostJobLenderSelection(lenders)),
+            new ManualChoiceOption("지금은 미룬다", () => { }));
+    }
+
+    private void ShowPostJobLenderSelection(List<LenderInfo> lenders)
+    {
+        if (lenders == null || lenders.Count == 0)
+            return;
+        if (lenders.Count == 1)
+        {
+            RepayAfterJob(lenders[0]);
+            return;
+        }
+
+        var options = new List<ManualChoiceOption>();
+        foreach (LenderInfo lender in lenders.Take(3))
+        {
+            LenderInfo captured = lender;
+            options.Add(new ManualChoiceOption(captured.displayName + "에게 갚는다",
+                () => RepayAfterJob(captured)));
+        }
+        if (options.Count < 3)
+            options.Add(new ManualChoiceOption("지금은 미룬다", () => { }));
+        ShowManualChoiceOverlay("누구에게 먼저 갚을까?", options.ToArray());
+    }
+
+    private void RepayAfterJob(LenderInfo lender)
+    {
+        if (lender == null)
+            return;
+
+        int repaid = RepaySpecificLender(lender.key, lender.displayName);
+        if (repaid <= 0)
+        {
+            flow.V3ShowDialogue("나", "(갚고 싶지만 지금 보낼 수 있는 돈이 없다....)", null);
+            return;
+        }
+
+        int remaining = GetLenderDebt(lender.key);
+        string message = remaining <= 0
+            ? $"방금 {repaid:N0}원 보냈어. 늦어서 미안해."
+            : $"방금 {repaid:N0}원 보냈어. 남은 {remaining:N0}원도 날짜 정해서 갚을게.";
+        AddOutgoingChatMessage(lender.speaker, lender.displayName, message);
+        flow.V3ShowDialogue("나",
+            $"({lender.displayName}에게 {repaid:N0}원을 보내고 메시지를 남겼다.)", null);
+    }
+
+    private void AddOutgoingChatMessage(SpeakerType speaker, string displayName, string message)
+    {
+        if (dialogue == null || string.IsNullOrWhiteSpace(message))
+            return;
+
+        dialogue.EnsureConversation(speaker, displayName);
+        Dictionary<SpeakerType, ChatChannel> channels =
+            GetField<Dictionary<SpeakerType, ChatChannel>>(dialogue, "channels");
+        if (channels == null || !channels.TryGetValue(speaker, out ChatChannel channel) || channel == null)
+            return;
+
+        channel.messageHistory.Add(new ChatMessageEntry { isPlayer = true, text = message });
+        channel.lastMessage = message;
+        dialogue.PreferConversation(speaker);
+        dialogue.UpdateProfileUI(speaker);
+    }
+
+    // ---------------------------------------------------------------------
     // Repayment choices displayed as VN dialogue over the live message app
     // ---------------------------------------------------------------------
 
@@ -889,9 +1380,9 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             return;
 
         SpeakerType speaker = seojun ? SpeakerType.Joonho : SpeakerType.Friend;
-        dialogue.DismissEventChoices(speaker);
         if (!dialogue.IsConversationOpen(speaker))
             return;
+        dialogue.DismissEventChoices(speaker);
 
         string body = seojun
             ? "서준에게 어떻게 답할까."
@@ -908,11 +1399,14 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (choices.Count == 0)
             return;
 
+        manualChoiceMode = false;
+        manualChoiceActions.Clear();
         choiceOverlayLine = line;
         choiceOverlayMessageSpeaker = messageSpeaker;
         choiceOverlayBusy = false;
         choiceOverlaySpeaker.text = "나";
         choiceOverlayBody.text = FormatThought(body);
+        PlaceChoiceOverlayButtons(Mathf.Min(choices.Count, choiceOverlayButtons.Count));
 
         for (int index = 0; index < choiceOverlayButtons.Count; index++)
         {
@@ -932,6 +1426,84 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
         choiceOverlay.SetActive(true);
         choiceOverlay.transform.SetAsLastSibling();
+    }
+
+    private void ShowManualChoiceOverlay(string body, params ManualChoiceOption[] options)
+    {
+        if (choiceOverlay == null || options == null || options.Length == 0 || choiceOverlay.activeSelf)
+            return;
+
+        manualChoiceMode = true;
+        manualChoiceActions.Clear();
+        choiceOverlayLine = null;
+        choiceOverlayMessageSpeaker = SpeakerType.Unknown;
+        choiceOverlayBusy = false;
+        choiceOverlaySpeaker.text = "나";
+        choiceOverlayBody.text = FormatThought(body);
+        PlaceChoiceOverlayButtons(Mathf.Min(options.Length, choiceOverlayButtons.Count));
+
+        for (int index = 0; index < choiceOverlayButtons.Count; index++)
+        {
+            Button button = choiceOverlayButtons[index];
+            bool visible = index < options.Length && options[index] != null;
+            button.gameObject.SetActive(visible);
+            button.onClick.RemoveAllListeners();
+            if (!visible)
+                continue;
+
+            ManualChoiceOption option = options[index];
+            manualChoiceActions.Add(option.action);
+            TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+            if (label != null)
+                label.text = option.label;
+            int capturedIndex = manualChoiceActions.Count - 1;
+            button.onClick.AddListener(() => ResolveManualChoice(capturedIndex));
+        }
+
+        choiceOverlay.SetActive(true);
+        choiceOverlay.transform.SetAsLastSibling();
+    }
+
+    private void PlaceChoiceOverlayButtons(int visibleCount)
+    {
+        visibleCount = Mathf.Clamp(visibleCount, 1, choiceOverlayButtons.Count);
+        for (int index = 0; index < choiceOverlayButtons.Count; index++)
+        {
+            RectTransform rect = choiceOverlayButtons[index].GetComponent<RectTransform>();
+            if (visibleCount == 1)
+            {
+                rect.anchorMin = new Vector2(0.32f, 0.08f);
+                rect.anchorMax = new Vector2(0.68f, 0.34f);
+            }
+            else if (visibleCount == 2)
+            {
+                float center = index == 0 ? 0.32f : 0.68f;
+                rect.anchorMin = new Vector2(center - 0.16f, 0.08f);
+                rect.anchorMax = new Vector2(center + 0.16f, 0.34f);
+            }
+            else
+            {
+                float center = 0.18f + 0.32f * index;
+                rect.anchorMin = new Vector2(center - 0.145f, 0.08f);
+                rect.anchorMax = new Vector2(center + 0.145f, 0.34f);
+            }
+            rect.offsetMin = new Vector2(8f, 0f);
+            rect.offsetMax = new Vector2(-8f, 0f);
+        }
+    }
+
+    private void ResolveManualChoice(int index)
+    {
+        if (!manualChoiceMode || choiceOverlayBusy || index < 0 || index >= manualChoiceActions.Count)
+            return;
+
+        choiceOverlayBusy = true;
+        Action action = manualChoiceActions[index];
+        choiceOverlay.SetActive(false);
+        manualChoiceActions.Clear();
+        manualChoiceMode = false;
+        choiceOverlayBusy = false;
+        action?.Invoke();
     }
 
     private bool IsChoiceCurrentlyAvailable(ScenarioV3Choice choice)
@@ -965,12 +1537,11 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
         if (seojunRepay || minjaeRepay)
         {
-            string owner = seojunRepay ? "서준" : "민재";
-            int repaid = flow.V3RepayAvailableDebt(owner + "에게 빌린 돈 상환");
+            string ownerKey = seojunRepay ? "seojun" : "minjae";
+            string ownerName = seojunRepay ? "서준" : "민재";
+            int repaid = RepaySpecificLender(ownerKey, ownerName);
             SetDirectorState("last_repayment", repaid.ToString(CultureInfo.InvariantCulture));
-            if (flow.CurrentDebt <= 0)
-                SetDirectorState("debt_owner", "none");
-            if (seojunRepay)
+            if (seojunRepay && repaid > 0)
                 AddDirectorInt("relation.seojun", 1);
             choice.effects = string.Empty;
         }
@@ -1071,93 +1642,6 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     }
 
     // ---------------------------------------------------------------------
-    // VN history clipping and scrolling
-    // ---------------------------------------------------------------------
-
-    private void PatchHistoryViewport()
-    {
-        if (director == null)
-            return;
-
-        GameObject historyPanel = GetField<GameObject>(director, "historyPanel");
-        TMP_Text historyText = GetField<TMP_Text>(director, "historyText");
-        if (historyPanel == null || historyText == null)
-            return;
-
-        Transform viewportTransform = historyPanel.transform.Find("History Viewport");
-        if (viewportTransform == null)
-            return;
-
-        RectTransform viewport = viewportTransform as RectTransform;
-        Image viewportImage = viewportTransform.GetComponent<Image>();
-        if (viewportImage == null)
-            viewportImage = viewportTransform.gameObject.AddComponent<Image>();
-        if (viewportImage.color.a <= 0.001f)
-            viewportImage.color = new Color(0.04f, 0.065f, 0.1f, 0.96f);
-        viewportImage.raycastTarget = true;
-
-        Mask stencil = viewportTransform.GetComponent<Mask>();
-        if (stencil != null)
-            stencil.enabled = false;
-        RectMask2D rectMask = viewportTransform.GetComponent<RectMask2D>();
-        if (rectMask == null)
-            rectMask = viewportTransform.gameObject.AddComponent<RectMask2D>();
-        rectMask.enabled = true;
-        rectMask.padding = Vector4.zero;
-
-        Transform contentTransform = viewportTransform.Find("History Content");
-        if (contentTransform == null)
-            return;
-        RectTransform content = contentTransform as RectTransform;
-        content.anchorMin = new Vector2(0f, 1f);
-        content.anchorMax = new Vector2(1f, 1f);
-        content.pivot = new Vector2(0.5f, 1f);
-        content.anchoredPosition = Vector2.zero;
-
-        historyText.maskable = true;
-        historyText.raycastTarget = false;
-        historyText.textWrappingMode = TextWrappingModes.Normal;
-        historyText.overflowMode = TextOverflowModes.Overflow;
-        historyText.alignment = TextAlignmentOptions.TopLeft;
-
-        float viewportWidth = Mathf.Max(480f, viewport.rect.width);
-        float viewportHeight = Mathf.Max(320f, viewport.rect.height);
-        const float horizontalPadding = 32f;
-        const float verticalPadding = 24f;
-        float textWidth = Mathf.Max(320f, viewportWidth - horizontalPadding * 2f);
-        float preferredHeight = Mathf.Max(80f,
-            historyText.GetPreferredValues(historyText.text ?? string.Empty, textWidth, 0f).y);
-        float contentHeight = Mathf.Max(viewportHeight, preferredHeight + verticalPadding * 2f);
-        content.sizeDelta = new Vector2(0f, contentHeight);
-
-        RectTransform textRect = historyText.rectTransform;
-        textRect.anchorMin = new Vector2(0f, 1f);
-        textRect.anchorMax = new Vector2(1f, 1f);
-        textRect.pivot = new Vector2(0.5f, 1f);
-        textRect.anchoredPosition = new Vector2(0f, -verticalPadding);
-        textRect.sizeDelta = new Vector2(-horizontalPadding * 2f, preferredHeight);
-
-        ScrollRect scroll = viewportTransform.GetComponent<ScrollRect>();
-        if (scroll == null)
-            scroll = viewportTransform.gameObject.AddComponent<ScrollRect>();
-        scroll.viewport = viewport;
-        scroll.content = content;
-        scroll.horizontal = false;
-        scroll.vertical = true;
-        scroll.movementType = ScrollRect.MovementType.Clamped;
-        scroll.scrollSensitivity = 45f;
-        scroll.inertia = true;
-        scroll.decelerationRate = 0.12f;
-
-        SetField(director, "historyViewportRect", viewport);
-        SetField(director, "historyContentRect", content);
-        SetField(director, "historyScroll", scroll);
-
-        LayoutRebuilder.ForceRebuildLayoutImmediate(textRect);
-        LayoutRebuilder.ForceRebuildLayoutImmediate(content);
-    }
-
-    // ---------------------------------------------------------------------
     // Branch rewind: preserve history before the checkpoint, remove only future history
     // ---------------------------------------------------------------------
 
@@ -1231,9 +1715,15 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         notifications?.Clear();
         choiceOverlay?.SetActive(false);
         choiceOverlayLine = null;
+        choiceOverlayMessageSpeaker = SpeakerType.Unknown;
+        manualChoiceMode = false;
+        manualChoiceActions.Clear();
         explicitBorrowPending = string.Equals(GetDirectorState("pending.borrow_menu"), "true",
             StringComparison.OrdinalIgnoreCase);
         borrowOverlayShownForCurrentDay = false;
+        postJobRepaymentPromptedDay = -1;
+        lenderDebtStateInitialized = false;
+        InitializeLenderDebtState();
         lastDay = flow.CurrentDay;
         lateMapCueShownDay = -1;
         lastObservedApp = appWindow?.CurrentAppType;
@@ -1370,6 +1860,92 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             scenarioAction = choice.scenarioAction
         }).ToList();
     }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+    // ---------------------------------------------------------------------
+    // QA shortcuts (never compiled into a non-development release build)
+    // ---------------------------------------------------------------------
+
+    private void HandleQaShortcuts()
+    {
+#if ENABLE_INPUT_SYSTEM
+        UnityEngine.InputSystem.Keyboard keyboard = UnityEngine.InputSystem.Keyboard.current;
+        if (keyboard == null)
+            return;
+
+        if (keyboard.f8Key.wasPressedThisFrame)
+            PrepareOvernightQaState(false);
+        else if (keyboard.f9Key.wasPressedThisFrame)
+            PrepareOvernightQaState(true);
+#elif ENABLE_LEGACY_INPUT_MANAGER
+        if (UnityEngine.Input.GetKeyDown(KeyCode.F8))
+            PrepareOvernightQaState(false);
+        else if (UnityEngine.Input.GetKeyDown(KeyCode.F9))
+            PrepareOvernightQaState(true);
+#endif
+    }
+
+    private void PrepareOvernightQaState(bool weekendMorning)
+    {
+        if (flow == null || director == null || !IsDirectorIdle() ||
+            (choiceOverlay != null && choiceOverlay.activeSelf))
+        {
+            flow?.V3ShowDialogue("QA", "(진행 중인 대사나 선택지를 먼저 끝낸 뒤 다시 눌러 주세요.)", null);
+            return;
+        }
+
+        // F8: 2일차 목요일 06:00 -> 한 판 뒤 3일차 평일 아침 검증
+        // F9: 10일차 금요일 06:00 -> 한 판 뒤 11일차 주말 아침 검증
+        int targetDay = weekendMorning ? 10 : 2;
+        appWindow?.CloseCurrentApp();
+        flow.V3RestoreRun(targetDay, 6, "집", 100000, 0);
+
+        SetDirectorState("schedule.school", "complete");
+        SetDirectorState("schedule.homework", "complete");
+        SetDirectorState("schedule.job", "complete");
+        SetDirectorState("schedule.sleep", "pending");
+        SetDirectorState("day_finalized", "0");
+        SetDirectorState("counter.gamble_sessions", "0");
+        SetDirectorState("pending.gamble_attention", "true");
+        SetDirectorState("pending.borrow_menu", "false");
+        SetDirectorState("pending.borrow_target", "none");
+        SetDirectorState("flag.borrow_deferred", "false");
+        SetDirectorState("flag.gambled_late", "false");
+        SetDirectorState("flag.late_wake_today", "false");
+        SetDirectorState("flag.gambling_started", "false");
+        SetDirectorState("flag.gambling_app_unlocked", "true");
+        SetDirectorState("borrowed.mom", "false");
+        SetDirectorState("borrowed.seojun", "false");
+        SetDirectorState("borrowed.minjae", "false");
+        SetDirectorState("debt.mom", "0");
+        SetDirectorState("debt.seojun", "0");
+        SetDirectorState("debt.minjae", "0");
+        SetDirectorState("debt_owner", "none");
+        SetField(director, "pendingLateWakeAfterGambling", false);
+        SetField(director, "pendingBorrowMorningAdvance", false);
+
+        HashSet<string> seen = GetField<HashSet<string>>(director, "seenScenes");
+        seen?.RemoveWhere(value =>
+            value.StartsWith("sys_late_gamble_morning", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("gamble_1", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("late_first_gamble_return", StringComparison.OrdinalIgnoreCase));
+
+        lenderDebtStateInitialized = false;
+        InitializeLenderDebtState();
+        lastDay = targetDay;
+        lateMapCueShownDay = -1;
+        postJobRepaymentPromptedDay = -1;
+        flow.V3SetGamblingUnlocked(true, true);
+        flow.V3SetGamblingAttention(true);
+        flow.V3Refresh();
+        InvokePrivate(director, "Save");
+
+        string result = weekendMorning
+            ? "F9 주말 밤샘 QA 준비 완료. 지금 도박 앱을 눌러 ‘한다’를 선택하면 11일차 토요일 오전 흐름을 확인할 수 있습니다."
+            : "F8 평일 밤샘 QA 준비 완료. 지금 도박 앱을 눌러 ‘한다’를 선택하면 3일차 금요일 오전 흐름을 확인할 수 있습니다.";
+        flow.V3ShowDialogue("QA", result, null);
+    }
+#endif
 
     // ---------------------------------------------------------------------
     // Exact attention dots
@@ -1602,6 +2178,32 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         rect.anchorMax = Vector2.one;
         rect.offsetMin = Vector2.zero;
         rect.offsetMax = Vector2.zero;
+    }
+
+    private sealed class ManualChoiceOption
+    {
+        public readonly string label;
+        public readonly Action action;
+
+        public ManualChoiceOption(string label, Action action)
+        {
+            this.label = label ?? string.Empty;
+            this.action = action;
+        }
+    }
+
+    private sealed class LenderInfo
+    {
+        public readonly string key;
+        public readonly string displayName;
+        public readonly SpeakerType speaker;
+
+        public LenderInfo(string key, string displayName, SpeakerType speaker)
+        {
+            this.key = key ?? string.Empty;
+            this.displayName = displayName ?? string.Empty;
+            this.speaker = speaker;
+        }
     }
 
     [Serializable]
