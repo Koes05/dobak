@@ -1,0 +1,6 @@
+﻿@echo off
+chcp 65001 >nul
+cd /d "%~dp0"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Apply_ScenarioV3_Text_Polish.ps1"
+echo.
+pause
