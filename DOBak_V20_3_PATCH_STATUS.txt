@@ -1,7 +1,0 @@
-﻿DOBak V20.3 INTEGRATED PATCH: FAIL
-실패 단계: 최종 검증
-원인: 표시 문구 검증 실패:
-d8_lecture_03/text 링크 잔존: 민재가 보낸 링크가 떠올랐다. 아직 큰일은 아니라고 넘기고 싶지만 계속 권유받는 것부터 이상한 건 아닐까.
-d1_evening_01/text 링크 잔존: 가방을 정리하고 저녁을 먹는 동안에도 민재가 보낸 링크가 자꾸 떠올랐다.
-스크립트 위치: 위치: <ScriptBlock>, C:\Users\alstj\Documents\도박중독\dobak-scenario-work\V20_3_FIX\Apply_Dobak_V20_3.ps1: 471번째 줄
-원본 복원 폴더: C:\Users\alstj\Documents\도박중독\dobak-scenario-work\_Dobak_V20_3_Backup_20260903_234300
