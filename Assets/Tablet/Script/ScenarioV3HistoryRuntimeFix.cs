@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using TMPro;
 using UnityEngine;
@@ -7,25 +8,34 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 /// <summary>
-/// Repairs the single VN history ScrollRect already owned by ScenarioV3Director.
-/// It does not create a second viewport or a second text object.
+/// Owns the visible VN "지난 대화" list as individual TMP entries inside one ScrollRect.
+/// ScenarioV3Director's legacy single History Text stays hidden and is used only as a compatibility
+/// target for its old ShowHistory method. Each dialogue entry gets its own layout height, so the
+/// viewport mask and ScrollRect can calculate clipping/scrolling deterministically.
 /// </summary>
 [DefaultExecutionOrder(20000)]
 public sealed class ScenarioV3HistoryRuntimeFix : MonoBehaviour
 {
     private const string TabletSceneName = "TabletUI";
+    private const string EntryContentName = "History Entries Content V23";
+    private const string EntryPrefix = "History Entry V23 ";
     private static readonly BindingFlags Fields =
         BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 
     private ScenarioV3Director director;
     private GameObject historyPanel;
     private RectTransform viewport;
-    private RectTransform content;
-    private TMP_Text historyText;
+    private RectTransform legacyContent;
+    private TMP_Text legacyText;
+    private RectTransform entryContent;
     private ScrollRect scrollRect;
-    private string lastText = string.Empty;
-    private Vector2 lastViewportSize;
+    private TMP_FontAsset font;
+    private Color textColor = new Color(0.9f, 0.93f, 0.98f, 1f);
+    private float fontSize = 25f;
+
     private bool wasOpen;
+    private string lastSignature = string.Empty;
+    private Vector2 lastViewportSize;
     private Coroutine rebuildRoutine;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -48,7 +58,7 @@ public sealed class ScenarioV3HistoryRuntimeFix : MonoBehaviour
         if (FindAnyObjectByType<ScenarioV3HistoryRuntimeFix>(FindObjectsInactive.Include) != null)
             return;
 
-        new GameObject("Scenario V3 History Single Viewport Fix V22")
+        new GameObject("Scenario V3 History Entry Scroll V23")
             .AddComponent<ScenarioV3HistoryRuntimeFix>();
     }
 
@@ -58,42 +68,44 @@ public sealed class ScenarioV3HistoryRuntimeFix : MonoBehaviour
         while (Time.realtimeSinceStartup < timeoutAt)
         {
             director = FindAnyObjectByType<ScenarioV3Director>(FindObjectsInactive.Include);
-            if (director != null && director.IsReady && ResolveExistingHistoryUi())
+            if (director != null && director.IsReady && ResolveUi())
                 break;
             yield return null;
         }
 
-        if (director == null || !ResolveExistingHistoryUi())
+        if (director == null || !ResolveUi())
         {
-            Debug.LogError("[V22 History] 기존 지난 대화 Scroll View를 찾지 못했습니다.");
+            Debug.LogError("[V23 History] 지난 대화 UI를 찾지 못했습니다.");
             enabled = false;
             yield break;
         }
 
-        ConfigureSingleViewport();
-        QueueRebuild(false);
+        ConfigureViewportAndContent();
+        RebuildEntries(false);
     }
 
     private void LateUpdate()
     {
-        if (!ResolveExistingHistoryUi())
+        if (!ResolveUi())
             return;
 
         bool open = historyPanel.activeInHierarchy;
+        List<string> log = GetDialogueLog();
+        string signature = BuildSignature(log);
         Vector2 size = viewport.rect.size;
-        string text = historyText.text ?? string.Empty;
-        bool changed = !string.Equals(lastText, text, StringComparison.Ordinal);
+
+        bool changed = !string.Equals(signature, lastSignature, StringComparison.Ordinal);
         bool resized = (size - lastViewportSize).sqrMagnitude > 0.5f;
 
         if (open && (!wasOpen || changed || resized))
             QueueRebuild(!wasOpen);
 
         wasOpen = open;
-        lastText = text;
+        lastSignature = signature;
         lastViewportSize = size;
     }
 
-    private bool ResolveExistingHistoryUi()
+    private bool ResolveUi()
     {
         if (director == null)
             return false;
@@ -104,7 +116,6 @@ public sealed class ScenarioV3HistoryRuntimeFix : MonoBehaviour
         if (historyPanel == null)
             return false;
 
-        // Disable the second runtime hierarchy made by V21 so only the Director-owned view renders.
         foreach (Transform child in historyPanel.transform)
         {
             if (child == null)
@@ -122,31 +133,37 @@ public sealed class ScenarioV3HistoryRuntimeFix : MonoBehaviour
         if (viewport == null)
             return false;
 
-        content = GetDirectorField<RectTransform>("historyContentRect");
-        if (content == null)
-            content = viewport.Find("History Content") as RectTransform;
-        if (content == null)
-            return false;
+        legacyContent = GetDirectorField<RectTransform>("historyContentRect");
+        if (legacyContent == null)
+            legacyContent = viewport.Find("History Content") as RectTransform;
 
-        historyText = GetDirectorField<TMP_Text>("historyText");
-        if (historyText == null || historyText.transform.parent != content)
-            historyText = content.Find("History Text")?.GetComponent<TMP_Text>();
-        if (historyText == null)
-            return false;
+        legacyText = GetDirectorField<TMP_Text>("historyText");
+        if (legacyText == null && legacyContent != null)
+            legacyText = legacyContent.Find("History Text")?.GetComponent<TMP_Text>();
 
-        scrollRect = GetDirectorField<ScrollRect>("historyScroll");
-        if (scrollRect == null)
-            scrollRect = viewport.GetComponent<ScrollRect>();
+        if (legacyText != null)
+        {
+            font = legacyText.font;
+            textColor = legacyText.color;
+            fontSize = Mathf.Max(24f, legacyText.fontSize);
+        }
+
+        scrollRect = viewport.GetComponent<ScrollRect>();
         if (scrollRect == null)
             scrollRect = viewport.gameObject.AddComponent<ScrollRect>();
+
+        Transform existing = viewport.Find(EntryContentName);
+        if (existing != null)
+            entryContent = existing as RectTransform;
 
         return true;
     }
 
-    private void ConfigureSingleViewport()
+    private void ConfigureViewportAndContent()
     {
-        // Match the visible, slightly brighter rectangle. The old 0.08 lower anchor extended the
-        // clipping region below the visible rectangle, which looked like unmasked text.
+        if (viewport == null)
+            return;
+
         viewport.anchorMin = new Vector2(0.06f, 0.14f);
         viewport.anchorMax = new Vector2(0.94f, 0.86f);
         viewport.offsetMin = Vector2.zero;
@@ -163,47 +180,63 @@ public sealed class ScenarioV3HistoryRuntimeFix : MonoBehaviour
         Mask stencil = viewport.GetComponent<Mask>();
         if (stencil != null)
             stencil.enabled = false;
+
         RectMask2D mask = viewport.GetComponent<RectMask2D>();
         if (mask == null)
             mask = viewport.gameObject.AddComponent<RectMask2D>();
         mask.enabled = true;
         mask.padding = Vector4.zero;
 
-        foreach (Canvas nestedCanvas in content.GetComponentsInChildren<Canvas>(true))
-            nestedCanvas.enabled = false;
+        // The old single TMP text is kept only because ScenarioV3Director.ShowHistory writes to it.
+        // It must never render on top of the V23 entries.
+        if (legacyContent != null)
+            legacyContent.gameObject.SetActive(false);
 
         foreach (TMP_Text candidate in historyPanel.GetComponentsInChildren<TMP_Text>(true))
         {
-            if (candidate == null || candidate == historyText)
+            if (candidate == null)
                 continue;
             if (candidate.gameObject.name.StartsWith("History Text", StringComparison.OrdinalIgnoreCase))
                 candidate.gameObject.SetActive(false);
         }
 
-        content.anchorMin = new Vector2(0f, 1f);
-        content.anchorMax = new Vector2(1f, 1f);
-        content.pivot = new Vector2(0.5f, 1f);
-        content.anchoredPosition = Vector2.zero;
+        if (entryContent == null)
+        {
+            GameObject contentObject = new GameObject(
+                EntryContentName,
+                typeof(RectTransform),
+                typeof(VerticalLayoutGroup),
+                typeof(ContentSizeFitter));
+            contentObject.layer = historyPanel.layer;
+            contentObject.transform.SetParent(viewport, false);
+            entryContent = contentObject.GetComponent<RectTransform>();
+        }
 
-        VerticalLayoutGroup layout = content.GetComponent<VerticalLayoutGroup>();
-        if (layout != null)
-            layout.enabled = false;
-        ContentSizeFitter contentFitter = content.GetComponent<ContentSizeFitter>();
-        if (contentFitter != null)
-            contentFitter.enabled = false;
-        ContentSizeFitter textFitter = historyText.GetComponent<ContentSizeFitter>();
-        if (textFitter != null)
-            textFitter.enabled = false;
+        entryContent.gameObject.SetActive(true);
+        entryContent.anchorMin = new Vector2(0f, 1f);
+        entryContent.anchorMax = new Vector2(1f, 1f);
+        entryContent.pivot = new Vector2(0.5f, 1f);
+        entryContent.anchoredPosition = Vector2.zero;
+        entryContent.sizeDelta = Vector2.zero;
 
-        historyText.gameObject.SetActive(true);
-        historyText.alignment = TextAlignmentOptions.TopLeft;
-        historyText.textWrappingMode = TextWrappingModes.Normal;
-        historyText.overflowMode = TextOverflowModes.Overflow;
-        historyText.maskable = true;
-        historyText.raycastTarget = false;
+        VerticalLayoutGroup layout = entryContent.GetComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(30, 30, 26, 30);
+        layout.spacing = 22f;
+        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        ContentSizeFitter fitter = entryContent.GetComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        foreach (Canvas nested in entryContent.GetComponentsInChildren<Canvas>(true))
+            nested.enabled = false;
 
         scrollRect.viewport = viewport;
-        scrollRect.content = content;
+        scrollRect.content = entryContent;
         scrollRect.horizontal = false;
         scrollRect.vertical = true;
         scrollRect.movementType = ScrollRect.MovementType.Clamped;
@@ -212,68 +245,145 @@ public sealed class ScenarioV3HistoryRuntimeFix : MonoBehaviour
         scrollRect.scrollSensitivity = 45f;
         scrollRect.enabled = true;
 
-        SetDirectorField("historyViewportRect", viewport);
-        SetDirectorField("historyContentRect", content);
-        SetDirectorField("historyText", historyText);
-        SetDirectorField("historyScroll", scrollRect);
+        // Prevent the Director's old RefreshHistoryLayout from replacing our ScrollRect.content
+        // with the hidden legacy single-text content.
+        SetDirectorField("historyScroll", null);
     }
 
-    private void QueueRebuild(bool showLatest)
+    private void QueueRebuild(bool snapLatest)
     {
         if (!isActiveAndEnabled)
             return;
         if (rebuildRoutine != null)
             StopCoroutine(rebuildRoutine);
-        rebuildRoutine = StartCoroutine(RebuildAfterLayout(showLatest));
+        rebuildRoutine = StartCoroutine(RebuildAfterLayout(snapLatest));
     }
 
-    private IEnumerator RebuildAfterLayout(bool showLatest)
+    private IEnumerator RebuildAfterLayout(bool snapLatest)
     {
         yield return null;
-        Rebuild(showLatest);
+        RebuildEntries(snapLatest);
         yield return new WaitForEndOfFrame();
-        Rebuild(showLatest);
+        RebuildEntryHeights();
+        if (snapLatest)
+            SnapToLatest();
         rebuildRoutine = null;
     }
 
-    private void Rebuild(bool showLatest)
+    private void RebuildEntries(bool snapLatest)
     {
-        if (!ResolveExistingHistoryUi())
+        if (!ResolveUi())
             return;
 
-        ConfigureSingleViewport();
-        Canvas.ForceUpdateCanvases();
+        ConfigureViewportAndContent();
+        List<string> log = GetDialogueLog();
 
-        float viewportWidth = Mathf.Max(480f, viewport.rect.width);
-        float viewportHeight = Mathf.Max(320f, viewport.rect.height);
-        const float sidePadding = 30f;
-        const float topBottomPadding = 24f;
-        float textWidth = Mathf.Max(320f, viewportWidth - sidePadding * 2f);
-        float preferredHeight = Mathf.Max(80f,
-            historyText.GetPreferredValues(historyText.text ?? string.Empty, textWidth, 0f).y);
-        float contentHeight = Mathf.Max(viewportHeight, preferredHeight + topBottomPadding * 2f);
+        for (int index = entryContent.childCount - 1; index >= 0; index--)
+            Destroy(entryContent.GetChild(index).gameObject);
 
-        content.sizeDelta = new Vector2(0f, contentHeight);
-        content.anchoredPosition = Vector2.zero;
-
-        RectTransform textRect = historyText.rectTransform;
-        textRect.anchorMin = new Vector2(0f, 1f);
-        textRect.anchorMax = new Vector2(1f, 1f);
-        textRect.pivot = new Vector2(0.5f, 1f);
-        textRect.anchoredPosition = new Vector2(0f, -topBottomPadding);
-        textRect.sizeDelta = new Vector2(-sidePadding * 2f, preferredHeight);
-
-        LayoutRebuilder.ForceRebuildLayoutImmediate(textRect);
-        LayoutRebuilder.ForceRebuildLayoutImmediate(content);
-        LayoutRebuilder.ForceRebuildLayoutImmediate(viewport);
-        Canvas.ForceUpdateCanvases();
-
-        if (showLatest)
+        if (log.Count == 0)
         {
-            scrollRect.StopMovement();
-            scrollRect.velocity = Vector2.zero;
-            scrollRect.verticalNormalizedPosition = 0f;
+            CreateEntry("아직 기록된 대화가 없습니다.", 0);
         }
+        else
+        {
+            for (int index = 0; index < log.Count; index++)
+                CreateEntry(log[index], index);
+        }
+
+        Canvas.ForceUpdateCanvases();
+        RebuildEntryHeights();
+        LayoutRebuilder.ForceRebuildLayoutImmediate(entryContent);
+        Canvas.ForceUpdateCanvases();
+
+        if (snapLatest)
+            SnapToLatest();
+
+        lastSignature = BuildSignature(log);
+    }
+
+    private void CreateEntry(string text, int index)
+    {
+        GameObject entry = new GameObject(
+            EntryPrefix + index.ToString("000"),
+            typeof(RectTransform),
+            typeof(CanvasRenderer),
+            typeof(TextMeshProUGUI),
+            typeof(LayoutElement));
+        entry.layer = historyPanel.layer;
+        entry.transform.SetParent(entryContent, false);
+
+        TextMeshProUGUI tmp = entry.GetComponent<TextMeshProUGUI>();
+        tmp.font = font;
+        tmp.fontSize = fontSize;
+        tmp.fontStyle = FontStyles.Bold;
+        tmp.color = textColor;
+        tmp.alignment = TextAlignmentOptions.TopLeft;
+        tmp.textWrappingMode = TextWrappingModes.Normal;
+        tmp.overflowMode = TextOverflowModes.Overflow;
+        tmp.maskable = true;
+        tmp.raycastTarget = false;
+        tmp.text = text ?? string.Empty;
+
+        RectTransform rect = tmp.rectTransform;
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.sizeDelta = Vector2.zero;
+    }
+
+    private void RebuildEntryHeights()
+    {
+        if (entryContent == null || viewport == null)
+            return;
+
+        Canvas.ForceUpdateCanvases();
+        float availableWidth = Mathf.Max(360f, viewport.rect.width - 60f);
+
+        for (int index = 0; index < entryContent.childCount; index++)
+        {
+            RectTransform child = entryContent.GetChild(index) as RectTransform;
+            if (child == null)
+                continue;
+
+            TMP_Text tmp = child.GetComponent<TMP_Text>();
+            LayoutElement element = child.GetComponent<LayoutElement>();
+            if (tmp == null || element == null)
+                continue;
+
+            float preferred = Mathf.Max(48f,
+                tmp.GetPreferredValues(tmp.text ?? string.Empty, availableWidth, 0f).y + 6f);
+            element.minHeight = preferred;
+            element.preferredHeight = preferred;
+            element.flexibleHeight = 0f;
+        }
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate(entryContent);
+        Canvas.ForceUpdateCanvases();
+    }
+
+    private void SnapToLatest()
+    {
+        if (scrollRect == null)
+            return;
+
+        scrollRect.StopMovement();
+        scrollRect.velocity = Vector2.zero;
+        scrollRect.verticalNormalizedPosition = 0f;
+    }
+
+    private List<string> GetDialogueLog()
+    {
+        FieldInfo field = typeof(ScenarioV3Director).GetField("dialogueLog", Fields);
+        return field?.GetValue(director) as List<string> ?? new List<string>();
+    }
+
+    private static string BuildSignature(List<string> log)
+    {
+        if (log == null || log.Count == 0)
+            return "0";
+        string last = log[log.Count - 1] ?? string.Empty;
+        return log.Count + "|" + last.GetHashCode() + "|" + last.Length;
     }
 
     private T GetDirectorField<T>(string name) where T : class

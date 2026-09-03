@@ -19,7 +19,7 @@ using UnityEngine.UI;
 public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 {
     private const string TabletSceneName = "TabletUI";
-    private const string PatchVersion = "V22.2-CanvasGroup";
+    private const string PatchVersion = "V23.2-PreOpenMapGate";
 
     private GameFlowManager flow;
     private ScenarioV3Director director;
@@ -31,6 +31,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     private readonly Dictionary<ScenarioV3CheckpointData, CheckpointRuntimeSnapshot> checkpointSnapshots =
         new Dictionary<ScenarioV3CheckpointData, CheckpointRuntimeSnapshot>();
     private readonly HashSet<Button> patchedSchoolButtons = new HashSet<Button>();
+    private readonly HashSet<Button> patchedMapLauncherButtons = new HashSet<Button>();
     private readonly HashSet<Button> patchedDebounceButtons = new HashSet<Button>();
 
     private GameObject choiceOverlay;
@@ -301,6 +302,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
         PatchSeojunRepaymentScene();
         PatchMinjaeRepaymentScene();
+        PatchFirstJobNarrative();
         PatchD8EveningTiming();
         PatchManagerNarrative();
         PatchSeoyeonRecoveryContext();
@@ -437,61 +439,120 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
                 string.Empty, string.Empty)));
     }
 
+
+    private void PatchFirstJobNarrative()
+    {
+        ScenarioV3Scene scene = database.GetScene("d4_job");
+        ScenarioV3Line personalGoal = FindLine("d4_job_01b");
+        if (scene != null && personalGoal != null)
+            scene.lines.Remove(personalGoal);
+
+        ScenarioV3Line managerPay = FindLine("d4_job_02");
+        if (managerPay != null)
+            managerPay.text = "그래도 첫날치곤 괜찮았어. 오늘 일당 5만 원은 넣어뒀어. 고생했어.";
+
+        ScenarioV3Line incomeThought = FindLine("d4_job_03");
+        if (incomeThought != null)
+        {
+            incomeThought.text =
+                "유니폼에 밴 커피 냄새를 맡으며 입금 알림을 다시 봤다. " +
+                "노트북 수리비까지는 아직 멀었지만, 오늘 5만 원은 내가 하루 일해서 채운 돈이었다.";
+        }
+    }
+
+
     private void PatchD8EveningTiming()
     {
-        ScenarioV3Scene scene = database.GetScene("d8_evening");
-        if (scene == null || scene.lines.Count == 0)
+        Dictionary<string, ScenarioV3Scene> scenes =
+            GetField<Dictionary<string, ScenarioV3Scene>>(database, "scenes");
+        if (scenes == null)
             return;
 
-        foreach (ScenarioV3Line line in scene.lines)
-            line.enterEffects = RemoveEffect(line.enterEffects, "clock:set=21:00");
+        foreach (ScenarioV3Scene scene in scenes.Values
+                     .Where(candidate => candidate != null &&
+                                         string.Equals(candidate.trigger, "evening_fill",
+                                             StringComparison.OrdinalIgnoreCase))
+                     .ToList())
+        {
+            if (scene.lines == null || scene.lines.Count == 0)
+                continue;
+            if (scene.lines.Any(line => line != null &&
+                    line.id.StartsWith("v23_evening_arrival_", StringComparison.OrdinalIgnoreCase)))
+                continue;
 
-        ScenarioV3Line first = scene.lines[0];
-        first.enterEffects = AppendEffect(first.enterEffects, "clock:set=18:00");
+            List<ScenarioV3Line> originalLines = scene.lines
+                .Where(line => line != null)
+                .OrderBy(line => line.sequence)
+                .ToList();
 
-        ScenarioV3Line last = scene.lines[scene.lines.Count - 1];
-        string originalNext = string.Equals(last.autoNext, "v21_d8_evening_to_night", StringComparison.OrdinalIgnoreCase)
-            ? string.Empty
-            : last.autoNext;
-        last.autoNext = "v21_d8_evening_to_night";
+            foreach (ScenarioV3Line line in originalLines)
+            {
+                line.enterEffects = RemoveEffect(line.enterEffects, "clock:set=18:00");
+                line.enterEffects = RemoveEffect(line.enterEffects, "clock:set=21:00");
+                line.sequence += 3;
+            }
 
-        AddOrReplaceScene(CreateScene(
-            "v21_d8_evening_to_night", "main", "8", "evening", 91,
-            CreateLine("v21_d8_evening_to_night_01", 1, "System", string.Empty, "router", string.Empty,
-                string.Empty, "clock:set=21:00", originalNext)));
+            bool stayedHome = scene.id.IndexOf("missed", StringComparison.OrdinalIgnoreCase) >= 0;
+            string momText = stayedHome
+                ? "저녁 먹을 거야? 밥 차려놨어. 식기 전에 먹어."
+                : "왔어? 손 씻고 밥부터 먹자.";
+            string playerText = stayedHome
+                ? "응. 조금 있다 먹을게."
+                : "응. 금방 갈게.";
+
+            scene.lines.Clear();
+            scene.lines.Add(CreateLine(
+                "v23_evening_arrival_" + scene.id + "_01", 1,
+                "Mom", "엄마", "dialogue", string.Empty,
+                momText, "clock:set=18:00", string.Empty));
+            scene.lines.Add(CreateLine(
+                "v23_evening_arrival_" + scene.id + "_02", 2,
+                "Protagonist", "나", "dialogue", string.Empty,
+                playerText, string.Empty, string.Empty));
+            scene.lines.Add(CreateLine(
+                "v23_evening_arrival_" + scene.id + "_03", 3,
+                "System", string.Empty, "router", string.Empty,
+                string.Empty, "clock:set=21:00", string.Empty));
+
+            foreach (ScenarioV3Line line in originalLines)
+                scene.lines.Add(line);
+        }
     }
+
 
     private void PatchManagerNarrative()
     {
         ScenarioV3Line d11Reflection = FindLine("d11_evening_01");
         if (d11Reflection != null)
-            d11Reflection.text = "집에 돌아와서도 점장님이 괜찮냐고 묻던 말이 계속 걸렸다. 괜찮다고 했지만, 나도 요즘 달라졌다는 건 알고 있었다.";
+            d11Reflection.text =
+                "점장님이 걱정스러운 표정으로 보던 게 자꾸 떠올랐다. 내일은 일단 늦지 않게 가자.";
+
         ScenarioV3Line d11Decision = FindLine("d11_evening_02");
         if (d11Decision != null)
-            d11Decision.text = "내일 또 마주치면 뭐라고 해야 하지.... 일단 오늘은 쉬자.";
+            d11Decision.text = "무슨 말을 할지는 그때 생각하자. 오늘은 쉬는 게 먼저다.";
 
         ScenarioV3Line d12Start = FindLine("d12_start_02");
         if (d12Start != null)
-            d12Start.text = "지난주에도 걱정 끼쳤는데 오늘까지 빠질 순 없다.... 일단 카페로 가자.";
+            d12Start.text = "어제는 겨우 근무를 마쳤다. 오늘도 늦지 않게 카페부터 가자.";
 
         ScenarioV3Scene managerScene = database.GetScene("d12_manager_help");
         if (managerScene != null)
         {
             managerScene.lines.Clear();
-            managerScene.purpose = "점장이 이상 징후를 묻고, 도박 사실을 말할지는 플레이어가 직접 정한다.";
+            managerScene.purpose = "점장이 상태를 확인하고, 돈 문제를 말할지는 플레이어가 직접 정한다.";
             managerScene.lines.Add(CreateLine(
                 "d12_manager_help_00a", 1, "CafeManager", "점장님", "dialogue", "manager_worried",
-                "어제 네 친구랑 돈 얘기하던데.... 요즘 계속 피곤해 보이고. 무슨 일 있는 건 아니지?",
+                "요즘 계속 피곤해 보이네. 어제 친구랑 돈 얘기하던 것도 그렇고. 무슨 일 있어?",
                 "counter.job_attendance:add=1", string.Empty));
 
             ScenarioV3Line decision = CreateLine(
                 "d12_manager_help_00b", 2, "Protagonist", "나", "dialogue", string.Empty,
-                "어디까지 말해야 하지....",
+                "그 얘기까지 해야 하나....",
                 string.Empty, string.Empty);
             decision.choiceA = new ScenarioV3Choice
             {
                 id = "v21_manager_tell_truth",
-                text = "사실대로 말한다",
+                text = "돈 문제를 사실대로 말한다",
                 replyText = string.Empty,
                 effects = string.Empty,
                 nextSceneId = "v21_manager_tell_truth"
@@ -499,7 +560,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             decision.choiceB = new ScenarioV3Choice
             {
                 id = "v21_manager_hide",
-                text = "아무 일 아니라고 넘긴다",
+                text = "피곤해서 그렇다고 넘긴다",
                 replyText = string.Empty,
                 effects = string.Empty,
                 nextSceneId = "v21_manager_hide"
@@ -510,37 +571,43 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         AddOrReplaceScene(CreateScene(
             "v21_manager_tell_truth", "job", "12", "job", 150,
             CreateLine("v21_manager_tell_truth_01", 1, "Protagonist", "나", "dialogue", string.Empty,
-                "사실.... 도박하다 돈을 잃었어요. 친구한테 돈도 좀 빌렸고요.",
+                "사실.... 돈 문제로 좀 꼬였어요. 도박도 했고, 친구한테 돈도 빌렸어요.",
                 string.Empty, string.Empty),
             CreateLine("v21_manager_tell_truth_02", 2, "CafeManager", "점장님", "dialogue", "manager_worried",
-                "그랬구나. 나도 예전에 잃은 돈만 찾으면 끝낼 수 있을 줄 알았어. 그런데 숨길수록 더 오래 갔어.",
+                "아.... 그랬구나. 내가 대신 해결해 줄 수 있는 일은 아니지만, 돈으로 급하게 메우려고 하면 더 커질 수 있어.",
                 string.Empty, string.Empty),
             CreateLine("v21_manager_tell_truth_03", 3, "CafeManager", "점장님", "dialogue", "manager_worried",
-                "내일 학교 가면 선생님한테 먼저 말해. 누구한테 얼마를 빌렸는지부터 같이 정리해 달라고 하고.",
+                "학교 다니니까 선생님이나 부모님한테 먼저 말해봐. 누구한테 얼마를 빌렸는지부터 확인하고.",
                 "relation.manager:add=3|flag.manager_advice:set=true", string.Empty)));
 
         AddOrReplaceScene(CreateScene(
             "v21_manager_hide", "job", "12", "job", 149,
             CreateLine("v21_manager_hide_01", 1, "Protagonist", "나", "dialogue", string.Empty,
-                "아니에요.... 그냥 잠을 좀 못 자서 그래요. 괜찮아요.",
+                "아니에요.... 요즘 잠을 좀 못 자서 그래요.",
                 string.Empty, string.Empty),
             CreateLine("v21_manager_hide_02", 2, "CafeManager", "점장님", "dialogue", "manager_worried",
-                "그래. 지금 설명하기 어렵다면 더 묻지는 않을게. 다만 몸 상태가 계속 이러면 부모님이나 선생님께는 알려.",
-                "relation.manager:add=1|flag.manager_advice:set=true", string.Empty)));
+                "알겠어. 그럼 더 묻진 않을게. 근무하다 힘들면 바로 말해.",
+                "relation.manager:add=1|flag.manager_advice:set=false", string.Empty)));
 
         ScenarioV3Line d12Reflection = FindLine("d12_evening_01");
         if (d12Reflection != null)
-            d12Reflection.text = "집에 돌아와서도 점장님의 말이 계속 걸렸다. 지금은 넘겼지만, 나도 요즘 달라졌다는 건 알고 있었다.";
+            d12Reflection.text =
+                "집에 돌아와서도 카페에서 나눈 말이 생각났다. 말하지 않은 건 그대로 남아 있었다.";
+
         ScenarioV3Line d12Decision = FindLine("d12_evening_02");
         if (d12Decision != null)
-            d12Decision.text = "내일 학교에 가면 선생님한테는 물어볼까.... 적어도 어디서부터 정리해야 할지는 알 수 있겠지.";
+            d12Decision.text =
+                "내일 학교에 가면 선생님한테 한번 물어볼까.... 어디서부터 손대야 할지는 알고 싶다.";
 
         ScenarioV3Line distantWarning = FindLine("d12_manager_distant_01");
         if (distantWarning != null)
-            distantWarning.text = "오늘 나온 건 다행이야. 다만 연락 없이 빠진 날이 있어서, 다음에도 같은 일이 생기면 근무를 계속 맡기기 어려워.";
+            distantWarning.text =
+                "오늘 나온 건 다행이야. 다만 연락 없이 빠진 날이 있었잖아. 다음에도 그러면 근무를 계속 맡기기 어려워.";
+
         ScenarioV3Line distantResult = FindLine("d12_manager_distant_02");
         if (distantResult != null)
-            distantResult.text = "오늘 근무는 그대로 마쳤다. 다음 일정이 생기면 점장님과 먼저 시간을 확인하기로 했다.";
+            distantResult.text =
+                "오늘 근무는 그대로 마쳤다. 다음 일정이 잡히면 점장님과 시간을 먼저 확인하기로 했다.";
     }
 
     private void PatchSeoyeonRecoveryContext()
@@ -568,54 +635,81 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         scene.lines.Add(original);
     }
 
+
     private void PatchRepeatedLanguage()
     {
         ScenarioV3Line seoyeonCheck = FindLine("d10_school_checkin_03");
         if (seoyeonCheck != null)
-            seoyeonCheck.text = "알바 때문만은 아닌 것 같은데.... 지금 말하기 싫으면 괜찮아. 정말 힘들면 나한테 한마디만 해.";
+            seoyeonCheck.text =
+                "알바 때문만은 아닌 것 같은데.... 지금 말하기 싫으면 괜찮아. 무슨 일 생기면 나한테 한마디만 해.";
 
         ScenarioV3Line missedSchool = FindLine("d10_school_missed_message_01");
         if (missedSchool != null)
-            missedSchool.text = "오늘 학교 안 왔더라. 주말 알바 있다 했지? 자세히 말하기 싫으면 괜찮아. 무슨 일 없는지만 알려줘.";
+            missedSchool.text =
+                "오늘 학교 안 왔더라. 주말 알바 있다 했지? 자세히 말 안 해도 되니까, 무슨 일 없는지만 알려줘.";
 
         ScenarioV3Line missedJob = FindLine("d11_job_missed_now_01");
         if (missedJob != null)
         {
-            missedJob.text = "지난주부터 상태가 안 좋아 보였어. 오늘 못 올 것 같으면 미리 알려줘. 무슨 일 있는 건 아니지?";
+            missedJob.text =
+                "오늘 출근하기로 했는데 연락이 없어서 걱정했어. 다음엔 늦거나 못 올 것 같으면 먼저 알려줘.";
             if (missedJob.choiceA != null)
             {
-                missedJob.choiceA.text = "다음 근무 전엔 먼저 말씀드린다";
-                missedJob.choiceA.replyText = "죄송해요. 지금은 설명하기 어려운데.... 다음 근무 전에는 제가 먼저 말씀드릴게요.";
+                missedJob.choiceA.text = "다음부터 미리 말씀드린다";
+                missedJob.choiceA.replyText = "죄송해요. 다음부터는 늦기 전에 미리 말씀드릴게요.";
             }
         }
+
+        ScenarioV3Line d5Missed = FindLine("d5_missed_01");
+        if (d5Missed != null)
+            d5Missed.text =
+                "어제에 이어 오늘도 카페에 가지 못했다. 다음 주엔 어떤 얼굴로 문을 열고 들어가야 하지....";
+
+        ScenarioV3Line d12Missed = FindLine("d12_missed_01");
+        if (d12Missed != null)
+            d12Missed.text =
+                "오늘도 결국 카페에 가지 못했다. 점장님한테 뭐라고 해야 할지 생각만 하다 하루가 끝났다.";
 
         ScenarioV3Line seojunFollowup = FindLine("d10_seojun_followup_01");
         if (seojunFollowup?.choiceB != null)
             seojunFollowup.choiceB.text = "주말 알바비까지 기다려 달라고 한다";
+
         ScenarioV3Line seojunDelay = FindLine("d10_seojun_followup_02");
         if (seojunDelay != null)
             seojunDelay.text = "답장은 금방 쓸 수 있는데, 보낼 날짜를 또 바꾸려니 손이 멈췄다.";
+
         ScenarioV3Line seojunCannot = FindLine("d10_seojun_cannot_repay_01");
         if (seojunCannot != null)
-            seojunCannot.text = "갚고 싶지만 지금은 보낼 돈이 없다.... 주말 알바비가 들어오면 먼저 보내겠다고 해야겠다.";
+            seojunCannot.text =
+                "갚고 싶지만 지금은 보낼 돈이 없다.... 주말 알바비가 들어오면 먼저 보내겠다고 해야겠다.";
 
         ScenarioV3Line minjaeDebtChoice = FindLine("d10_minjae_debt_02");
         if (minjaeDebtChoice?.choiceB != null)
             minjaeDebtChoice.choiceB.text = "알바비가 들어오면 보내겠다고 한다";
+
         ScenarioV3Line minjaeDelay = FindLine("d10_minjae_delay_thought_01");
         if (minjaeDelay != null)
-            minjaeDelay.text = "지금 돈이 없다는 말을 다시 쓰려니 손이 멈췄다.... 그래도 답은 해야 한다.";
+            minjaeDelay.text =
+                "지금 돈이 없다는 말을 또 쓰려니 손이 멈췄다.... 그래도 답은 해야 한다.";
 
         ScenarioV3Line noHelpSeojunFirst = FindLine("d14_no_help_seojun_01");
         if (noHelpSeojunFirst != null)
-            noHelpSeojunFirst.text = "미안한데 나도 이제는 이유를 알아야 할 것 같아. 약속한 날짜가 지났는데 아무 설명도 없으면 나도 곤란해.";
+            noHelpSeojunFirst.text =
+                "미안한데 나도 이제는 이유를 알아야 할 것 같아. 약속한 날짜가 지났는데 아무 설명도 없으면 나도 곤란해.";
+
         ScenarioV3Line noHelpSeojunReply = FindLine("d14_no_help_seojun_03");
         if (noHelpSeojunReply != null)
-            noHelpSeojunReply.text = "미안해. 지금은 사실대로 말할 용기가 없어. 언제 보낼 수 있는지 확인해서 다시 말할게.";
+            noHelpSeojunReply.text =
+                "미안해. 지금은 제대로 설명하기 어렵다. 언제 보낼 수 있는지 확인해서 다시 말할게.";
 
         ScenarioV3Line projectApology = FindLine("d14_seoyeon_bad_02");
         if (projectApology != null)
             projectApology.text = "내 부분을 제때 못 보내서 네가 대신 했잖아. 미안해.";
+
+        ScenarioV3Line epilogue = FindLine("d14_epilogue_02");
+        if (epilogue != null)
+            epilogue.text =
+                "한 번 멈춘다고 모든 게 원래대로 돌아오지는 않았다. 그래도 이제 문제를 말할 사람이 생겼다.";
     }
 
     private void PatchMultiLenderEndingChain()
@@ -842,6 +936,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     private void PatchButtons(bool force)
     {
         PatchGamblingLauncher();
+        PatchMapLauncherGate();
         PatchSchoolTravelButtons();
         PatchRewindButton();
         PatchSimpleButtonDebounce();
@@ -972,6 +1067,87 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         InvokePrivate(flow, "StartScenarioGambling");
     }
 
+
+    private void PatchMapLauncherGate()
+    {
+        foreach (Button button in Resources.FindObjectsOfTypeAll<Button>())
+        {
+            if (button == null || !button.gameObject.scene.IsValid() || patchedMapLauncherButtons.Contains(button))
+                continue;
+
+            bool opensMap = false;
+            int persistentCount = button.onClick.GetPersistentEventCount();
+            for (int index = 0; index < persistentCount; index++)
+            {
+                if (string.Equals(button.onClick.GetPersistentMethodName(index), "OpenMap", StringComparison.Ordinal))
+                {
+                    opensMap = true;
+                    break;
+                }
+            }
+            if (!opensMap)
+                continue;
+
+            patchedMapLauncherButtons.Add(button);
+            Transform existingProxy = button.transform.Find("V23 Map Open Guard");
+            if (existingProxy != null)
+            {
+                Button existingButton = existingProxy.GetComponent<Button>();
+                if (existingButton != null)
+                    patchedMapLauncherButtons.Add(existingButton);
+                existingProxy.SetAsLastSibling();
+                continue;
+            }
+
+            GameObject proxyObject = new GameObject("V23 Map Open Guard", typeof(RectTransform),
+                typeof(CanvasRenderer), typeof(Image), typeof(Button));
+            proxyObject.layer = button.gameObject.layer;
+            proxyObject.transform.SetParent(button.transform, false);
+            Stretch(proxyObject.GetComponent<RectTransform>());
+            proxyObject.transform.SetAsLastSibling();
+
+            Image image = proxyObject.GetComponent<Image>();
+            image.color = new Color(1f, 1f, 1f, 0.001f);
+            image.raycastTarget = true;
+
+            Button proxyButton = proxyObject.GetComponent<Button>();
+            proxyButton.transition = Selectable.Transition.None;
+            proxyButton.targetGraphic = image;
+            proxyButton.onClick.AddListener(HandleMapLauncherGate);
+            patchedMapLauncherButtons.Add(proxyButton);
+        }
+    }
+
+    private void HandleMapLauncherGate()
+    {
+        if (flow == null || appWindow == null || GetField<bool>(flow, "isTransitioning"))
+            return;
+
+        if (ShouldBlockMapForDay1MomMessage())
+        {
+            dialogue?.PreferConversation(SpeakerType.Mom);
+            flow.V3MarkAppAttention(AppType.Message);
+            flow.V3ShowDialogue("나", "(엄마에게서 온 메시지를 먼저 확인하자.)", null);
+            return;
+        }
+
+        appWindow.OpenApp(AppType.Map);
+    }
+
+    private bool ShouldBlockMapForDay1MomMessage()
+    {
+        if (flow == null || director == null || flow.CurrentDay != 1)
+            return false;
+        if (!string.Equals(flow.CurrentLocation, "학교", StringComparison.Ordinal))
+            return false;
+
+        bool available = string.Equals(GetDirectorState("flag.d1_mom_message_available"), "true",
+            StringComparison.OrdinalIgnoreCase);
+        bool read = string.Equals(GetDirectorState("flag.d1_mom_message_read"), "true",
+            StringComparison.OrdinalIgnoreCase);
+        return available && !read;
+    }
+
     private void PatchSchoolTravelButtons()
     {
         foreach (Button button in Resources.FindObjectsOfTypeAll<Button>())
@@ -1078,6 +1254,13 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         yield return new WaitForSecondsRealtime(0.12f);
         if (button != null)
             button.interactable = true;
+    }
+
+
+    private void BlockDay1MapUntilMomMessageRead()
+    {
+        // V23.2: 지도 앱이 열린 뒤 닫는 사후 차단은 사용하지 않는다.
+        // PatchMapLauncherGate가 OpenMap 호출 전에 입력을 가로챈다.
     }
 
     private void TrackLateMapCue()
