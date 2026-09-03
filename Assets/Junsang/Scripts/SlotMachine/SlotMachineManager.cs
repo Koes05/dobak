@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
 using System;
@@ -103,7 +103,7 @@ namespace Dobak.App.Casino.SlotMachine
 
             if (!canSpin)
             {
-                resultText.text = "크레딧이 부족합니다";
+                resultText.text = "잔액이 부족합니다";
                 return;
             }
 
@@ -224,7 +224,9 @@ namespace Dobak.App.Casino.SlotMachine
                 float multiplier = Mathf.Max(2f, results[0].payoutMultiplier);
                 payout = CalculatePayout(betAmount, multiplier);
                 int profit = payout - betAmount;
-                resultText.text = $"{multiplier:0.#}배 당첨! {payout:N0}P 지급 (순이익 +{profit:N0}P)";
+                int payoutWon = payout * CoinManager.WonPerPoint;
+                int profitWon = profit * CoinManager.WonPerPoint;
+                resultText.text = $"{multiplier:0.#}배 당첨! {payoutWon:N0}원 지급 (순이익 +{profitWon:N0}원)";
                 resultText.color = new Color(1f, 0.78f, 0.12f);
                 CoinManager.Instance.AddCasinoCredit(payout);
                 StartCoroutine(ShowWinCelebration(payout, multiplier, profit));
@@ -236,7 +238,6 @@ namespace Dobak.App.Casino.SlotMachine
             }
 
             spinButton.interactable = true;
-
             UpdateUI(CoinManager.Instance.CasinoCash);
             SpinResolved?.Invoke(allSame, payout);
         }
@@ -261,8 +262,10 @@ namespace Dobak.App.Casino.SlotMachine
 
         private void UpdateUI(int cash)
         {
-            creditText.text = $"사이트 포인트 {cash:N0}P";
-            betText.text = $"베팅 {betAmount:N0}P";
+            int wonBalance = cash * CoinManager.WonPerPoint;
+            int betWon = betAmount * CoinManager.WonPerPoint;
+            creditText.text = $"보유 금액 {wonBalance:N0}원";
+            betText.text = $"베팅 {betWon:N0}원";
             SetBetControlsInteractable(!isSpinning);
         }
 
@@ -392,7 +395,9 @@ namespace Dobak.App.Casino.SlotMachine
 
         private IEnumerator ShowWinCelebration(int payout, float multiplier, int profit)
         {
-            winOverlayText.text = $"{multiplier:0.#}배 당첨!\n{payout:N0}P 지급\n순이익 +{profit:N0}P";
+            int payoutWon = payout * CoinManager.WonPerPoint;
+            int profitWon = profit * CoinManager.WonPerPoint;
+            winOverlayText.text = $"{multiplier:0.#}배 당첨!\n{payoutWon:N0}원 지급\n순이익 +{profitWon:N0}원";
             winOverlay.SetActive(true);
             winOverlay.transform.SetAsLastSibling();
             winOverlayGroup.alpha = 1f;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 using System.Collections.Generic;
 
@@ -102,7 +102,7 @@ namespace Dobak.Manager
 
             OnBankCashChanged?.Invoke(BankCash);
             OnCasinoCashChanged?.Invoke(CasinoCash);
-            AddRecord("사이트 포인트 충전", -amount, TransactionScope.BankToCasinoCharge);
+            AddRecord("도박 앱 충전", -amount, TransactionScope.BankToCasinoCharge);
             OnCasinoChargeCompleted?.Invoke(amount, points);
 
             return true;
@@ -144,7 +144,7 @@ namespace Dobak.Manager
             BankCash += won;
             OnCasinoCashChanged?.Invoke(CasinoCash);
             OnBankCashChanged?.Invoke(BankCash);
-            AddRecord("사이트 포인트 환전", won, TransactionScope.CasinoToBankCashOut);
+            AddRecord("도박 앱 자동 환전", won, TransactionScope.CasinoToBankCashOut);
             return true;
         }
 

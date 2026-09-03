@@ -399,13 +399,13 @@ public sealed class ScenarioV3Director : MonoBehaviour
         {
             speaker = SpeakerType.Mom;
             contactName = "엄마";
-            replyText = "엄마. 교통카드 충전해야 하는데 오만 원만 보내주면 안 돼?";
+            replyText = "엄마. 교통카드 충전해야 하는데 5만 원만 보내주면 안 돼?";
         }
         else if (normalized == "seojun")
         {
             speaker = SpeakerType.Joonho;
             contactName = "서준";
-            replyText = "서준아. 미안한데 지금 급하게 오만 원만 빌려줄 수 있어? 다음 주에 꼭 갚을게.";
+            replyText = "서준아. 미안한데 지금 5만 원만 빌려줄 수 있어? 다음 주에 꼭 갚을게.";
         }
         else
         {
@@ -1703,7 +1703,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         Save();
         if (queued == 0)
         {
-            flow.V3ShowDialogue("나", "오늘은 이만 자자. 취침 앱을 열어서 하루를 마무리하자.",
+            flow.V3ShowDialogue("나", "오늘 일정은 모두 끝냈다. 도박 앱도 눈에 들어오고, 피곤하기도 한데.... 어떻게 할지 정해야겠다.",
                 () => flow.V3MarkAppAttention(AppType.Sleep));
             return true;
         }
@@ -1730,7 +1730,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private void ShowReturnHomeMonologue(string activityArc, Action completed)
     {
         string prompt = string.Equals(activityArc, "school", StringComparison.OrdinalIgnoreCase)
-            ? "종례도 끝났다. 오늘 해야 할 일을 확인하고 집에 가자."
+            ? "종례도 끝났다. 집에 가서 남은 일정을 확인하자."
             : "오늘 근무도 끝났다. 정리하고 집에 가자.";
         var line = new ScenarioV3Line
         {
@@ -2665,7 +2665,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (sceneId == "d6_mom_allowance")
             return "엄마 용돈";
         if (sceneId.StartsWith("gamble_", StringComparison.OrdinalIgnoreCase))
-            return amount > 0 ? "포인트 환전" : "온라인 결제";
+            return amount > 0 ? "도박 앱 자동 환전" : "도박 앱 결제";
         if (sceneId.Contains("mom_loan", StringComparison.OrdinalIgnoreCase))
             return "엄마에게 빌린 돈";
         if (sceneId.Contains("seojun_loan", StringComparison.OrdinalIgnoreCase))

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
@@ -87,15 +87,22 @@ namespace Dobak.App.Casino
 
         private void UpdateDisplay(int casinoCash)
         {
-            casinoCashText.text = $"사이트 포인트  {casinoCash:N0}P";
+            int wonBalance = casinoCash * CoinManager.WonPerPoint;
+            casinoCashText.text = $"도박 앱 잔액  {wonBalance:N0}원";
             if (home_cashText != null)
-                home_cashText.text = $"보유 포인트  {casinoCash:N0}P";
+                home_cashText.text = $"보유 금액  {wonBalance:N0}원";
 
             foreach (TMP_Text text in GetComponentsInChildren<TMP_Text>(true))
             {
-                if (text != null && !ReferenceEquals(text, casinoCashText) && !ReferenceEquals(text, home_cashText) &&
-                    (text.text?.Contains("Cash:") == true || text.text?.Contains('$') == true))
-                    text.text = $"사이트 포인트  {casinoCash:N0}P";
+                if (text == null || ReferenceEquals(text, casinoCashText) || ReferenceEquals(text, home_cashText))
+                    continue;
+
+                string current = text.text ?? string.Empty;
+                if (current.Contains("Cash:") || current.Contains('$') ||
+                    current.Contains("사이트 포인트") || current.Contains("보유 포인트"))
+                {
+                    text.text = $"도박 앱 잔액  {wonBalance:N0}원";
+                }
             }
         }
 
@@ -127,7 +134,7 @@ namespace Dobak.App.Casino
             homePromotionText.fontSize = 42f;
             homePromotionText.color = Color.white;
             homePromotionText.alignment = TextAlignmentOptions.Center;
-            homePromotionText.text = "첫 이용 보너스 지급 완료\n\n지금 시작하면 추가 포인트를 받을 수 있습니다";
+            homePromotionText.text = "첫 이용 보너스 지급 완료\n\n지금 시작하면 추가 보너스를 받을 수 있습니다";
 
             RectTransform rect = homePromotionText.rectTransform;
             rect.anchorMin = new Vector2(0.12f, 0.18f);
@@ -245,8 +252,7 @@ namespace Dobak.App.Casino
 
             if (CoinManager.Instance.TryChargeToCasino(won, out ChargeToCasinoFailureReason failureReason))
             {
-                int points = CoinManager.ConvertWonToPoints(won);
-                ShowRechargeStatus($"{won:N0}원 충전 완료  +{points:N0}P", false);
+                ShowRechargeStatus($"{won:N0}원 충전 완료", false);
                 return;
             }
 
@@ -276,7 +282,7 @@ namespace Dobak.App.Casino
                 TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
                 if (label != null)
                 {
-                    label.text = $"{won:N0}원\n{CoinManager.ConvertWonToPoints(won):N0}P";
+                    label.text = $"{won:N0}원";
                     label.fontSize = 30f;
                     label.enableAutoSizing = true;
                     label.fontSizeMin = 22f;

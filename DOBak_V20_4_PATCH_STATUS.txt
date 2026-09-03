@@ -1,0 +1,8 @@
+﻿DOBak V20.4 INTEGRATED PATCH: PASS
+적용 시각: 2026-09-04 00:29:43
+프로젝트: C:\Users\alstj\Documents\도박중독\dobak-scenario-work
+백업: C:\Users\alstj\Documents\도박중독\dobak-scenario-work\_Dobak_V20_4_Backup_20260904_002940
+
+적용 완료: 문체/금액/스케줄러/귀가 순서/도박 제한 안내/밤샘 분기/지도 지각 안내/VN 기록/채팅 되감기/차용·상환/도박 7·8회차/수리비 압박/은행 최신순 스크롤
+
+Unity Play Mode 자동 검증은 수행하지 않았습니다. Intro 새 게임으로 QA하세요.

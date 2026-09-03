@@ -282,10 +282,7 @@ public sealed class GameFlowManager : MonoBehaviour
                 return;
             }
 
-            if (arrivalHour > SchoolArrivalDeadline)
-            {
-                ShowFeedback("늦었지만 지금이라도 학교로 가자.");
-            }
+            // 지각 안내는 지도 앱을 열 때 한 번만 표시한다. 학교 선택 뒤에는 바로 이동한다.
         }
 
         else if (location == "카페" && IsWeekend && !jobDone)
@@ -440,7 +437,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
         string prompt = currentLocation switch
         {
-            "학교" => "종례도 끝났다. 오늘 해야 할 일을 확인하고 집에 가자.",
+            "학교" => "종례도 끝났다. 집에 가서 남은 일정을 확인하자.",
             "카페" => "오늘 근무도 끝났다. 정리하고 집에 가자.",
             _ => "이제 집에 돌아가야겠다."
         };
@@ -953,7 +950,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
         if (!CanAttemptCashOut)
         {
-            ShowFeedback("환전할 사이트 포인트가 없다.");
+            ShowFeedback("환전할 금액이 없다.");
             return;
         }
 
@@ -972,7 +969,7 @@ public sealed class GameFlowManager : MonoBehaviour
             ["points"] = points.ToString("N0"),
             ["won"] = won.ToString("N0")
         });
-        ShowFeedback($"{points:N0}P가 {won:N0}원으로 정상 환전되었다.");
+        ShowFeedback($"{won:N0}원이 통장으로 자동 환전됐다.");
         FindAnyObjectByType<CasinoUIManager>(FindObjectsInactive.Include)?.ReturnToHomeAfterCashOut();
         RefreshUI();
     }
