@@ -19,7 +19,7 @@ using UnityEngine.UI;
 public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 {
     private const string TabletSceneName = "TabletUI";
-    private const string PatchVersion = "V23.2-PreOpenMapGate";
+    private const string PatchVersion = "V24.0-ScenarioTone-ActivityFlow";
 
     private GameFlowManager flow;
     private ScenarioV3Director director;
@@ -67,6 +67,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     private CanvasGroup novelContinueCanvasGroup;
     private CanvasGroup tabletContinueCanvasGroup;
     private float nextDialogueTapAt;
+
+    private int lastNarrativeToneSignature = int.MinValue;
 
     private static readonly BindingFlags PrivateInstance =
         BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
@@ -158,6 +160,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         ExpireBorrowActionsOutsideMorning();
         KeepMinjaeLoanOfferRepeatableUntilAccepted();
         SynchronizeLenderDebtState();
+        RefreshContextSensitiveDialogue();
+        ResolveIgnoredMinjaeTemptationAfterScheduleChoice();
         HandleDayChangeAndDialogueLog();
         TrackLateMapCue();
         CaptureNewCheckpointSnapshots();
@@ -307,6 +311,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         PatchManagerNarrative();
         PatchSeoyeonRecoveryContext();
         PatchRepeatedLanguage();
+        PatchScenarioProsePass();
         PatchMultiLenderEndingChain();
         AddExtendedGamblingScenes();
 
@@ -468,6 +473,39 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (scenes == null)
             return;
 
+        string[] returnMom =
+        {
+            "왔어? 손 씻고 밥부터 먹자.",
+            "왔니? 저녁 아직 안 먹었지? 가방 두고 와.",
+            "다녀왔어? 국 식기 전에 밥부터 먹어.",
+            "오늘은 좀 늦었네. 옷 갈아입고 밥 먹자.",
+            "왔어? 배고프지? 손 씻고 와.",
+            "다녀왔니? 밥 데워놨어. 먼저 먹자."
+        };
+        string[] returnPlayer =
+        {
+            "응. 금방 갈게.",
+            "응. 가방만 두고 갈게.",
+            "알겠어. 옷만 갈아입고 갈게.",
+            "응. 손 씻고 갈게.",
+            "조금 배고파. 바로 갈게.",
+            "응. 금방 내려갈게."
+        };
+        string[] homeMom =
+        {
+            "저녁 먹을 거야? 밥 차려놨어. 식기 전에 먹어.",
+            "밥은 먹어야지. 식탁에 차려놨어.",
+            "저녁 준비됐어. 조금이라도 먹고 쉬어.",
+            "계속 방에만 있지 말고 밥은 먹어."
+        };
+        string[] homePlayer =
+        {
+            "응. 조금 있다 먹을게.",
+            "알겠어. 금방 갈게.",
+            "응. 이것만 보고 나갈게.",
+            "응. 밥은 먹을게."
+        };
+
         foreach (ScenarioV3Scene scene in scenes.Values
                      .Where(candidate => candidate != null &&
                                          string.Equals(candidate.trigger, "evening_fill",
@@ -493,12 +531,11 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             }
 
             bool stayedHome = scene.id.IndexOf("missed", StringComparison.OrdinalIgnoreCase) >= 0;
-            string momText = stayedHome
-                ? "저녁 먹을 거야? 밥 차려놨어. 식기 전에 먹어."
-                : "왔어? 손 씻고 밥부터 먹자.";
-            string playerText = stayedHome
-                ? "응. 조금 있다 먹을게."
-                : "응. 금방 갈게.";
+            int variant = stayedHome
+                ? StableVariantIndex(scene.day + "|" + scene.id, homeMom.Length)
+                : StableVariantIndex(scene.day + "|" + scene.id, returnMom.Length);
+            string momText = stayedHome ? homeMom[variant] : returnMom[variant];
+            string playerText = stayedHome ? homePlayer[variant] : returnPlayer[variant];
 
             scene.lines.Clear();
             scene.lines.Add(CreateLine(
@@ -519,6 +556,18 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         }
     }
 
+    private static int StableVariantIndex(string value, int count)
+    {
+        if (count <= 1)
+            return 0;
+        unchecked
+        {
+            int hash = 17;
+            foreach (char character in value ?? string.Empty)
+                hash = hash * 31 + character;
+            return (hash & int.MaxValue) % count;
+        }
+    }
 
     private void PatchManagerNarrative()
     {
@@ -710,6 +759,224 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (epilogue != null)
             epilogue.text =
                 "한 번 멈춘다고 모든 게 원래대로 돌아오지는 않았다. 그래도 이제 문제를 말할 사람이 생겼다.";
+    }
+
+
+    private void PatchScenarioProsePass()
+    {
+        SetLineText("d1_minjae_invite_01",
+            "전에 노트북 깨졌다고 했지? 수리비 모은다며. 이것 좀 봐.");
+
+        SetLineText("d9_evening_02",
+            "민재가 뭐라고 하든 그 앱을 다시 열 이유는 없다. 오늘은 여기서 끝내자.");
+        SetLineText("d6_evening_01",
+            "아직도 발표 준비해? 너무 늦게까지 붙잡고 있지 말고 이제 마무리해.");
+        SetLineText("d6_evening_02",
+            "응. 이것만 정리하고 잘게.");
+
+        // d4 첫 근무에서 개인 수리비 사정을 점장에게 말하는 줄을 제거했으므로,
+        // 이후 점장도 그 사실을 알고 있는 것처럼 말하지 않는다.
+        SetLineText("d11_job_03", "오늘은 마감 정리만 끝내면 돼. 수고했어.");
+        SetLineText("d12_manager_bond_02",
+            "주말마다 빠지지 않고 나온 건 잘했어. 오늘 일당도 넣어뒀으니 확인해.");
+
+        // 엄마는 상담자처럼 같은 문구를 반복하기보다 생활 대화에 가깝게 둔다.
+        SetLineText("d5_missed_evening_first_02",
+            "지금 말하기 싫으면 나중에 해도 돼. 밥은 먹고 좀 쉬어.");
+        SetLineText("d5_missed_evening_repeat_02",
+            "오늘도 방에만 있었네. 밥은 차려놨으니까 조금이라도 먹어.");
+
+        SetLineText("d11_missed_evening_01",
+            "점장님 메시지를 다시 읽었다. 화난 말보다 '다음엔 먼저 알려줘'라는 문장이 더 눈에 들어왔다.");
+        SetLineText("d11_missed_evening_02",
+            "내일 카페에 가면 일단 사과부터 하자. 무슨 얘기를 더 할지는 그다음이다.");
+        SetLineText("d12_missed_evening_01",
+            "오늘도 카페에 가지 못했다. 휴대폰 화면에 점장님 메시지만 그대로 남아 있었다.");
+        SetLineText("d12_missed_evening_02",
+            "내일은 학교부터 가자. 선생님이 물어보면 그때 뭐라고 할지 생각해 보자.");
+
+        SetLineText("d12_start_02",
+            "오늘도 카페 근무가 있다. 일단 늦지 않게 가자.");
+
+        SetLineText("d13_start_help_01",
+            "월요일 아침. 어제 점장님이 선생님한테 이야기해 보라고 한 게 떠올랐다. 학교에 가면 한번 말해보자.");
+        SetLineText("d13_evening_02", "오늘은 여기까지 생각하고 쉬자.");
+
+        SetLineText("d14_prevented_home_04",
+            "응. 다음엔 이상하다 싶으면 혼자 판단하지 말고 먼저 말할게.");
+        SetLineText("d14_seoyeon_bad_04",
+            "응. 미안해. 다음엔 늦기 전에 먼저 얘기할게.");
+        SetLineText("d14_recovery_family_02",
+            "응. 빌린 돈이랑 내가 한 선택부터 하나씩 말할게.");
+        SetLineText("d14_recovery_no_debt_03",
+            "잃은 돈은 남아 있지만 더 큰 빚을 만들기 전에 도움을 요청했다. 이제 혼자 답을 내려고 하지 말자.");
+
+        // 민재 권유를 읽는 것이 학교보다 우선이라는 인상을 줄이지 않는다.
+        SetLineText("d9_start_02", "학교 갈 시간부터 보자. 메시지가 와도 나중에 확인하면 된다.");
+    }
+
+    private void SetLineText(string lineId, string text)
+    {
+        ScenarioV3Line line = FindLine(lineId);
+        if (line != null)
+            line.text = text;
+    }
+
+    private int GetNarrativeRiskTier()
+    {
+        int sessions = GetDirectorInt("counter.gamble_sessions");
+        int scheduleFailures = GetDirectorInt("schedule_failures");
+        int schoolAbsences = GetDirectorInt("counter.school_absences");
+        int jobFailures = GetDirectorInt("counter.job_failures");
+        int homeworkFailures = GetDirectorInt("counter.homework_failures");
+
+        if (flow.CurrentDebt > 0 || sessions >= 5 || schoolAbsences >= 2 ||
+            jobFailures >= 2 || scheduleFailures >= 3)
+            return 2;
+        if (sessions >= 3 || schoolAbsences > 0 || jobFailures > 0 ||
+            homeworkFailures > 0 || scheduleFailures > 0)
+            return 1;
+        return 0;
+    }
+
+    private void RefreshContextSensitiveDialogue()
+    {
+        int sessions = GetDirectorInt("counter.gamble_sessions");
+        int tier = GetNarrativeRiskTier();
+        int ignoredDay = GetDirectorInt("v24.minjae_ignored_day");
+        int signature = flow.CurrentDay * 100000 + tier * 10000 + Mathf.Clamp(sessions, 0, 99) * 100 +
+                        (ignoredDay == flow.CurrentDay ? 10 : 0) +
+                        (flow.CurrentDebt > 0 ? 2 : 0) +
+                        (string.Equals(GetDirectorState("flag.help_requested"), "true",
+                            StringComparison.OrdinalIgnoreCase) ? 1 : 0);
+        if (signature == lastNarrativeToneSignature)
+            return;
+        lastNarrativeToneSignature = signature;
+
+        ScenarioV3Line lectureReflection = FindLine("d8_lecture_03");
+        ScenarioV3Line d9Start = FindLine("d9_start_01");
+        ScenarioV3Line d9SchoolThought = FindLine("d9_school_02");
+        ScenarioV3Line d9TeacherCheck = FindLine("d9_school_03");
+        ScenarioV3Line d9PlayerReply = FindLine("d9_school_04");
+        ScenarioV3Line d9Evening = FindLine("d9_evening_02");
+        ScenarioV3Line seoyeonCheck = FindLine("d10_school_checkin_03");
+        ScenarioV3Line seoyeonReflection = FindLine("d10_school_checkin_04");
+        ScenarioV3Line managerCheck = FindLine("d11_job_02");
+        ScenarioV3Line managerClose = FindLine("d11_job_03");
+        ScenarioV3Line d11Evening = FindLine("d11_evening_01");
+        ScenarioV3Line d11EveningClose = FindLine("d11_evening_02");
+        ScenarioV3Line managerTruth = FindLine("v21_manager_tell_truth_01");
+        ScenarioV3Line managerTruthResponse = FindLine("v21_manager_tell_truth_02");
+        ScenarioV3Line managerTruthAdvice = FindLine("v21_manager_tell_truth_03");
+        ScenarioV3Line d13Evening = FindLine("d13_evening_01");
+
+        if (tier == 0)
+        {
+            if (lectureReflection != null)
+                lectureReflection.text = sessions == 0
+                    ? "민재가 보낸 링크가 떠올랐다. 아직 들어가 보진 않았지만, 오늘 들은 얘기랑 겹쳐 보였다."
+                    : "지금까지는 오히려 돈이 늘었다. 그래서 더 별일 아닌 것처럼 느껴지는 건가.";
+            if (d9Start != null)
+                d9Start.text = sessions == 0
+                    ? "어제 강연 내용이 발표 준비랑 겹쳐서 조금 생각났다. 그래도 오늘 학교부터 가자."
+                    : "어제 강연을 듣고도 통장에 늘어난 돈이 먼저 떠올랐다. 아직 손해 본 건 없는데 너무 신경 쓰는 건가.";
+            if (d9SchoolThought != null)
+                d9SchoolThought.text = "선생님이 출석부를 덮으면서 피곤해 보인다고 물었다.";
+            if (d9TeacherCheck != null)
+                d9TeacherCheck.text = "발표 끝나고도 조금 피곤해 보이네. 어제 늦게 잤어?";
+            if (d9PlayerReply != null)
+                d9PlayerReply.text = "조금요. 오늘은 일찍 자려고요.";
+            if (seoyeonCheck != null)
+                seoyeonCheck.text = "아, 알바 생각 중이었구나. 내일도 일한다 했지? 너무 무리하진 마.";
+            if (seoyeonReflection != null)
+                seoyeonReflection.text = "서연은 더 묻지 않았다. 그냥 피곤해 보였던 모양이다.";
+            if (managerCheck != null)
+                managerCheck.text = "그래. 지난주보다 훨씬 익숙해졌네. 오늘도 급하게만 하지 마.";
+            if (managerClose != null)
+                managerClose.text = "마감 정리만 끝내면 돼. 수고했어.";
+            if (d11Evening != null)
+                d11Evening.text = "근무를 마치고 나니 지난주보다 훨씬 덜 긴장했다. 내일도 시간만 잘 맞추면 될 것 같다.";
+            if (d11EveningClose != null)
+                d11EveningClose.text = "오늘은 일찍 쉬자.";
+        }
+        else if (tier == 1)
+        {
+            if (lectureReflection != null)
+                lectureReflection.text = "아직 큰일은 아니라고 생각했는데, 일정 사이마다 그 앱부터 떠올리는 건 좀 걸렸다.";
+            if (d9Start != null)
+                d9Start.text = "어제 강연에서 들은 말이 조금 걸렸다. 민재 메시지보다 학교 갈 시간부터 챙기자.";
+            if (d9SchoolThought != null)
+                d9SchoolThought.text = "선생님이 출석부를 덮고 내 쪽을 잠깐 바라봤다.";
+            if (d9TeacherCheck != null)
+                d9TeacherCheck.text = "요즘 수업 중에 멍할 때가 있더라. 많이 피곤해?";
+            if (d9PlayerReply != null)
+                d9PlayerReply.text = "네.... 요즘 잠을 좀 늦게 자서 그래요.";
+            if (seoyeonCheck != null)
+                seoyeonCheck.text = "요즘 좀 피곤해 보여. 자세히 말하기 싫으면 괜찮아. 무슨 일 있으면 한마디 해.";
+            if (seoyeonReflection != null)
+                seoyeonReflection.text = "서연이 돌아간 뒤에도 마지막 말이 조금 걸렸다. 내가 생각한 것보다 티가 났나 보다.";
+            if (managerCheck != null)
+                managerCheck.text = "그래. 요즘 조금 피곤해 보이긴 하더라. 근무하다 힘들면 바로 말해.";
+            if (managerClose != null)
+                managerClose.text = "오늘은 괜찮았어. 내일도 시간 맞춰 오면 돼.";
+            if (d11Evening != null)
+                d11Evening.text = "점장님이 피곤해 보인다고 한 말이 생각났다. 내가 요즘 잠을 늦게 잔 건 맞다.";
+            if (d11EveningClose != null)
+                d11EveningClose.text = "내일은 일단 늦지 않게 가자.";
+        }
+        else
+        {
+            if (lectureReflection != null)
+                lectureReflection.text = "잃은 돈 생각 때문에 몇 번이나 다시 열었다. 강연에서 말한 상황이 생각보다 가까이 와 있었다.";
+            if (d9Start != null)
+                d9Start.text = "강연에서 들은 말이 계속 걸렸다. 그래도 지금은 학교 갈 시간부터 챙겨야 한다.";
+            if (d9SchoolThought != null)
+                d9SchoolThought.text = "선생님은 출석부를 덮고 잠깐 기다렸지만 나는 먼저 가방을 챙겼다.";
+            if (d9TeacherCheck != null)
+                d9TeacherCheck.text = "요즘 수업 중에 자주 멍하더라. 혼내려는 건 아니니까 힘든 일 있으면 말해도 돼.";
+            if (d9PlayerReply != null)
+                d9PlayerReply.text = "네.... 그냥 잠을 좀 못 자서 그래요.";
+            if (seoyeonCheck != null)
+                seoyeonCheck.text = "알바 때문만은 아닌 것 같은데.... 지금 말하기 어렵다면 괜찮아. 그래도 정말 힘들면 말해.";
+            if (seoyeonReflection != null)
+                seoyeonReflection.text = "서연이 돌아간 뒤에도 표정이 자꾸 떠올랐다. 더 둘러대면 오히려 이상해 보일 것 같았다.";
+            if (managerCheck != null)
+                managerCheck.text = "그래. 요즘 계속 피곤해 보이더라. 근무하다 힘들면 바로 말해.";
+            if (managerClose != null)
+                managerClose.text = "내일도 같은 상태면 잠깐 얘기하자. 일할 때 무리하면 안 돼.";
+            if (d11Evening != null)
+                d11Evening.text = "점장님이 걱정스러운 표정으로 보던 게 자꾸 떠올랐다. 내일은 일단 늦지 않게 가자.";
+            if (d11EveningClose != null)
+                d11EveningClose.text = "무슨 말을 할지는 그때 생각하자. 오늘은 쉬는 게 먼저다.";
+        }
+
+        if (managerTruth != null)
+        {
+            bool hasDebt = flow.CurrentDebt > 0;
+            managerTruth.text = hasDebt
+                ? "사실.... 돈 문제로 좀 꼬였어요. 도박도 했고, 친구한테 돈도 빌렸어요."
+                : "사실.... 도박을 몇 번 했어요. 처음엔 돈이 늘어서 별거 아닌 줄 알았는데, 자꾸 생각나서요.";
+            if (managerTruthResponse != null)
+                managerTruthResponse.text = hasDebt
+                    ? "아.... 그랬구나. 내가 대신 해결해 줄 수 있는 일은 아니지만, 빌린 돈을 다시 도박으로 메우려고 하면 더 커질 수 있어."
+                    : "아.... 그랬구나. 아직 빚이 없더라도 자꾸 생각나고 일정에 끼어들기 시작하면 그냥 넘길 일은 아니야.";
+            if (managerTruthAdvice != null)
+                managerTruthAdvice.text = hasDebt
+                    ? "학교 다니니까 선생님이나 부모님한테 먼저 말해봐. 누구한테 얼마를 빌렸는지부터 확인하고."
+                    : "학교 다니니까 선생님이나 부모님한테 먼저 말해봐. 언제부터 얼마나 했는지부터 같이 정리해 보면 돼.";
+        }
+
+        if (d9Evening != null && ignoredDay == 9)
+            d9Evening.text = "아침엔 민재 메시지를 미뤄 두고 학교부터 갔다. 오늘은 그걸로 충분하다.";
+
+        if (d13Evening != null)
+        {
+            bool askedForHelp = string.Equals(GetDirectorState("flag.help_requested"), "true",
+                StringComparison.OrdinalIgnoreCase);
+            d13Evening.text = askedForHelp
+                ? "집에 돌아와 선생님과 나눈 말을 다시 떠올렸다. 당장 해결된 건 없지만, 처음으로 상황을 밖에 꺼냈다."
+                : "집에 돌아와 교무실 앞에서 했던 말을 떠올렸다. 결국 또 괜찮다고 하고 나왔다.";
+        }
     }
 
     private void PatchMultiLenderEndingChain()
@@ -1282,6 +1549,91 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
         lateMapCueShownDay = flow.CurrentDay;
         flow.V3ShowDialogue("나", "(벌써 늦었지만, 지금이라도 학교에 가는 편이 낫겠다.)", null);
+    }
+
+
+    private void ResolveIgnoredMinjaeTemptationAfterScheduleChoice()
+    {
+        if (director == null || dialogue == null || appWindow?.CurrentAppType == AppType.Message)
+            return;
+        if (!GetField<bool>(director, "waitingForIncomingMessageRead"))
+            return;
+
+        ScenarioV3Scene scene = GetField<ScenarioV3Scene>(director, "activeScene");
+        if (scene == null || !IsSkippableMinjaeTemptationScene(scene.id))
+            return;
+        if (!HasMovedOnFromMinjaeTemptation(scene.id))
+            return;
+
+        SkipIgnoredMinjaeTemptationScene(scene);
+    }
+
+    private static bool IsSkippableMinjaeTemptationScene(string sceneId)
+    {
+        return string.Equals(sceneId, "d2_minjae", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(sceneId, "d3_minjae", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(sceneId, "d5_minjae", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(sceneId, "d6_minjae", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(sceneId, "d9_minjae", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(sceneId, "d10_minjae", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool HasMovedOnFromMinjaeTemptation(string sceneId)
+    {
+        if (string.Equals(sceneId, "d5_minjae", StringComparison.OrdinalIgnoreCase))
+            return !string.Equals(GetDirectorState("schedule.job"), "pending", StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(sceneId, "d9_minjae", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(sceneId, "d10_minjae", StringComparison.OrdinalIgnoreCase))
+            return !string.Equals(GetDirectorState("schedule.school"), "pending", StringComparison.OrdinalIgnoreCase);
+        return !string.Equals(GetDirectorState("schedule.homework"), "pending", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void SkipIgnoredMinjaeTemptationScene(ScenarioV3Scene scene)
+    {
+        int currentIndex = Mathf.Max(0, GetField<int>(director, "activeLineIndex"));
+        HashSet<string> delivered = GetField<HashSet<string>>(director, "deliveredIncomingLineIds");
+
+        // 이미 도착한 첫 메시지는 그대로 두고, 플레이어가 학교/알바/과제를 하는 동안
+        // 뒤이어 왔을 민재 메시지만 채팅 기록에 남긴다. 주인공의 자동 답장은 만들지 않는다.
+        for (int index = currentIndex + 1; index < scene.lines.Count; index++)
+        {
+            ScenarioV3Line line = scene.lines[index];
+            if (line == null ||
+                !string.Equals(line.delivery, "message", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(line.speaker, "Protagonist", StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(line.speaker, "Minjae", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (delivered != null && !delivered.Add(line.id))
+                continue;
+
+            string contact = string.IsNullOrWhiteSpace(line.contact) ? "민재" : line.contact;
+            dialogue.ReceiveNotificationMessage(SpeakerType.Friend, contact, line.text ?? string.Empty);
+        }
+
+        Coroutine incoming = GetField<Coroutine>(director, "incomingMessageCoroutine");
+        if (incoming != null)
+            director.StopCoroutine(incoming);
+        SetField(director, "incomingMessageCoroutine", null);
+        SetField(director, "waitingForIncomingMessageRead", false);
+        SetField(director, "waitingIncomingSpeaker", SpeakerType.Unknown);
+        SetField(director, "waitingIncomingLine", null);
+        SetField(director, "waitingForMessageChoice", false);
+        SetField(director, "waitingMessageSpeaker", SpeakerType.Unknown);
+        SetField(director, "waitingMessageScene", null);
+        SetField(director, "waitingMessageLineIndex", -1);
+        dialogue.DismissEventChoices(SpeakerType.Friend);
+
+        SetField(director, "activeScene", null);
+        SetField(director, "activeLineIndex", 0);
+        AddDirectorInt("counter.minjae_ignored_for_schedule", 1);
+        SetDirectorState("v24.minjae_ignored_day", flow.CurrentDay.ToString(CultureInfo.InvariantCulture));
+        SetDirectorState("pending.gamble_attention", "true");
+        SetDirectorState("unread_count", dialogue.TotalUnreadCount.ToString(CultureInfo.InvariantCulture));
+        flow.V3SetGamblingAttention(true);
+        InvokePrivate(director, "Save");
+
+        // 이동/공부 완료로 이미 큐에 들어온 학교·알바·과제 장면을 즉시 이어 준다.
+        InvokePrivate(director, "StartQueuedScene");
     }
 
     // ---------------------------------------------------------------------
