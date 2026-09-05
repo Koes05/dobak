@@ -352,23 +352,24 @@ public sealed class GameFlowManager : MonoBehaviour
 
         string completedTrigger = CompleteTravelActivity(location, travelHours);
 
-        yield return new WaitForSecondsRealtime(0.2f);
+        // V26.1: 지도/태블릿 화면을 다시 보여 주기 전에 다음 학교/알바 VN을 먼저 준비한다.
+        // 기존에는 페이드 아웃 후 DispatchTravelCompletion을 호출해서 지도 화면이 한 번 비쳤다.
+        appWindow?.CloseCurrentApp();
+        RefreshUI();
+        if (completedTrigger != null)
+        {
+            v3LocationTransitionPlayed = true;
+            DispatchTravelCompletion(completedTrigger);
+        }
+
+        // VN 배경/TMP가 같은 프레임에 준비되는 것까지 검은 화면 아래에서 처리한다.
+        yield return null;
+        yield return new WaitForSecondsRealtime(0.06f);
         yield return FadeTo(0f, 0.35f);
         fadeGroup.blocksRaycasts = false;
         isTransitioning = false;
-        appWindow?.CloseCurrentApp();
-        RefreshUI();
+        v3LocationTransitionPlayed = false;
         ShowNextNarration();
-        if (completedTrigger != null)
-        {
-            // 실제 이동 연출이 이미 재생되었으므로, 바로 이어지는 V3 장면에서
-            // 같은 페이드 연출을 한 번 더 재생하지 않는다.
-            v3LocationTransitionPlayed = true;
-            DispatchTravelCompletion(completedTrigger);
-            // 동기적으로 이어진 장면이 이 값을 소비하지 않았다면
-            // 이후 사용자가 앱을 열 때까지 남기지 않는다.
-            v3LocationTransitionPlayed = false;
-        }
     }
 
     public void V3ReturnHomeAfterActivity(Action completed, Action atBlack = null)
@@ -456,24 +457,23 @@ public sealed class GameFlowManager : MonoBehaviour
             yield return FadeTo(1f, 0.3f);
         }
 
-        // 화면이 완전히 가려진 뒤에만 VN/앱 UI를 교체한다.
-        // 이전에는 VN을 먼저 숨겨 태블릿 홈이 잠깐 비치는 현상이 있었다.
+        // V26.1: 집 상태와 다음 집 VN을 검은 화면 아래에서 모두 준비한다.
+        // completed 콜백을 페이드 아웃 뒤에 호출하면 태블릿 홈이 한 프레임 보일 수 있다.
         atBlack?.Invoke();
         currentLocation = "집";
         appWindow?.CloseCurrentApp();
         RefreshUI();
+        v3LocationTransitionPlayed = playedTransition;
+        completed?.Invoke();
 
+        yield return null;
         if (fadeGroup != null)
         {
-            yield return new WaitForSecondsRealtime(0.2f);
+            yield return new WaitForSecondsRealtime(0.06f);
             yield return FadeTo(0f, 0.35f);
             fadeGroup.blocksRaycasts = false;
         }
         isTransitioning = false;
-        v3LocationTransitionPlayed = playedTransition;
-        completed?.Invoke();
-        // 귀가 직후 바로 이어진 장면에서만 중복 페이드를 억제한다.
-        // 자유 행동까지 이 상태가 남으면 다음 앱/도박 연출의 전환이 빠질 수 있다.
         v3LocationTransitionPlayed = false;
         ShowNextNarration();
     }

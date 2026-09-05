@@ -45,6 +45,9 @@ public sealed class IntroSceneController : MonoBehaviour
         if (startButton != null)
             startButton.interactable = false;
 
+        // TabletUI가 먼저 한 프레임 노출되는 것을 막고, 첫 VN이 준비된 뒤에만 커튼을 걷는다.
+        ScenarioV3TransitionCurtain.CoverUntilFirstStory();
+
         if (preloadedScene != null)
             preloadedScene.allowSceneActivation = true;
         else

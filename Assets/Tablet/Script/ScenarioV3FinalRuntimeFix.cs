@@ -19,7 +19,7 @@ using UnityEngine.UI;
 public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 {
     private const string TabletSceneName = "TabletUI";
-    private const string PatchVersion = "V24.0-ScenarioTone-ActivityFlow";
+    private const string PatchVersion = "V26.1-TransitionQaFix";
 
     private GameFlowManager flow;
     private ScenarioV3Director director;
@@ -30,9 +30,10 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
     private readonly Dictionary<ScenarioV3CheckpointData, CheckpointRuntimeSnapshot> checkpointSnapshots =
         new Dictionary<ScenarioV3CheckpointData, CheckpointRuntimeSnapshot>();
-    private readonly HashSet<Button> patchedSchoolButtons = new HashSet<Button>();
+    private readonly HashSet<Button> patchedTravelButtons = new HashSet<Button>();
     private readonly HashSet<Button> patchedMapLauncherButtons = new HashSet<Button>();
     private readonly HashSet<Button> patchedDebounceButtons = new HashSet<Button>();
+    private readonly Dictionary<Button, GameObject> day1InitialGateProxies = new Dictionary<Button, GameObject>();
 
     private GameObject choiceOverlay;
     private TMP_Text choiceOverlaySpeaker;
@@ -152,6 +153,11 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             nextButtonScanAt = Time.unscaledTime + 0.75f;
             PatchButtons(false);
         }
+        // MapLocationController는 지도 앱이 처음 활성화될 때 장소 라벨을 런타임 생성한다.
+        // 0.75초 주기 스캔만 기다리면 아주 빠른 첫 탭이 예전 TravelTo(+1시간)를 탈 수 있으므로
+        // 지도가 열린 프레임에는 즉시 다시 스캔해서 투명 프록시를 설치한다.
+        if (appWindow?.CurrentAppType == AppType.Map)
+            PatchTravelButtons();
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         HandleQaShortcuts();
@@ -163,7 +169,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         RefreshContextSensitiveDialogue();
         ResolveIgnoredMinjaeTemptationAfterScheduleChoice();
         HandleDayChangeAndDialogueLog();
-        TrackLateMapCue();
+        // V26: 지각 안내는 홈 일정표에서만 보여 준다. 지도 앱을 여는 순간 별도 VN을
+        // 끼워 넣으면 일정 장면 큐보다 먼저 떠서 대화 순서를 흔들 수 있으므로 제거한다.
         CaptureNewCheckpointSnapshots();
         TryShowDeferredBorrowChoice();
         TryReplaceDebtChatChoicesWithDialogue();
@@ -178,6 +185,9 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
         ApplyExactAttentionDots();
         ApplyRightSideChoiceLayout();
+        EnhanceScheduleChecklist();
+        UpdateDay1InitialGateState();
+        NormalizeGamblingLabelStyle();
         if (choiceOverlay != null && choiceOverlay.activeSelf)
             choiceOverlay.transform.SetAsLastSibling();
     }
@@ -764,6 +774,19 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
     private void PatchScenarioProsePass()
     {
+        // 이동 시간 제거 뒤에도 예전 "이동 중" 문구가 남아 위치 상태와 대사가 어긋나지 않게 한다.
+        ScenarioV3Line d1MomCheckin = FindLine("d1_mom_checkin_01");
+        if (d1MomCheckin?.choiceA != null)
+        {
+            const string reply = "응. 끝났어. 저녁은 집에서 먹을게.";
+            d1MomCheckin.choiceA.text = reply;
+            d1MomCheckin.choiceA.replyText = reply;
+        }
+        SetLineText("d14_prevented_return_home_01",
+            "오늘 할 일은 끝났다. 엄마와 이야기를 더 해봐야겠다.");
+        SetLineText("d14_prevented_return_home_02",
+            "오늘 있었던 일을 어디서부터 말할지 정리했다.");
+
         SetLineText("d1_minjae_invite_01",
             "전에 노트북 깨졌다고 했지? 수리비 모은다며. 이것 좀 봐.");
 
@@ -1204,9 +1227,11 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     {
         PatchGamblingLauncher();
         PatchMapLauncherGate();
-        PatchSchoolTravelButtons();
+        PatchDay1InitialLauncherGates();
+        PatchTravelButtons();
         PatchRewindButton();
         PatchSimpleButtonDebounce();
+        NormalizeGamblingLabelStyle();
     }
 
     private void PatchGamblingLauncher()
@@ -1257,12 +1282,12 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
                               !string.Equals(pendingBorrowTarget, "false", StringComparison.OrdinalIgnoreCase) &&
                               pendingBorrowTarget != "0";
         bool waitingChoice = GetField<bool>(director, "waitingForMessageChoice");
-        bool waitingRead = GetField<bool>(director, "waitingForIncomingMessageRead");
         bool waitingClose = GetField<bool>(director, "waitingForMessageSceneClose");
-        bool unread = dialogue != null && dialogue.TotalUnreadCount > 0;
 
-        if (!string.IsNullOrWhiteSpace(outgoingContact) || preparedBorrow || waitingChoice ||
-            waitingRead || waitingClose || unread)
+        // A reply the player already committed to, a borrow request being composed, or an active
+        // message decision is a real unresolved action. Plain unread messages are not a hard lock:
+        // the player may choose to ignore a temptation and protect (or sacrifice) the schedule.
+        if (!string.IsNullOrWhiteSpace(outgoingContact) || preparedBorrow || waitingChoice || waitingClose)
         {
             string prompt;
             if (!string.IsNullOrWhiteSpace(outgoingContact))
@@ -1275,49 +1300,94 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             {
                 prompt = "(돈을 부탁하려고 정한 메시지가 아직 남아 있다.... 먼저 보내고 나서 생각하자.)";
             }
-            else if (waitingChoice || waitingClose)
-            {
-                prompt = "(아직 답해야 할 메시지가 있다.... 그걸 먼저 정리하는 편이 낫겠다.)";
-            }
             else
             {
-                prompt = "(확인하지 않은 메시지가 있다. 무슨 내용인지부터 보는 편이 낫겠다.)";
+                prompt = "(아직 답해야 할 메시지가 있다.... 그 답부터 정하자.)";
             }
 
             flow.V3ShowDialogue("나", prompt, () => flow.V3MarkAppAttention(AppType.Message));
             return;
         }
 
-        // 진행 중인 VN 위에 새 도박 장면을 겹치지 않는다.
+        // Do not overlap another VN scene. Unread Minjae temptation is handled by the existing
+        // schedule-choice skip path when the player actually moves on with school/job/study.
         if (!string.IsNullOrWhiteSpace(director.ActiveSceneId))
             return;
 
-        if (flow.IsWeekend && !flow.IsJobDone)
-        {
-            flow.V3ShowDialogue("나", "(출근 시간이 다가오고 있다.... 카페 일정부터 챙기는 편이 낫겠다.)",
-                () => flow.V3MarkAppAttention(AppType.Map));
-            return;
-        }
-        if (!flow.IsWeekend && !flow.IsSchoolDone)
-        {
-            flow.V3ShowDialogue("나", "(아직 학교 일정이 남아 있다.... 늦기 전에 다녀오는 편이 낫겠다.)",
-                () => flow.V3MarkAppAttention(AppType.Map));
-            return;
-        }
-        if (!flow.IsWeekend && flow.V3HasStudyToday && !flow.IsHomeworkDone)
-        {
-            flow.V3ShowDialogue("나", "(오늘 하기로 한 공부가 아직 남아 있다.... 먼저 끝내는 편이 낫겠다.)",
-                () => flow.V3MarkAppAttention(AppType.Study));
-            return;
-        }
-
-        ShowManualChoiceOverlay("한 판 해볼까....",
+        string decisionText = BuildGambleDecisionText();
+        ShowManualChoiceOverlay(decisionText,
             new ManualChoiceOption("한다", BeginConfirmedGamble),
             new ManualChoiceOption("하지 않는다", () => { }));
     }
 
+    private string BuildGambleDecisionText()
+    {
+        int nextSession = GetDirectorInt("counter.gamble_sessions") + 1;
+        if (nextSession >= 6 && flow.V3BankCash <= 0)
+            return "계좌에 남은 돈이 없다. 더 하려면 먼저 돈을 마련해야 한다. 그래도 도박 앱을 확인할까?";
+
+        int hours = GetNextGambleDurationHours();
+        int projectedHour = flow.CurrentHour + hours;
+        string timeText = hours <= 1 ? "약 1시간" : $"약 {hours}시간";
+
+        // V26: 이동 자체에는 시간을 쓰지 않는다. 일정 충돌은 도박이 끝나는 시각만으로 판단한다.
+        if (flow.IsWeekend && !flow.IsJobDone &&
+            string.Equals(GetDirectorState("schedule.job"), "pending", StringComparison.OrdinalIgnoreCase))
+        {
+            if (projectedHour > 8)
+                return $"한 판에 {timeText} 정도 걸린다. 지금 시작하면 {FormatHour(projectedHour)}쯤이라 오늘 알바를 놓치게 된다. 그래도 할까?";
+            return $"한 판에 {timeText} 정도 걸린다. 오전 8시 알바도 남아 있다. 그래도 지금 할까?";
+        }
+
+        if (!flow.IsWeekend && !flow.IsSchoolDone &&
+            string.Equals(GetDirectorState("schedule.school"), "pending", StringComparison.OrdinalIgnoreCase))
+        {
+            if (projectedHour >= 16)
+                return $"한 판에 {timeText} 정도 걸린다. 끝나면 이미 수업이 끝난 뒤다. 그래도 할까?";
+            if (projectedHour > 10)
+                return $"한 판에 {timeText} 정도 걸린다. 끝나는 시각이 {FormatHour(projectedHour)}쯤이라 지각하게 된다. 그래도 할까?";
+            return $"한 판에 {timeText} 정도 걸린다. 학교 일정도 남아 있다. 그래도 지금 할까?";
+        }
+
+        if (!flow.IsWeekend && flow.V3HasStudyToday && !flow.IsHomeworkDone &&
+            string.Equals(GetDirectorState("schedule.homework"), "pending", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"한 판에 {timeText} 정도 걸린다. 오늘 공부도 아직 남아 있다. 그래도 지금 할까?";
+        }
+
+        return $"한 판에 {timeText} 정도 걸린다. 지금 할까?";
+    }
+
+    private int GetNextGambleDurationHours()
+    {
+        int nextSession = GetDirectorInt("counter.gamble_sessions") + 1;
+        return nextSession switch
+        {
+            1 => 1,
+            2 or 3 or 4 => 2,
+            5 or 6 => 3,
+            7 or 8 => 2,
+            _ => 3
+        };
+    }
+
+    private static string FormatHour(int rawHour)
+    {
+        int normalized = ((rawHour % 24) + 24) % 24;
+        string period = normalized < 12 ? "오전" : "오후";
+        int display = normalized % 12;
+        if (display == 0)
+            display = 12;
+        return $"{period} {display}시";
+    }
+
     private void BeginConfirmedGamble()
     {
+        if (flow == null || director == null || flow.IsGameEnded || !director.IsGamblingAppUnlocked)
+            return;
+        if (!string.IsNullOrWhiteSpace(director.ActiveSceneId) || GetField<bool>(flow, "isTransitioning"))
+            return;
+
         int nextSession = GetDirectorInt("counter.gamble_sessions") + 1;
         if ((nextSession == 7 || nextSession == 8) && flow.V3BankCash > 0)
         {
@@ -1331,9 +1401,226 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             return;
         }
 
+        // Use the Director's own gamble effect parser so cash/debt/no-funds/repeat-loss behavior
+        // stays in one source of truth, but bypass TryStartGambleFromHome's old "finish every
+        // schedule first" gate. This restores the intended schedule-vs-gambling trade-off.
+        SetField(director, "immediateRoute", string.Empty);
+        InvokePrivate(director, "ApplyEffects", "gamble:advance");
+        string route = GetField<string>(director, "immediateRoute") ?? string.Empty;
+        SetField(director, "immediateRoute", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(route))
+        {
+            appWindow?.CloseCurrentApp();
+            InvokePrivate(director, "PlayScene", route);
+            InvokePrivate(director, "Save");
+            return;
+        }
+
+        // Defensive fallback for a future Director refactor. It preserves the previous behavior
+        // instead of leaving the launcher dead if the reflected effect method ever changes.
         InvokePrivate(flow, "StartScenarioGambling");
     }
 
+
+    private void EnhanceScheduleChecklist()
+    {
+        if (flow == null || director == null)
+            return;
+
+        List<TMP_Text> lines = GetField<List<TMP_Text>>(flow, "homeChecklistLines");
+        if (lines == null || lines.Count == 0)
+            return;
+
+        string school = GetDirectorState("schedule.school");
+        string homework = GetDirectorState("schedule.homework");
+        string job = GetDirectorState("schedule.job");
+
+        if (flow.IsWeekend)
+        {
+            if (lines.Count > 0)
+            {
+                string mark = ScheduleMark(job, flow.IsJobDone);
+                string detail = string.Empty;
+                if (string.Equals(job, "pending", StringComparison.OrdinalIgnoreCase))
+                {
+                    detail = flow.CurrentHour < 8
+                        ? " · 08:00 근무 시작"
+                        : flow.CurrentHour == 8
+                            ? " · 지금 출근 가능"
+                            : " · 오늘 근무 놓침";
+                }
+                lines[0].text = $"{mark} 카페 알바  08:00~16:00{detail}";
+            }
+            return;
+        }
+
+        if (lines.Count > 0)
+        {
+            string mark = ScheduleMark(school, flow.IsSchoolDone);
+            string detail = string.Empty;
+            if (string.Equals(school, "pending", StringComparison.OrdinalIgnoreCase))
+            {
+                detail = flow.CurrentHour < 8
+                    ? " · 08:00 수업 시작"
+                    : flow.CurrentHour <= 10
+                        ? " · 지금 등교 가능"
+                        : flow.CurrentHour < 16
+                            ? " · 지금 가면 지각"
+                            : " · 오늘 수업 종료";
+            }
+            lines[0].text = $"{mark} 학교 가기{detail}";
+        }
+
+        if (lines.Count > 1 && flow.V3HasStudyToday)
+        {
+            string mark = ScheduleMark(homework, flow.IsHomeworkDone);
+            string detail = string.Equals(homework, "pending", StringComparison.OrdinalIgnoreCase)
+                ? " · 약 2시간"
+                : string.Empty;
+            lines[1].text = $"{mark} 오늘 공부{detail}";
+        }
+    }
+
+    private static string ScheduleMark(string status, bool fallbackDone)
+    {
+        if (string.Equals(status, "complete", StringComparison.OrdinalIgnoreCase) || fallbackDone)
+            return "[완료]";
+        if (string.Equals(status, "missed", StringComparison.OrdinalIgnoreCase))
+            return "[놓침]";
+        if (string.Equals(status, "short", StringComparison.OrdinalIgnoreCase))
+            return "[부족]";
+        return "[필수]";
+    }
+
+    private void PatchDay1InitialLauncherGates()
+    {
+        foreach (Button button in Resources.FindObjectsOfTypeAll<Button>())
+        {
+            if (button == null || !button.gameObject.scene.IsValid() || day1InitialGateProxies.ContainsKey(button))
+                continue;
+
+            bool homeLauncher = false;
+            int persistentCount = button.onClick.GetPersistentEventCount();
+            for (int index = 0; index < persistentCount; index++)
+            {
+                string method = button.onClick.GetPersistentMethodName(index) ?? string.Empty;
+                if (string.Equals(method, "OpenMap", StringComparison.Ordinal))
+                {
+                    homeLauncher = false;
+                    break;
+                }
+                if (method.StartsWith("Open", StringComparison.Ordinal) &&
+                    (method == "OpenBrowser" || method == "OpenBank" || method == "OpenMessage" ||
+                     method == "OpenStudy" || method == "OpenSetting" || method == "OpenSNS" ||
+                     method == "OpenSleep"))
+                {
+                    homeLauncher = true;
+                }
+            }
+
+            if (!homeLauncher && string.Equals(button.gameObject.name, "Gambling Launcher", StringComparison.Ordinal))
+                homeLauncher = true;
+            if (!homeLauncher)
+                continue;
+
+            GameObject proxyObject = new GameObject("V26.1 Initial Map Tutorial Guard", typeof(RectTransform),
+                typeof(CanvasRenderer), typeof(Image), typeof(Button));
+            proxyObject.layer = button.gameObject.layer;
+            proxyObject.transform.SetParent(button.transform, false);
+            Stretch(proxyObject.GetComponent<RectTransform>());
+
+            Image image = proxyObject.GetComponent<Image>();
+            image.color = new Color(1f, 1f, 1f, 0.001f);
+            image.raycastTarget = true;
+
+            Button proxyButton = proxyObject.GetComponent<Button>();
+            proxyButton.transition = Selectable.Transition.None;
+            proxyButton.targetGraphic = image;
+            proxyButton.onClick.AddListener(HandleInitialMapTutorialBlockedApp);
+            day1InitialGateProxies[button] = proxyObject;
+        }
+        UpdateDay1InitialGateState();
+    }
+
+    private bool ShouldForceInitialMapTutorial()
+    {
+        if (flow == null || director == null || flow.CurrentDay != 1 || flow.IsSchoolDone)
+            return false;
+        if (!string.Equals(flow.CurrentLocation, "집", StringComparison.Ordinal))
+            return false;
+        if (!string.IsNullOrWhiteSpace(director.ActiveSceneId))
+            return false;
+        string school = GetDirectorState("schedule.school");
+        return string.IsNullOrWhiteSpace(school) ||
+               string.Equals(school, "pending", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void UpdateDay1InitialGateState()
+    {
+        bool active = ShouldForceInitialMapTutorial();
+        foreach (KeyValuePair<Button, GameObject> pair in day1InitialGateProxies.ToArray())
+        {
+            if (pair.Key == null || pair.Value == null)
+            {
+                day1InitialGateProxies.Remove(pair.Key);
+                continue;
+            }
+            pair.Value.SetActive(active);
+            if (active)
+                pair.Value.transform.SetAsLastSibling();
+        }
+    }
+
+    private void HandleInitialMapTutorialBlockedApp()
+    {
+        if (!ShouldForceInitialMapTutorial())
+            return;
+        flow.V3MarkAppAttention(AppType.Map);
+        flow.V3ShowDialogue("나", "(우선 학교부터 가야겠다. 지도 앱을 열어보자.)", null);
+    }
+
+    private void NormalizeGamblingLabelStyle()
+    {
+        GameObject launcher = FindSceneObject("Gambling Launcher");
+        if (launcher == null)
+            return;
+        TMP_Text label = launcher.GetComponentsInChildren<TMP_Text>(true)
+            .FirstOrDefault(text => text != null &&
+                (string.Equals(text.gameObject.name, "Gambling Icon Label", StringComparison.Ordinal) ||
+                 string.Equals((text.text ?? string.Empty).Trim(), "도박", StringComparison.Ordinal)));
+        if (label == null)
+            return;
+
+        GameObject appManager = FindSceneObject("AppManager");
+        if (appManager == null)
+            return;
+        TMP_Text[] candidates = appManager.GetComponentsInChildren<TMP_Text>(true);
+        TMP_Text reference = candidates
+            .FirstOrDefault(text => text != null && text != label && !text.transform.IsChildOf(launcher.transform) &&
+                new[] { "지도", "메시지", "은행", "공부", "취침", "설정", "SNS" }
+                    .Contains((text.text ?? string.Empty).Trim()));
+        if (reference == null)
+        {
+            reference = candidates.FirstOrDefault(text => text != null && text != label &&
+                !text.transform.IsChildOf(launcher.transform) && text.font != null &&
+                text.fontSize >= 18f && text.fontSize <= 36f &&
+                !string.IsNullOrWhiteSpace(text.text) && text.text.Trim().Length <= 6);
+        }
+        if (reference == null)
+            return;
+
+        label.font = reference.font;
+        label.fontSharedMaterial = reference.fontSharedMaterial;
+        label.fontSize = reference.fontSize;
+        label.fontStyle = reference.fontStyle;
+        label.color = reference.color;
+        label.alignment = reference.alignment;
+        label.characterSpacing = reference.characterSpacing;
+        label.wordSpacing = reference.wordSpacing;
+        label.lineSpacing = reference.lineSpacing;
+        label.textWrappingMode = reference.textWrappingMode;
+    }
 
     private void PatchMapLauncherGate()
     {
@@ -1415,46 +1702,111 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         return available && !read;
     }
 
-    private void PatchSchoolTravelButtons()
+    private void PatchTravelButtons()
     {
+        // 가장 먼저 MapLocationController의 직렬화된 locationName/button 쌍을 직접 읽는다.
+        // 이 방식은 MapApp이 아직 비활성이라 Travel Info 라벨이 생성되지 않았어도 동작하므로
+        // 첫 지도 탭이 예전 TravelTo(+1시간)로 새는 경로를 막는다.
+        PatchSerializedMapLocationButtons();
+
+        // 씬 구조가 바뀌거나 커스텀 지도 버튼이 추가된 경우를 위한 보조 탐색.
         foreach (Button button in Resources.FindObjectsOfTypeAll<Button>())
         {
             if (button == null || !button.gameObject.scene.IsValid())
                 continue;
-            if (patchedSchoolButtons.Contains(button))
+            if (patchedTravelButtons.Contains(button))
                 continue;
 
             string label = button.GetComponentInChildren<TMP_Text>(true)?.text ?? string.Empty;
             bool strongSchoolName = button.name.IndexOf("School", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool strongCafeName = button.name.IndexOf("Cafe", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                  button.name.IndexOf("Job", StringComparison.OrdinalIgnoreCase) >= 0;
             bool looksLikeSchool = strongSchoolName || label.Trim() == "학교" || label.Contains("학교로");
-            // Runtime-created map buttons are not always nested under an object literally named Map.
-            // An explicit School object name is sufficient; text-only matches still require a map ancestor.
-            if (!looksLikeSchool || (!strongSchoolName && !HasMapAncestor(button.transform)))
+            bool looksLikeCafe = strongCafeName || label.Trim() == "카페" || label.Contains("카페로") ||
+                                 label.Contains("알바");
+            bool mapScoped = HasMapAncestor(button.transform);
+            bool hasTravelListener = HasPersistentTravelListener(button);
+            if ((!looksLikeSchool && !looksLikeCafe) || (!mapScoped && !hasTravelListener))
                 continue;
 
-            patchedSchoolButtons.Add(button);
-
-            // Inspector-persistent UnityEvent listeners cannot be removed reliably at runtime.
-            // Put a transparent child button over the original map button so the old TravelTo call
-            // never fires before the player closes the late-arrival dialogue.
-            Transform existingProxy = button.transform.Find("V21 School Travel Proxy");
-            if (existingProxy != null)
-                continue;
-
-            GameObject proxyObject = new GameObject("V21 School Travel Proxy", typeof(RectTransform),
-                typeof(CanvasRenderer), typeof(Image), typeof(Button));
-            proxyObject.layer = button.gameObject.layer;
-            proxyObject.transform.SetParent(button.transform, false);
-            Stretch(proxyObject.GetComponent<RectTransform>());
-            Image proxyImage = proxyObject.GetComponent<Image>();
-            proxyImage.color = new Color(1f, 1f, 1f, 0.001f);
-            proxyImage.raycastTarget = true;
-            Button proxyButton = proxyObject.GetComponent<Button>();
-            proxyButton.transition = Selectable.Transition.None;
-            proxyButton.targetGraphic = proxyImage;
-            proxyButton.onClick.AddListener(HandleSchoolTravelButton);
-            patchedSchoolButtons.Add(proxyButton);
+            EnsureTravelProxy(button, looksLikeSchool ? "학교" : "카페");
         }
+    }
+
+    private void PatchSerializedMapLocationButtons()
+    {
+        foreach (MonoBehaviour behaviour in Resources.FindObjectsOfTypeAll<MonoBehaviour>())
+        {
+            if (behaviour == null || !behaviour.gameObject.scene.IsValid())
+                continue;
+            Type type = behaviour.GetType();
+            if (!string.Equals(type.Name, "MapLocationController", StringComparison.Ordinal) &&
+                !string.Equals(type.FullName, "Dobak.App.Map.MapLocationController", StringComparison.Ordinal))
+                continue;
+
+            Array locations = GetField<Array>(behaviour, "locations");
+            if (locations == null)
+                continue;
+
+            foreach (object location in locations)
+            {
+                if (location == null)
+                    continue;
+                string raw = GetField<string>(location, "locationName") ?? string.Empty;
+                Button button = GetField<Button>(location, "button");
+                string destination = raw.Trim() switch
+                {
+                    "1" => "학교",
+                    "2" => "카페",
+                    "3" => "집",
+                    _ when raw.Contains("학교") => "학교",
+                    _ when raw.Contains("카페") || raw.Contains("알바") => "카페",
+                    _ when raw.Contains("집") => "집",
+                    _ => string.Empty
+                };
+                if (button != null && destination.Length > 0)
+                    EnsureTravelProxy(button, destination);
+            }
+        }
+    }
+
+    private void EnsureTravelProxy(Button button, string destination)
+    {
+        if (button == null || patchedTravelButtons.Contains(button))
+            return;
+        patchedTravelButtons.Add(button);
+
+        string proxyName = destination == "학교" ? "V26 School Travel Proxy"
+            : destination == "카페" ? "V26 Cafe Travel Proxy"
+            : "V26 Home Travel Proxy";
+        Transform existingProxy = button.transform.Find(proxyName);
+        if (existingProxy != null)
+        {
+            Button existingButton = existingProxy.GetComponent<Button>();
+            if (existingButton != null)
+                patchedTravelButtons.Add(existingButton);
+            existingProxy.SetAsLastSibling();
+            return;
+        }
+
+        GameObject proxyObject = new GameObject(proxyName, typeof(RectTransform),
+            typeof(CanvasRenderer), typeof(Image), typeof(Button));
+        proxyObject.layer = button.gameObject.layer;
+        proxyObject.transform.SetParent(button.transform, false);
+        Stretch(proxyObject.GetComponent<RectTransform>());
+        Image proxyImage = proxyObject.GetComponent<Image>();
+        proxyImage.color = new Color(1f, 1f, 1f, 0.001f);
+        proxyImage.raycastTarget = true;
+        Button proxyButton = proxyObject.GetComponent<Button>();
+        proxyButton.transition = Selectable.Transition.None;
+        proxyButton.targetGraphic = proxyImage;
+        Button sourceButton = button;
+        proxyButton.onClick.AddListener(() =>
+        {
+            if (sourceButton != null && sourceButton.interactable)
+                HandleTravelButton(destination);
+        });
+        patchedTravelButtons.Add(proxyButton);
     }
 
     private static bool HasMapAncestor(Transform transform)
@@ -1470,22 +1822,104 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         return false;
     }
 
-    private void HandleSchoolTravelButton()
+    private static bool HasPersistentTravelListener(Button button)
     {
-        if (flow == null || flow.IsGameEnded || GetField<bool>(flow, "isTransitioning"))
+        if (button == null)
+            return false;
+        int count = button.onClick.GetPersistentEventCount();
+        for (int index = 0; index < count; index++)
+        {
+            if (string.Equals(button.onClick.GetPersistentMethodName(index), "TravelTo",
+                    StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private void HandleTravelButton(string destination)
+    {
+        if (flow == null || director == null || flow.IsGameEnded || GetField<bool>(flow, "isTransitioning"))
             return;
 
-        int arrivalHour = flow.CurrentHour + flow.GetTravelHours("학교");
-        bool late = !flow.IsWeekend && !flow.IsSchoolDone && flow.CurrentHour < 16 && arrivalHour > 10;
-        if (late && lateMapCueShownDay != flow.CurrentDay)
+        if (string.Equals(destination, "집", StringComparison.Ordinal))
         {
-            lateMapCueShownDay = flow.CurrentDay;
-            // Keep the map open. After closing this dialogue the player presses the school button again.
-            flow.V3ShowDialogue("나", "(늦었지만 지금이라도 학교에 가는 편이 낫겠다.)", null);
+            if (string.Equals(flow.CurrentLocation, "집", StringComparison.Ordinal))
+                return;
+            if (ShouldBlockMapForDay1MomMessage())
+            {
+                appWindow?.CloseCurrentApp();
+                dialogue?.PreferConversation(SpeakerType.Mom);
+                flow.V3MarkAppAttention(AppType.Message);
+                flow.V3ShowDialogue("나", "(엄마에게서 온 메시지를 먼저 확인하자.)", null);
+                return;
+            }
+            if (!string.IsNullOrWhiteSpace(director.ActiveSceneId))
+                return;
+            flow.V3ReturnHomeAfterActivity(null);
             return;
         }
 
-        flow.TravelTo("학교");
+        if (!string.Equals(flow.CurrentLocation, "집", StringComparison.Ordinal))
+            return;
+
+        if (string.Equals(destination, "학교", StringComparison.Ordinal))
+        {
+            if (flow.IsWeekend || flow.IsSchoolDone)
+                return;
+            if (flow.CurrentHour >= 16)
+            {
+                appWindow?.CloseCurrentApp();
+                InvokePrivate(flow, "ShowFeedback", "오늘 수업은 이미 끝났다. 전달된 내용은 메시지에서 확인하자.");
+                director.HandleExternalAction("school_missed");
+                return;
+            }
+
+            // 11~15시 지각도 별도 VN을 끼우지 않고 바로 학교 일정으로 보낸다.
+            // 지각 여부는 홈 일정표에서 이미 보이며, 이렇게 해야 학교 장면 큐가 단일 소유자가 된다.
+            StartZeroTravelActivity("학교");
+            return;
+        }
+
+        if (!string.Equals(destination, "카페", StringComparison.Ordinal) || !flow.IsWeekend || flow.IsJobDone)
+            return;
+
+        if (flow.CurrentHour > 8)
+        {
+            appWindow?.CloseCurrentApp();
+            // 별도 독백을 먼저 띄우지 않는다. job_missed 트리거의 장면이 유일한 대화 소유자가
+            // 되도록 해서 민재 미확인 메시지 등과 겹치는 순서 꼬임을 막는다.
+            InvokePrivate(flow, "ShowFeedback", "오전 8시 출근 시간을 지나 오늘은 근무할 수 없습니다.");
+            director.HandleExternalAction("job_missed");
+            return;
+        }
+
+        StartZeroTravelActivity("카페");
+    }
+
+    private void StartZeroTravelActivity(string destination)
+    {
+        if (flow == null || GetField<bool>(flow, "isTransitioning"))
+            return;
+
+        // 07시에 장소를 눌러도 '이동 1시간'을 더하지 않는다. 대신 08시 일정 시작까지 기다린다.
+        if (flow.CurrentHour < 8)
+            flow.V3SetClock("08:00");
+
+        AudioClip clip = string.Equals(destination, "학교", StringComparison.Ordinal)
+            ? GetField<AudioClip>(flow, "schoolArrivalClip")
+            : GetField<AudioClip>(flow, "cafeArrivalClip");
+        float volume = string.Equals(destination, "학교", StringComparison.Ordinal) ? 0.28f : 0.3f;
+
+        // 기존 TravelTransition/CompleteTravelActivity/DispatchTravelCompletion을 그대로 쓰되
+        // travelHours만 0으로 넘긴다. 장면 큐, 임금, 일정 완료, 자동 귀가 순서를 복제하지 않는다.
+        IEnumerator routine = InvokePrivate(flow, "TravelTransition", destination, 0, clip, volume) as IEnumerator;
+        if (routine == null)
+        {
+            Debug.LogError("[V26] 기본 일정 전환(TravelTransition)을 찾지 못했습니다. 상태 꼬임을 막기 위해 실행을 중단합니다.");
+            InvokePrivate(flow, "ShowFeedback", "일정을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+            return;
+        }
+        flow.StartCoroutine(routine);
     }
 
     private void PatchRewindButton()
@@ -1543,8 +1977,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (flow.IsWeekend || flow.IsSchoolDone || flow.CurrentLocation != "집" || flow.CurrentHour >= 16)
             return;
 
-        int arrivalHour = flow.CurrentHour + flow.GetTravelHours("학교");
-        if (arrivalHour <= 10)
+        if (flow.CurrentHour <= 10)
             return;
 
         lateMapCueShownDay = flow.CurrentDay;
@@ -2956,13 +3389,13 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
     private bool CanActuallyMoveNow()
     {
+        // 외부 장소에서 집으로의 이동은 장면 큐가 끝난 뒤 Director가 자동 처리한다.
         if (!string.Equals(flow.CurrentLocation, "집", StringComparison.Ordinal))
-            return true;
+            return false;
 
-        int arrival = flow.CurrentHour + flow.GetTravelHours(flow.IsWeekend ? "카페" : "학교");
         if (flow.IsWeekend)
-            return !flow.IsJobDone && arrival == 8;
-        return !flow.IsSchoolDone && arrival >= 8 && flow.CurrentHour < 16;
+            return !flow.IsJobDone && flow.CurrentHour <= 8;
+        return !flow.IsSchoolDone && flow.CurrentHour < 16;
     }
 
     private bool HasChatActionChoices()
